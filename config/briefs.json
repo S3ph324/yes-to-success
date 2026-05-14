@@ -1,0 +1,19 @@
+[
+  {
+    "id": "brief_default",
+    "name": "Default — 3 Pillars",
+    "topics": [
+      "trading",
+      "yes-to-success",
+      "biohacking"
+    ],
+    "voiceNotes": "Empathetic tone. Validate the audience's effort before reframing. Mix Taglish naturally.",
+    "bannedPhrases": [
+      "walang kwentang trabaho",
+      "tamad ka",
+      "guaranteed income",
+      "this supplement cures"
+    ],
+    "activeCampaigns": ""
+  }
+]

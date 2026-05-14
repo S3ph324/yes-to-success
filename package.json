@@ -6,14 +6,20 @@
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
+    "@google/genai": "^2.0.1",
+    "@remotion/bundler": "^4.0.459",
     "@remotion/cli": "4.0.459",
+    "@remotion/renderer": "^4.0.459",
+    "@remotion/tailwind-v4": "4.0.459",
     "@remotion/zod-types": "4.0.459",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "multer": "^2.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "remotion": "4.0.459",
-    "zod": "4.3.6",
-    "@remotion/tailwind-v4": "4.0.459",
-    "tailwindcss": "4.0.0"
+    "tailwindcss": "4.0.0",
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@remotion/eslint-config-flat": "4.0.459",
@@ -27,7 +33,17 @@
     "dev": "remotion studio",
     "build": "remotion bundle",
     "upgrade": "remotion upgrade",
-    "lint": "eslint src && tsc"
+    "lint": "eslint src && tsc",
+    "quotes:gen": "node scripts/generate-quotes.mjs",
+    "quotes:render": "node scripts/render-batch.mjs",
+    "quotes:batch": "node scripts/batch.mjs",
+    "quotes:gallery": "node scripts/gallery.mjs",
+    "console": "node scripts/simple-server.mjs",
+    "server": "node scripts/server.mjs",
+    "start": "node scripts/server.mjs",
+    "dashboard:dev": "cd dashboard && npm run dev",
+    "dashboard:build": "cd dashboard && npm run build",
+    "dashboard": "npm run dashboard:build && npm run server"
   },
   "sideEffects": [
     "*.css"

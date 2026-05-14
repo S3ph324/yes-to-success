@@ -1,0 +1,15 @@
+node_modules
+dashboard/node_modules
+dashboard/dist
+out
+public/generated-bg
+public/characters
+public/logo-*
+config/posting.json
+.git
+.DS_Store
+.env
+.env.*
+*.log
+service-account*.json
+gcp-credentials*.json

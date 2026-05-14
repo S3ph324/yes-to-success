@@ -2,6 +2,40 @@ node_modules
 dist
 .DS_Store
 .env
+.env.local
+.env.*.local
 
 # Ignore the output video from Git but not videos you import into src/.
 out
+
+# AI-generated backgrounds (regenerated per batch — don't commit)
+public/generated-bg
+
+# Uploaded brand assets and character photos — generated at runtime
+public/characters
+public/logo-*.png
+public/logo-*.jpg
+public/logo-*.webp
+
+# Local config that contains secrets (FB tokens, etc) — never commit
+config/posting.json
+
+# Vertex AI service account key — NEVER commit
+service-account*.json
+gcp-credentials*.json
+.gcloud/
+
+# Dashboard build artifacts (regenerated)
+dashboard/dist
+dashboard/node_modules
+
+# Editor / OS
+.idea
+.vscode
+*.swp
+*.swo
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

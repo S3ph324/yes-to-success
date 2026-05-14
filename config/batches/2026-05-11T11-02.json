@@ -1,0 +1,32 @@
+{
+  "0": {
+    "status": "scheduled",
+    "scheduledAt": "2026-05-14T12:00:00.000Z",
+    "fbPostId": "1424428726389610",
+    "fbUrl": "https://www.facebook.com/1424428726389610"
+  },
+  "1": {
+    "status": "posted",
+    "postedAt": "2026-05-14T06:32:48.209Z",
+    "fbPostId": "1424430006389482",
+    "fbUrl": "https://www.facebook.com/118533838163379_1424430036389479"
+  },
+  "2": {
+    "status": "scheduled",
+    "scheduledAt": "2026-05-14T23:30:00.000Z",
+    "fbPostId": "1424428779722938",
+    "fbUrl": "https://www.facebook.com/1424428779722938"
+  },
+  "3": {
+    "status": "scheduled",
+    "scheduledAt": "2026-05-15T04:30:00.000Z",
+    "fbPostId": "1424428829722933",
+    "fbUrl": "https://www.facebook.com/1424428829722933"
+  },
+  "4": {
+    "status": "scheduled",
+    "scheduledAt": "2026-05-15T12:00:00.000Z",
+    "fbPostId": "1424428883056261",
+    "fbUrl": "https://www.facebook.com/1424428883056261"
+  }
+}
