@@ -404,7 +404,7 @@ app.get("/api/batches", async (_req, res) => {
     stamps.map(async (stamp) => {
       const files = await fs.readdir(path.join(cardsDir, stamp));
       const cards = files.filter(
-        (f) => f.endsWith(".png") || f.endsWith(".mp4"),
+        (f) => !f.startsWith(".") && (f.endsWith(".png") || f.endsWith(".mp4")),
       );
       return { stamp, count: cards.length, cards: [] };
     }),
@@ -419,7 +419,7 @@ app.get("/api/batches/:stamp", async (req, res) => {
     return res.status(404).json({ error: "Batch not found" });
   }
   const cardFiles = (await fs.readdir(batchDir))
-    .filter((f) => f.endsWith(".png") || f.endsWith(".mp4"))
+    .filter((f) => !f.startsWith(".") && (f.endsWith(".png") || f.endsWith(".mp4")))
     .sort();
   const quotesFile = await findQuotesForBatch(stamp);
   let quotes = [];
@@ -539,7 +539,7 @@ app.get("/api/queue", async (_req, res) => {
     if (!stat.isDirectory()) continue;
     const approval = await loadBatchApproval(stamp);
     const cardFiles = (await fs.readdir(batchPath))
-      .filter((f) => f.endsWith(".png") || f.endsWith(".mp4"))
+      .filter((f) => !f.startsWith(".") && (f.endsWith(".png") || f.endsWith(".mp4")))
       .sort();
     const quotesFile = await findQuotesForBatch(stamp);
     let quotes = [];
@@ -585,7 +585,7 @@ app.get("/api/queue/history", async (_req, res) => {
     if (!stat.isDirectory()) continue;
     const approval = await loadBatchApproval(stamp);
     const cardFiles = (await fs.readdir(batchPath))
-      .filter((f) => f.endsWith(".png") || f.endsWith(".mp4"))
+      .filter((f) => !f.startsWith(".") && (f.endsWith(".png") || f.endsWith(".mp4")))
       .sort();
     const quotesFile = await findQuotesForBatch(stamp);
     let quotes = [];
