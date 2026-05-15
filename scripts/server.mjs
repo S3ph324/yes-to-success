@@ -720,6 +720,65 @@ app.post("/api/queue/:stamp/:idx/post-now", async (req, res) => {
   }
 });
 
+// --- API: One-shot migration import ---------------------------------------
+//
+// Accepts a multipart upload containing a tar.gz of:
+//   out/cards/<stamp>/*.png
+//   out/quotes-*.json
+//   public/generated-bg/quotes-*/*.png  (optional)
+//   config/batches/*.json               (optional)
+//
+// Auth required. Idempotent — re-running won't duplicate, just overlays.
+const importUpload = multer({
+  storage: multer.diskStorage({
+    destination: "/tmp",
+    filename: (_req, _file, cb) =>
+      cb(null, `import-${Date.now()}-${randomBytes(4).toString("hex")}.tar.gz`),
+  }),
+});
+
+app.post(
+  "/api/migrate/import",
+  importUpload.single("archive"),
+  async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: "No archive uploaded" });
+    const tarPath = req.file.path;
+    try {
+      // Untar straight into the project root — paths in the archive should
+      // be relative (out/cards/..., public/generated-bg/..., etc.)
+      const result = await new Promise((resolve, reject) => {
+        const p = spawn("tar", ["-xzf", tarPath, "-C", projectRoot], {
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        let stderr = "";
+        p.stderr.on("data", (chunk) => (stderr += chunk));
+        p.on("exit", (code) =>
+          code === 0
+            ? resolve({ ok: true })
+            : reject(new Error(`tar exited ${code}: ${stderr.slice(0, 400)}`)),
+        );
+      });
+      await fs.unlink(tarPath).catch(() => {});
+      // Quick summary of what's now on disk
+      const cardsDir = path.join(OUT_DIR, "cards");
+      const stamps = existsSync(cardsDir)
+        ? (await fs.readdir(cardsDir)).filter((n) => !n.startsWith("."))
+        : [];
+      let totalCards = 0;
+      for (const s of stamps) {
+        const files = await fs
+          .readdir(path.join(cardsDir, s))
+          .catch(() => []);
+        totalCards += files.filter((f) => f.endsWith(".png")).length;
+      }
+      res.json({ ...result, batches: stamps.length, cards: totalCards });
+    } catch (err) {
+      await fs.unlink(tarPath).catch(() => {});
+      res.status(500).json({ error: err.message });
+    }
+  },
+);
+
 // --- API: Generate (streaming) --------------------------------------------
 
 const streamSpawn = (res, cmd, args, env = {}) =>
