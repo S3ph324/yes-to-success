@@ -418,6 +418,73 @@ app.get("/api/batches", async (_req, res) => {
   res.json(summaries);
 });
 
+// Combined view: returns ALL cards across ALL batches in one response.
+// Each card has a `batchStamp` field so the client knows which batch it
+// belongs to (used for URL building).
+app.get("/api/batches/all", async (_req, res) => {
+  const cardsDir = path.join(OUT_DIR, "cards");
+  if (!existsSync(cardsDir)) return res.json({ stamp: "all", count: 0, cards: [] });
+  const stamps = (await fs.readdir(cardsDir))
+    .filter((n) => !n.startsWith("."))
+    .sort()
+    .reverse();
+  const allCards = [];
+  for (const stamp of stamps) {
+    const batchDir = path.join(cardsDir, stamp);
+    const stat = await fs.stat(batchDir);
+    if (!stat.isDirectory()) continue;
+    const cardFiles = (await fs.readdir(batchDir))
+      .filter(
+        (f) => !f.startsWith(".") && (f.endsWith(".png") || f.endsWith(".mp4")),
+      )
+      .sort();
+    const quotesFile = await findQuotesForBatch(stamp);
+    let quotes = [];
+    if (quotesFile) {
+      try {
+        quotes = JSON.parse(
+          await fs.readFile(path.join(OUT_DIR, quotesFile), "utf-8"),
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+    const approval = await loadBatchApproval(stamp);
+    cardFiles.forEach((file, idx) => {
+      const a = approval[idx] || {};
+      if (a.status === "deleted") return;
+      const q = quotes[idx] || {};
+      allCards.push({
+        index: idx,
+        batchStamp: stamp,
+        cardId: `${stamp.slice(-5).replace(":", "-")}#${String(idx + 1).padStart(2, "0")}`,
+        file,
+        quote: q.quote || "",
+        caption: q.caption || "",
+        theme: q.theme || "",
+        variant: q.variant || "classic",
+        aspectRatio: q.aspectRatio || "4:5",
+        bgPrompt: q.bgPrompt,
+        keyword: q.keyword,
+        status: a.status || "pending",
+        approved:
+          a.status === "approved" ||
+          a.status === "scheduled" ||
+          a.status === "posted",
+        rejected: a.status === "rejected",
+        scheduled: a.status === "scheduled",
+        posted: a.status === "posted",
+        failed: a.status === "failed",
+        scheduledAt: a.scheduledAt,
+        postedAt: a.postedAt,
+        fbPostId: a.fbPostId,
+        fbUrl: a.fbUrl,
+      });
+    });
+  }
+  res.json({ stamp: "all", count: allCards.length, cards: allCards });
+});
+
 app.get("/api/batches/:stamp", async (req, res) => {
   const { stamp } = req.params;
   const batchDir = path.join(OUT_DIR, "cards", stamp);

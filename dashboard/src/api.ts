@@ -81,6 +81,8 @@ export const uploadCharacterPhoto = async (charId: string, file: File) => {
 export const getBatches = () => json<Batch[]>("/api/batches");
 export const getBatch = (stamp: string) =>
   json<Batch>(`/api/batches/${stamp}`);
+export const getAllBatchesCombined = () =>
+  json<Batch>("/api/batches/all");
 export const setCardApproval = (
   stamp: string,
   idx: number,

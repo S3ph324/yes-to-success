@@ -46,6 +46,7 @@ export type QuoteEntry = {
 export type BatchCard = QuoteEntry & {
   file: string;
   index: number;
+  batchStamp?: string;
   cardId?: string;
   status?: string;
   approved?: boolean;

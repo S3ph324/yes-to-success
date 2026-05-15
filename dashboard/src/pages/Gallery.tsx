@@ -4,6 +4,7 @@ import { Panel, PanelBody, Label, Select, Badge, PageHeader } from "../component
 import {
   getBatches,
   getBatch,
+  getAllBatchesCombined,
   setCardApproval,
   deleteCard,
   unpostCard,
@@ -37,30 +38,39 @@ export const Gallery = () => {
     getBatches().then((bs) => {
       setBatches(bs);
       const requested = search.get("batch");
-      const target = requested || bs[0]?.stamp;
-      if (target) {
-        getBatch(target).then(setBatch);
-        if (!requested && target) setSearch({ batch: target });
-      }
+      // Default to "See all" so the user sees everything on first load.
+      const target = requested || "all";
+      loadBatch(target);
+      if (!requested) setSearch({ batch: target });
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadBatch = (stamp: string) => {
     setSearch({ batch: stamp });
-    getBatch(stamp).then(setBatch);
+    if (stamp === "all") {
+      getAllBatchesCombined().then(setBatch);
+    } else {
+      getBatch(stamp).then(setBatch);
+    }
     setOpenCard(null);
   };
+
+  // For "See all" mode each card has its own batchStamp; for normal batches
+  // all cards share `batch.stamp`.
+  const cardStamp = (card: BatchCard) =>
+    card.batchStamp || batch?.stamp || "";
 
   const setApproval = async (
     card: BatchCard,
     status: "approved" | "rejected" | "pending",
   ) => {
     if (!batch) return;
-    await setCardApproval(batch.stamp, card.index, status);
+    await setCardApproval(cardStamp(card), card.index, status);
     setBatch({
       ...batch,
       cards: batch.cards.map((c) =>
-        c.index === card.index
+        c.index === card.index && cardStamp(c) === cardStamp(card)
           ? {
               ...c,
               approved: status === "approved",
@@ -106,10 +116,12 @@ export const Gallery = () => {
       `Delete card ${card.cardId || `#${card.index + 1}`}? This will also remove it from Facebook if it was scheduled or posted.`,
     );
     if (!reallyDelete) return;
-    await deleteCard(batch.stamp, card.index);
+    await deleteCard(cardStamp(card), card.index);
     setBatch({
       ...batch,
-      cards: batch.cards.filter((c) => c.index !== card.index),
+      cards: batch.cards.filter(
+        (c) => !(c.index === card.index && cardStamp(c) === cardStamp(card)),
+      ),
       count: batch.count - 1,
     });
   };
@@ -117,11 +129,11 @@ export const Gallery = () => {
   const handleUnpost = async (card: BatchCard) => {
     if (!batch) return;
     if (!confirm(`Delete this post from Facebook? The card stays in your gallery and can be re-scheduled.`)) return;
-    await unpostCard(batch.stamp, card.index);
+    await unpostCard(cardStamp(card), card.index);
     setBatch({
       ...batch,
       cards: batch.cards.map((c) =>
-        c.index === card.index
+        c.index === card.index && cardStamp(c) === cardStamp(card)
           ? { ...c, scheduled: false, posted: false, approved: true, fbPostId: undefined, fbUrl: undefined, scheduledAt: undefined, postedAt: undefined }
           : c,
       ),
@@ -156,6 +168,9 @@ export const Gallery = () => {
                 value={batch?.stamp || ""}
                 onChange={(e) => loadBatch(e.target.value)}
               >
+                <option value="all">
+                  ✨ See all ({batches.reduce((s, b) => s + b.count, 0)} cards)
+                </option>
                 {batches.map((b) => (
                   <option key={b.stamp} value={b.stamp}>
                     {b.stamp} ({b.count})
@@ -280,7 +295,7 @@ export const Gallery = () => {
                   </div>
                 )}
                 <img
-                  src={assetUrl(`/api/cards/${batch.stamp}/${encodeURIComponent(card.file)}`)}
+                  src={assetUrl(`/api/cards/${cardStamp(card)}/${encodeURIComponent(card.file)}`)}
                   alt=""
                   loading="lazy"
                   className="w-full bg-black cursor-zoom-in"
@@ -388,7 +403,7 @@ export const Gallery = () => {
                   </div>
                   <div className="flex gap-2 mt-2">
                     <a
-                      href={assetUrl(`/api/cards/${batch.stamp}/${encodeURIComponent(card.file)}`)}
+                      href={assetUrl(`/api/cards/${cardStamp(card)}/${encodeURIComponent(card.file)}`)}
                       download={card.file}
                       className="flex-1 text-center py-1.5 text-[11px] text-[#a1a1aa] hover:text-[#FFE17A] hover:bg-[#FFE17A]/10 rounded transition-colors"
                       title="Download this card as PNG"
@@ -420,7 +435,7 @@ export const Gallery = () => {
             onClick={(e) => e.stopPropagation()}
           >
             <img
-              src={assetUrl(`/api/cards/${batch.stamp}/${encodeURIComponent(openCard.file)}`)}
+              src={assetUrl(`/api/cards/${cardStamp(openCard)}/${encodeURIComponent(openCard.file)}`)}
               className="max-w-[60vw] max-h-[88vh] rounded-lg"
             />
             <div className="bg-[#15151a] border border-[#2a2a32] rounded-xl p-6 max-w-sm">
@@ -460,7 +475,7 @@ export const Gallery = () => {
                 </>
               )}
               <a
-                href={assetUrl(`/api/cards/${batch.stamp}/${encodeURIComponent(openCard.file)}`)}
+                href={assetUrl(`/api/cards/${cardStamp(openCard)}/${encodeURIComponent(openCard.file)}`)}
                 download={openCard.file}
                 onClick={(e) => e.stopPropagation()}
                 className="inline-block w-full text-center mt-2 mb-4 py-2 text-xs font-semibold uppercase tracking-wider text-[#FFE17A] border border-[#FFE17A] rounded hover:bg-[#FFE17A] hover:text-black transition-colors"
