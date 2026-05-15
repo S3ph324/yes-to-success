@@ -386,13 +386,22 @@ export const Gallery = () => {
                       </button>
                     )}
                   </div>
-                  {/* Always-available delete button (with confirm) */}
-                  <button
-                    onClick={() => handleDelete(card)}
-                    className="w-full mt-2 py-1.5 text-[11px] text-[#a1a1aa] hover:text-red-300 hover:bg-red-900/20 rounded transition-colors"
-                  >
-                    🗑 Delete card
-                  </button>
+                  <div className="flex gap-2 mt-2">
+                    <a
+                      href={assetUrl(`/api/cards/${batch.stamp}/${encodeURIComponent(card.file)}`)}
+                      download={card.file}
+                      className="flex-1 text-center py-1.5 text-[11px] text-[#a1a1aa] hover:text-[#FFE17A] hover:bg-[#FFE17A]/10 rounded transition-colors"
+                      title="Download this card as PNG"
+                    >
+                      ⬇ Download
+                    </a>
+                    <button
+                      onClick={() => handleDelete(card)}
+                      className="flex-1 text-center py-1.5 text-[11px] text-[#a1a1aa] hover:text-red-300 hover:bg-red-900/20 rounded transition-colors"
+                    >
+                      🗑 Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -450,6 +459,14 @@ export const Gallery = () => {
                   </p>
                 </>
               )}
+              <a
+                href={assetUrl(`/api/cards/${batch.stamp}/${encodeURIComponent(openCard.file)}`)}
+                download={openCard.file}
+                onClick={(e) => e.stopPropagation()}
+                className="inline-block w-full text-center mt-2 mb-4 py-2 text-xs font-semibold uppercase tracking-wider text-[#FFE17A] border border-[#FFE17A] rounded hover:bg-[#FFE17A] hover:text-black transition-colors"
+              >
+                ⬇ Download PNG
+              </a>
               <div className="font-mono text-[10px] text-[#a1a1aa] break-all">
                 {openCard.file}
               </div>
