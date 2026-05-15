@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Privacy Policy — John Calub Content Bot</title>
+<style>
+  :root {
+    --bg: #0a0a0c;
+    --panel: #15151a;
+    --border: #2a2a32;
+    --text: #f5f5f7;
+    --dim: #a1a1aa;
+    --accent: #FFE17A;
+    --accent-deep: #C9952B;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; min-height: 100%;
+    background: radial-gradient(ellipse at top, #2a0608 0%, var(--bg) 60%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.65;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 60px 24px 80px; }
+  .nav { color: var(--dim); font-size: 14px; margin-bottom: 32px; }
+  .nav a { color: var(--accent); text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  h1 { font-size: 36px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .updated { color: var(--dim); font-size: 13px; margin-bottom: 32px; }
+  h2 { font-size: 22px; font-weight: 600; margin: 40px 0 12px; color: var(--accent); }
+  h3 { font-size: 17px; font-weight: 600; margin: 24px 0 8px; color: var(--text); }
+  p, li { color: #c8c8d0; font-size: 15px; }
+  ul { padding-left: 24px; }
+  li { margin-bottom: 6px; }
+  code { background: var(--panel); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  a { color: var(--accent); }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 40px 0; }
+  footer { color: var(--dim); font-size: 13px; margin-top: 60px; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="nav"><a href="./index.html">← John Calub Content Bot</a></div>
+    <h1>Privacy Policy</h1>
+    <div class="updated">Last updated: May 15, 2026</div>
+
+    <p>This Privacy Policy describes how the <strong>John Calub Content Bot</strong>
+    (the "App") collects, uses, and stores information when authorized
+    administrators of the John Calub Facebook page use it to manage content
+    publishing on that page.</p>
+
+    <p>This App is an <strong>internal-use tool</strong> operated by the John
+    Calub Training International team. It is not available for public
+    install, account signup, or end-user use. Only authorized team members
+    granted access by John Calub Training International may use this App.</p>
+
+    <h2>1. Information We Collect</h2>
+
+    <h3>1.1 From Facebook (via the Meta Graph API)</h3>
+    <p>When an authorized administrator connects the App to a Facebook Page,
+    the App stores:</p>
+    <ul>
+      <li><strong>Facebook Page Access Token</strong> — used to publish content
+        on behalf of the page</li>
+      <li><strong>Facebook Page ID and name</strong> — to identify the target
+        page for publishing</li>
+      <li><strong>Page follower count</strong> — for display only, to confirm
+        the correct page is connected</li>
+      <li><strong>Post IDs of published content</strong> — to track which
+        scheduled posts were successfully published</li>
+    </ul>
+
+    <p>The App does <strong>not</strong> collect:</p>
+    <ul>
+      <li>Profile data of page followers or visitors</li>
+      <li>Messages sent to the page</li>
+      <li>Comments left on the page's posts</li>
+      <li>Any information from any other Facebook user except the page
+        administrator who authorizes the App</li>
+    </ul>
+
+    <h3>1.2 Generated content</h3>
+    <p>The App generates motivational quote-card images, captions, and
+    short videos that are intended for publishing on the connected Facebook
+    page. These are produced server-side from text prompts written by the
+    page's content team. No personal data of any external person is included
+    in generated content.</p>
+
+    <h2>2. How We Use Information</h2>
+    <p>Stored access tokens and page identifiers are used solely to:</p>
+    <ul>
+      <li>Authenticate API calls to Meta Graph API on behalf of the
+        authorized page administrator</li>
+      <li>Publish content (photos with captions) to the connected page,
+        either immediately or via Facebook's native scheduled-publish feature</li>
+      <li>Read public engagement metrics on previously published posts (likes,
+        reach) for the content team's internal reporting</li>
+      <li>Display a connection status indicator ("Connected to [page name]")
+        in the team's internal dashboard</li>
+    </ul>
+
+    <h2>3. How We Store Information</h2>
+    <p>Access tokens and configuration data are stored on a private
+    server hosted on Railway (US region). The data is not transmitted to
+    or shared with any third party other than:</p>
+    <ul>
+      <li><strong>Meta / Facebook</strong> — to make API calls authorized by
+        the page admin</li>
+      <li><strong>Google Cloud (Vertex AI)</strong> — to generate quote-card
+        background imagery via Imagen. Only the textual content prompt is
+        sent; no Facebook data is transmitted to Google</li>
+    </ul>
+    <p>No information collected by the App is sold, rented, or shared with
+    advertising networks, analytics providers, or any other third party.</p>
+
+    <h2>4. Data Retention</h2>
+    <p>Access tokens are retained until the authorizing administrator
+    revokes them or until the App is uninstalled from the Facebook page.
+    Published post records and generated content are retained indefinitely
+    for the team's content archive, unless the administrator requests deletion.</p>
+
+    <h2>5. Your Rights</h2>
+    <p>Authorized page administrators may at any time:</p>
+    <ul>
+      <li>Revoke the App's access from the Facebook page's settings
+        (Page Settings → Business Integrations)</li>
+      <li>Request deletion of any stored tokens or content records by
+        contacting the address below — see also
+        <a href="./data-deletion.html">Data Deletion Instructions</a></li>
+    </ul>
+
+    <h2>6. Children's Privacy</h2>
+    <p>This App is not directed at children under 13 and does not knowingly
+    collect any information from children.</p>
+
+    <h2>7. Changes to this Policy</h2>
+    <p>We may update this Privacy Policy from time to time. Any changes will
+    be reflected on this page with an updated "Last updated" date. Material
+    changes will be communicated to all authorized administrators of the App.</p>
+
+    <h2>8. Contact</h2>
+    <p>Questions, concerns, or data deletion requests should be sent to:</p>
+    <p>
+      <strong>John Calub Training International</strong><br />
+      Email: <a href="mailto:jackinternetyt324@gmail.com">jackinternetyt324@gmail.com</a>
+    </p>
+
+    <hr />
+    <footer>© 2026 John Calub Training International</footer>
+  </div>
+</body>
+</html>
