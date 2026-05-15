@@ -31,11 +31,29 @@ import express from "express";
 import cors from "cors";
 import multer from "multer";
 import fs from "node:fs/promises";
-import { existsSync, createReadStream } from "node:fs";
+import { existsSync, createReadStream, writeFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
+
+// ── GCP service account auth shim ──────────────────────────────────────────
+// On hosted environments (Railway, Fly, Render…) we can't ship a JSON file
+// on disk. Convention: paste the full SA JSON into an env var named
+// GOOGLE_APPLICATION_CREDENTIALS_JSON. At startup we drop it on /tmp and
+// point GOOGLE_APPLICATION_CREDENTIALS at the file so any Google SDK
+// (including @google/genai vertexai mode) picks it up via ADC.
+if (
+  process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON &&
+  !process.env.GOOGLE_APPLICATION_CREDENTIALS
+) {
+  const tmpPath = "/tmp/gcp-sa-key.json";
+  writeFileSync(tmpPath, process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = tmpPath;
+  console.log(
+    `[auth] Wrote SA key from GOOGLE_APPLICATION_CREDENTIALS_JSON → ${tmpPath}`,
+  );
+}
 import {
   validateToken as fbValidateToken,
   validatePage as fbValidatePage,
