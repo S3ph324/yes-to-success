@@ -67,13 +67,79 @@ const projectRoot = path.join(__dirname, "..");
 const PORT = Number(process.env.PORT) || 8787;
 const PASSWORD = process.env.DASHBOARD_PASSWORD || "";
 const DIST_DIR = path.join(projectRoot, "dashboard", "dist");
+
+// PUBLIC_DIR holds committed default assets that ship with the deployed image
+// (e.g. yes-to-success-logo.png). These don't need to persist across redeploys
+// because they live in git.
 const PUBLIC_DIR = path.join(projectRoot, "public");
-const CONFIG_DIR = path.join(projectRoot, "config");
+
+// OUT_DIR points at the Railway volume (mounted at /app/out in prod) so all
+// runtime-written state survives redeploys. In dev it's the local out/ folder.
 const OUT_DIR = path.join(projectRoot, "out");
+
+// All paths that must persist live UNDER OUT_DIR.
+const CONFIG_DIR = path.join(OUT_DIR, "config");
+const UPLOADS_DIR = path.join(OUT_DIR, "uploads");
+const GENERATED_BG_DIR = path.join(OUT_DIR, "generated-bg");
+
+// One-shot migration: on first boot after the volume refactor, copy any
+// pre-existing legacy state into the volume so users don't lose work.
+const LEGACY_CONFIG = path.join(projectRoot, "config");
+const LEGACY_GEN_BG = path.join(projectRoot, "public", "generated-bg");
+const LEGACY_CHARS = path.join(projectRoot, "public", "characters");
+
+const migrateLegacy = async () => {
+  // Config: copy legacy /app/config → /app/out/config if volume side is empty
+  if (existsSync(LEGACY_CONFIG) && !existsSync(CONFIG_DIR)) {
+    console.log(`[migrate] ${LEGACY_CONFIG} → ${CONFIG_DIR}`);
+    await fs.cp(LEGACY_CONFIG, CONFIG_DIR, { recursive: true });
+  }
+  // Generated backgrounds
+  if (existsSync(LEGACY_GEN_BG)) {
+    const isLink = (await fs.lstat(LEGACY_GEN_BG).catch(() => null))?.isSymbolicLink();
+    if (!isLink) {
+      // It's a real directory (from the tarball extract or container build) —
+      // merge its contents into the volume, then remove it so we can symlink.
+      console.log(`[migrate] merging ${LEGACY_GEN_BG} → ${GENERATED_BG_DIR}`);
+      await fs.mkdir(GENERATED_BG_DIR, { recursive: true });
+      await fs.cp(LEGACY_GEN_BG, GENERATED_BG_DIR, { recursive: true, force: false });
+      await fs.rm(LEGACY_GEN_BG, { recursive: true, force: true });
+    }
+  }
+  // Character photos: similar
+  const charsTarget = path.join(UPLOADS_DIR, "characters");
+  if (existsSync(LEGACY_CHARS)) {
+    const isLink = (await fs.lstat(LEGACY_CHARS).catch(() => null))?.isSymbolicLink();
+    if (!isLink) {
+      console.log(`[migrate] merging ${LEGACY_CHARS} → ${charsTarget}`);
+      await fs.mkdir(charsTarget, { recursive: true });
+      await fs.cp(LEGACY_CHARS, charsTarget, { recursive: true, force: false });
+      await fs.rm(LEGACY_CHARS, { recursive: true, force: true });
+    }
+  }
+
+  // Now make sure the legacy paths exist as SYMLINKS pointing into the volume.
+  // This keeps backward-compat with old code that hardcodes public/generated-bg
+  // (notably the existing quotes JSON files have bgPath = "generated-bg/...").
+  await fs.mkdir(GENERATED_BG_DIR, { recursive: true });
+  await fs.mkdir(charsTarget, { recursive: true });
+  await fs.mkdir(PUBLIC_DIR, { recursive: true });
+  if (!existsSync(LEGACY_GEN_BG)) {
+    await fs.symlink(GENERATED_BG_DIR, LEGACY_GEN_BG, "dir");
+    console.log(`[migrate] symlink ${LEGACY_GEN_BG} → ${GENERATED_BG_DIR}`);
+  }
+  if (!existsSync(LEGACY_CHARS)) {
+    await fs.symlink(charsTarget, LEGACY_CHARS, "dir");
+    console.log(`[migrate] symlink ${LEGACY_CHARS} → ${charsTarget}`);
+  }
+};
+await migrateLegacy();
 
 await fs.mkdir(CONFIG_DIR, { recursive: true });
 await fs.mkdir(path.join(CONFIG_DIR, "batches"), { recursive: true });
-await fs.mkdir(path.join(PUBLIC_DIR, "characters"), { recursive: true });
+await fs.mkdir(UPLOADS_DIR, { recursive: true });
+await fs.mkdir(path.join(UPLOADS_DIR, "characters"), { recursive: true });
+await fs.mkdir(GENERATED_BG_DIR, { recursive: true });
 
 // --- Config persistence helpers --------------------------------------------
 
@@ -189,7 +255,7 @@ app.use(auth);
 // --- Multer for uploads ----------------------------------------------------
 
 const logoStorage = multer.diskStorage({
-  destination: PUBLIC_DIR,
+  destination: UPLOADS_DIR,
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase() || ".png";
     const stamp = Date.now();
@@ -199,7 +265,7 @@ const logoStorage = multer.diskStorage({
 const logoUpload = multer({ storage: logoStorage });
 
 const photoStorage = multer.diskStorage({
-  destination: path.join(PUBLIC_DIR, "characters"),
+  destination: path.join(UPLOADS_DIR, "characters"),
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase() || ".png";
     const rand = randomBytes(4).toString("hex");
@@ -292,6 +358,7 @@ app.post(
   async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No file" });
     const charId = req.body.charId;
+    // photoRel is the path under UPLOADS_DIR — used by /uploads/* static route
     const photoRel = path.posix.join("characters", req.file.filename);
     if (charId) {
       const chars = await readJson("characters.json", []);
@@ -744,8 +811,7 @@ app.post(
     if (!req.file) return res.status(400).json({ error: "No archive uploaded" });
     const tarPath = req.file.path;
     try {
-      // Untar straight into the project root — paths in the archive should
-      // be relative (out/cards/..., public/generated-bg/..., etc.)
+      // Untar into project root, then move legacy paths into the volume.
       const result = await new Promise((resolve, reject) => {
         const p = spawn("tar", ["-xzf", tarPath, "-C", projectRoot], {
           stdio: ["ignore", "pipe", "pipe"],
@@ -759,6 +825,23 @@ app.post(
         );
       });
       await fs.unlink(tarPath).catch(() => {});
+
+      // Move any tarball-extracted legacy state into the volume.
+      // out/* already lands in the volume (OUT_DIR is mounted).
+      // public/generated-bg/* and config/* need to be relocated.
+      const moveIfPresent = async (from, to) => {
+        if (!existsSync(from)) return;
+        await fs.mkdir(path.dirname(to), { recursive: true });
+        // Merge into target rather than overwrite (preserve prior state)
+        await new Promise((res, rej) => {
+          const p = spawn("sh", ["-c", `cp -RT '${from}' '${to}' && rm -rf '${from}'`]);
+          let stderr = "";
+          p.stderr.on("data", (c) => (stderr += c));
+          p.on("exit", (code) => (code === 0 ? res() : rej(new Error(stderr))));
+        });
+      };
+      await moveIfPresent(LEGACY_GEN_BG, GENERATED_BG_DIR);
+      await moveIfPresent(LEGACY_CONFIG, CONFIG_DIR);
       // Quick summary of what's now on disk
       const cardsDir = path.join(OUT_DIR, "cards");
       const stamps = existsSync(cardsDir)
@@ -858,9 +941,20 @@ app.get("/api/cards/:stamp/:file", (req, res) => {
   createReadStream(filePath).pipe(res);
 });
 
-// Generic public/ serving: /uploads/<filename> or /uploads/characters/<name>
-app.use("/uploads", express.static(PUBLIC_DIR));
+// User-uploaded files (logos, character photos) — live in the volume so they
+// persist across redeploys.
+app.use("/uploads", express.static(UPLOADS_DIR));
+// Generated AI backgrounds — also volume-backed.
+app.use("/generated-bg", express.static(GENERATED_BG_DIR));
+// Committed default assets (yes-to-success-logo.png, etc.) — shipped with
+// the image, used as fallbacks. Both /uploads/* (above) and /api/static/*
+// (below) are queried by the frontend, and the second is the fallback when
+// the first 404s.
 app.use("/api/static", express.static(PUBLIC_DIR));
+// Backwards-compat: requests to /uploads/yes-to-success-logo.png that
+// missed (because they're committed defaults, not user uploads) — try the
+// committed assets dir.
+app.use("/uploads", express.static(PUBLIC_DIR));
 
 // Legacy console (old simple-server HTML lives in a route now)
 app.get("/console", (_req, res) => {
