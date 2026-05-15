@@ -7,7 +7,13 @@ import {
   Input,
   PageHeader,
 } from "../components/ui";
-import { getPostingConfig, savePostingConfig } from "../api";
+import {
+  getPostingConfig,
+  savePostingConfig,
+  pausePosting,
+  resumePosting,
+  restorePausedCards,
+} from "../api";
 import type { PostingConfig } from "../api";
 
 export const Posting = () => {
@@ -59,6 +65,54 @@ export const Posting = () => {
   const removeSlot = (i: number) =>
     setPeakHours((prev) => prev.filter((_, j) => j !== i));
 
+  const [pausing, setPausing] = useState(false);
+
+  const handlePause = async () => {
+    if (
+      !confirm(
+        "Pause autoposting? This will delete ALL currently-scheduled Facebook posts (they'll be marked as 'paused' locally with their original scheduled times preserved). You'll be prompted to reschedule on resume.",
+      )
+    )
+      return;
+    setPausing(true);
+    try {
+      const r = await pausePosting();
+      setCfg((prev) => (prev ? { ...prev, paused: true } : prev));
+      alert(
+        `Paused. ${r.paused} scheduled posts were removed from Facebook and saved locally as 'paused'.`,
+      );
+    } catch (e) {
+      alert(`Pause failed: ${(e as Error).message}`);
+    } finally {
+      setPausing(false);
+    }
+  };
+
+  const handleResume = async () => {
+    setPausing(true);
+    try {
+      const r = await resumePosting();
+      setCfg((prev) => (prev ? { ...prev, paused: false } : prev));
+      if (r.pausedCards > 0) {
+        const restore = confirm(
+          `${r.pausedCards} card${r.pausedCards === 1 ? "" : "s"} ${r.pausedCards === 1 ? "was" : "were"} unscheduled during the pause.\n\nRestore them as approved so you can re-schedule from the Queue page?`,
+        );
+        if (restore) {
+          const r2 = await restorePausedCards();
+          alert(
+            `${r2.restored} card${r2.restored === 1 ? "" : "s"} restored as approved. Head to the Queue page to reschedule.`,
+          );
+        }
+      } else {
+        alert("Resumed. No paused cards to restore.");
+      }
+    } catch (e) {
+      alert(`Resume failed: ${(e as Error).message}`);
+    } finally {
+      setPausing(false);
+    }
+  };
+
   return (
     <div>
       <PageHeader
@@ -66,22 +120,49 @@ export const Posting = () => {
         description="Connect your Facebook Page and configure when posts go out."
       />
 
+      {cfg?.paused && (
+        <div className="mb-6 p-4 bg-amber-900/30 border-2 border-amber-500/60 rounded-xl flex items-center gap-4">
+          <div className="text-3xl">⏸</div>
+          <div className="flex-1">
+            <div className="font-semibold text-amber-200">Autoposting is paused</div>
+            <div className="text-xs text-amber-300/80 mt-0.5">
+              All previously-scheduled posts were removed from Facebook. New scheduling is disabled until resumed.
+            </div>
+          </div>
+          <Button onClick={handleResume} disabled={pausing}>
+            {pausing ? "Resuming…" : "▶ Resume"}
+          </Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-6">
         <Panel title="Facebook Page">
           <PanelBody className="space-y-5">
             {cfg?.hasToken && cfg.pageName ? (
-              <div className="flex items-center gap-3 p-4 bg-emerald-900/20 border border-emerald-600/40 rounded-lg">
-                <div className="text-2xl">✓</div>
-                <div className="flex-1">
-                  <div className="font-semibold text-emerald-300">
-                    Connected to {cfg.pageName}
-                  </div>
-                  <div className="text-xs text-[#a1a1aa] mt-0.5">
-                    Page ID {cfg.pageId}
-                    {typeof cfg.pageFans === "number" &&
-                      ` · ${cfg.pageFans.toLocaleString()} followers`}
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-4 bg-emerald-900/20 border border-emerald-600/40 rounded-lg">
+                  <div className="text-2xl">✓</div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-emerald-300">
+                      Connected to {cfg.pageName}
+                    </div>
+                    <div className="text-xs text-[#a1a1aa] mt-0.5">
+                      Page ID {cfg.pageId}
+                      {typeof cfg.pageFans === "number" &&
+                        ` · ${cfg.pageFans.toLocaleString()} followers`}
+                    </div>
                   </div>
                 </div>
+                {!cfg.paused && (
+                  <Button
+                    onClick={handlePause}
+                    variant="secondary"
+                    disabled={pausing}
+                    className="w-full"
+                  >
+                    {pausing ? "Pausing…" : "⏸ Pause autoposting"}
+                  </Button>
+                )}
               </div>
             ) : (
               <div className="p-4 bg-amber-900/20 border border-amber-600/40 rounded-lg text-sm text-amber-200">

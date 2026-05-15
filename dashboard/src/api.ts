@@ -161,6 +161,8 @@ export type PostingConfig = {
   timezone: string;
   peakHours: string[];
   dailyCap: number;
+  paused?: boolean;
+  pausedAt?: string;
 };
 
 export const getPostingConfig = () => json<PostingConfig>("/api/posting/config");
@@ -169,6 +171,15 @@ export const savePostingConfig = (cfg: Partial<PostingConfig> & { token?: string
     method: "POST",
     body: JSON.stringify(cfg),
   });
+
+export const pausePosting = () =>
+  json<{ ok: true; paused: number }>("/api/posting/pause", { method: "POST" });
+
+export const resumePosting = () =>
+  json<{ ok: true; pausedCards: number }>("/api/posting/resume", { method: "POST" });
+
+export const restorePausedCards = () =>
+  json<{ restored: number }>("/api/queue/restore-paused", { method: "POST" });
 
 // Queue
 export type QueueItem = {

@@ -561,12 +561,121 @@ app.post("/api/batches/:stamp/cards/:idx/approval", async (req, res) => {
 
 app.get("/api/posting/config", async (_req, res) => {
   const cfg = await readJson("posting.json", {});
-  // Don't ship the raw token to the client — just whether it's set.
   res.json({
     ...cfg,
+    paused: !!cfg.paused,
     hasToken: !!cfg.token,
     token: cfg.token ? `${cfg.token.slice(0, 8)}…${cfg.token.slice(-4)}` : "",
   });
+});
+
+// Pause autoposting: removes all currently-scheduled FB posts so they don't
+// fire, marks them locally as "paused" with their original scheduled time
+// preserved. Future schedule-all calls are rejected while paused.
+app.post("/api/posting/pause", async (_req, res) => {
+  const cfg = await readJson("posting.json", {});
+  if (!cfg.token) {
+    return res.status(400).json({ error: "FB Page not connected" });
+  }
+  if (cfg.paused) {
+    return res.json({ ok: true, alreadyPaused: true, paused: 0 });
+  }
+  // Walk every batch's approval, unpost scheduled, mark as paused
+  const cardsDir = path.join(OUT_DIR, "cards");
+  let pausedCount = 0;
+  if (existsSync(cardsDir)) {
+    const stamps = (await fs.readdir(cardsDir)).filter(
+      (n) => !n.startsWith("."),
+    );
+    for (const stamp of stamps) {
+      const approval = await loadBatchApproval(stamp);
+      let changed = false;
+      for (const [idx, entry] of Object.entries(approval)) {
+        if (entry?.status === "scheduled" && entry?.fbPostId) {
+          try {
+            await fbDeletePost(entry.fbPostId, cfg.token);
+          } catch (err) {
+            console.warn(
+              `[pause] FB delete failed for ${entry.fbPostId} — continuing: ${err.message}`,
+            );
+          }
+          approval[idx] = {
+            status: "paused",
+            previousScheduledAt: entry.scheduledAt,
+            pausedAt: new Date().toISOString(),
+            // keep approvedAt if it was there
+            approvedAt: entry.approvedAt,
+          };
+          changed = true;
+          pausedCount += 1;
+        }
+      }
+      if (changed) await saveBatchApproval(stamp, approval);
+    }
+  }
+  await writeJson("posting.json", {
+    ...cfg,
+    paused: true,
+    pausedAt: new Date().toISOString(),
+  });
+  res.json({ ok: true, paused: pausedCount });
+});
+
+// Resume autoposting: just clears the paused flag. Cards still have status
+// "paused" — the client should call /restore-paused if it wants them back
+// to "approved" for re-scheduling.
+app.post("/api/posting/resume", async (_req, res) => {
+  const cfg = await readJson("posting.json", {});
+  if (!cfg.paused) {
+    return res.json({ ok: true, alreadyResumed: true, pausedCards: 0 });
+  }
+  // Count how many cards are still in "paused" state so the client can
+  // prompt the user with the right number.
+  const cardsDir = path.join(OUT_DIR, "cards");
+  let pausedCards = 0;
+  if (existsSync(cardsDir)) {
+    const stamps = (await fs.readdir(cardsDir)).filter(
+      (n) => !n.startsWith("."),
+    );
+    for (const stamp of stamps) {
+      const approval = await loadBatchApproval(stamp);
+      for (const entry of Object.values(approval)) {
+        if (entry?.status === "paused") pausedCards += 1;
+      }
+    }
+  }
+  const { paused: _p, pausedAt: _pa, ...rest } = cfg;
+  await writeJson("posting.json", rest);
+  res.json({ ok: true, pausedCards });
+});
+
+// Move all "paused" cards back to "approved" so they show up in the queue
+// and can be rescheduled with the next schedule-all run.
+app.post("/api/queue/restore-paused", async (_req, res) => {
+  const cardsDir = path.join(OUT_DIR, "cards");
+  if (!existsSync(cardsDir)) return res.json({ restored: 0 });
+  const stamps = (await fs.readdir(cardsDir)).filter(
+    (n) => !n.startsWith("."),
+  );
+  let restored = 0;
+  for (const stamp of stamps) {
+    const approval = await loadBatchApproval(stamp);
+    let changed = false;
+    for (const [idx, entry] of Object.entries(approval)) {
+      if (entry?.status === "paused") {
+        approval[idx] = {
+          status: "approved",
+          approvedAt: entry.approvedAt || new Date().toISOString(),
+          restoredFromPauseAt: new Date().toISOString(),
+          previousScheduledAt: entry.previousScheduledAt,
+        };
+        changed = true;
+        restored += 1;
+      }
+    }
+    if (changed) await saveBatchApproval(stamp, approval);
+  }
+  res.json({ restored });
 });
 
 app.post("/api/posting/config", async (req, res) => {
@@ -726,6 +835,11 @@ app.post("/api/queue/schedule-all", async (req, res) => {
   if (!cfg.token || !cfg.pageId) {
     return res.status(400).json({
       error: "FB Page not connected. Configure in Posting Settings first.",
+    });
+  }
+  if (cfg.paused) {
+    return res.status(400).json({
+      error: "Autoposting is paused. Resume from Posting Settings first.",
     });
   }
   const { startAt } = req.body || {};
