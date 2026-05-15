@@ -265,7 +265,7 @@ export const Gallery = () => {
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}>
             {visible.map((card) => (
               <div
-                key={card.index}
+                key={`${card.batchStamp || batch.stamp}-${card.index}`}
                 className={`bg-[#15151a] border rounded-xl overflow-hidden transition-all relative ${
                   card.posted
                     ? "border-emerald-500/80"
