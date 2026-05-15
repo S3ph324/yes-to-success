@@ -179,11 +179,12 @@ app.use(
   }),
 );
 
+// Health endpoint — MUST be before the auth middleware so Railway's
+// readiness probe doesn't get blocked by basic auth.
+app.get("/healthz", (_req, res) => res.json({ ok: true, ts: Date.now() }));
+
 app.use(express.json({ limit: "10mb" }));
 app.use(auth);
-
-// Health endpoint for Railway's readiness probe.
-app.get("/healthz", (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // --- Multer for uploads ----------------------------------------------------
 
