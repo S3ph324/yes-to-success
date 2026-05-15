@@ -4,6 +4,22 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://yes-to-success-production.up.railway.app/api/:path*"
+    },
+    {
+      "source": "/uploads/:path*",
+      "destination": "https://yes-to-success-production.up.railway.app/uploads/:path*"
+    },
+    {
+      "source": "/generated-bg/:path*",
+      "destination": "https://yes-to-success-production.up.railway.app/generated-bg/:path*"
+    },
+    {
+      "source": "/healthz",
+      "destination": "https://yes-to-success-production.up.railway.app/healthz"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
