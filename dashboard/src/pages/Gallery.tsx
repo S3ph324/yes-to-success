@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Panel, PanelBody, Label, Select, Badge, PageHeader } from "../components/ui";
-import { getBatches, getBatch, setCardApproval, assetUrl } from "../api";
+import {
+  getBatches,
+  getBatch,
+  setCardApproval,
+  deleteCard,
+  unpostCard,
+  refreshPostStatus,
+  assetUrl,
+} from "../api";
 import type { Batch, BatchCard, Variant, Aspect } from "../types";
 
 const variantColors: Record<Variant, string> = {
@@ -92,23 +100,69 @@ export const Gallery = () => {
     }
   };
 
+  const handleDelete = async (card: BatchCard) => {
+    if (!batch) return;
+    const reallyDelete = confirm(
+      `Delete card ${card.cardId || `#${card.index + 1}`}? This will also remove it from Facebook if it was scheduled or posted.`,
+    );
+    if (!reallyDelete) return;
+    await deleteCard(batch.stamp, card.index);
+    setBatch({
+      ...batch,
+      cards: batch.cards.filter((c) => c.index !== card.index),
+      count: batch.count - 1,
+    });
+  };
+
+  const handleUnpost = async (card: BatchCard) => {
+    if (!batch) return;
+    if (!confirm(`Delete this post from Facebook? The card stays in your gallery and can be re-scheduled.`)) return;
+    await unpostCard(batch.stamp, card.index);
+    setBatch({
+      ...batch,
+      cards: batch.cards.map((c) =>
+        c.index === card.index
+          ? { ...c, scheduled: false, posted: false, approved: true, fbPostId: undefined, fbUrl: undefined, scheduledAt: undefined, postedAt: undefined }
+          : c,
+      ),
+    });
+  };
+
+  const handleRefreshStatus = async () => {
+    const r = await refreshPostStatus();
+    if (batch) {
+      const fresh = await getBatch(batch.stamp);
+      setBatch(fresh);
+    }
+    alert(`Refreshed — ${r.updated} card${r.updated === 1 ? "" : "s"} flipped from scheduled to posted.`);
+  };
+
   return (
     <div>
       <PageHeader
         title="Gallery"
         description="Review the cards, approve or reject each, copy the FB caption to post."
         actions={
-          <div className="w-64">
-            <Select
-              value={batch?.stamp || ""}
-              onChange={(e) => loadBatch(e.target.value)}
+          <div className="flex gap-2 items-center">
+            <button
+              onClick={handleRefreshStatus}
+              className="text-xs text-[#FFE17A] border border-[#FFE17A]/40 px-3 py-2 rounded hover:bg-[#FFE17A] hover:text-black transition-colors"
+              title="Re-check FB to see if scheduled posts have published"
             >
-              {batches.map((b) => (
-                <option key={b.stamp} value={b.stamp}>
-                  {b.stamp} ({b.count})
-                </option>
-              ))}
-            </Select>
+              ↻ Refresh FB status
+            </button>
+            <div className="w-64">
+              <Select
+                value={batch?.stamp || ""}
+                onChange={(e) => loadBatch(e.target.value)}
+              >
+                {batches.map((b) => (
+                  <option key={b.stamp} value={b.stamp}>
+                    {b.stamp} ({b.count})
+                  </option>
+                ))}
+              </Select>
+            </div>
           </div>
         }
       />
@@ -233,10 +287,40 @@ export const Gallery = () => {
                   onClick={() => setOpenCard(card)}
                 />
                 <div className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-mono text-[#FFE17A]/70">
+                      {card.cardId || `#${card.index + 1}`}
+                    </span>
+                    {card.scheduledAt && card.scheduled && (
+                      <span className="text-[10px] font-mono text-blue-300">
+                        ⏰ {new Date(card.scheduledAt).toLocaleString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hour12: true,
+                        })}
+                      </span>
+                    )}
+                    {card.postedAt && card.posted && (
+                      <span className="text-[10px] font-mono text-emerald-300">
+                        ✅ {new Date(card.postedAt).toLocaleString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hour12: true,
+                        })}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex gap-1.5 flex-wrap mb-2">
                     <Badge color={variantColors[card.variant]}>{card.variant}</Badge>
                     <Badge color={aspectColors[card.aspectRatio]}>{card.aspectRatio}</Badge>
                     {card.theme && <Badge>{card.theme}</Badge>}
+                    {card.approved && !card.rejected && (
+                      <Badge color="#059669">✓ Approved</Badge>
+                    )}
                   </div>
                   <p className="text-[13px] text-[#f5f5f7] leading-snug line-clamp-3 mb-3">
                     {card.quote}
@@ -258,31 +342,57 @@ export const Gallery = () => {
                     </div>
                   )}
                   <div className="flex gap-2">
+                    {/* Approve toggle disabled once a card is scheduled/posted —
+                        you'd unpost first to revert. */}
                     <button
                       onClick={() =>
-                        setApproval(card, card.approved ? "pending" : "approved")
+                        setApproval(
+                          card,
+                          card.status === "approved" ? "pending" : "approved",
+                        )
                       }
+                      disabled={card.scheduled || card.posted}
                       className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${
                         card.approved
                           ? "bg-emerald-600 text-white"
                           : "bg-[#1f1f26] text-[#a1a1aa] hover:bg-emerald-900/50 hover:text-emerald-300 border border-[#2a2a32]"
-                      }`}
+                      } ${card.scheduled || card.posted ? "opacity-60 cursor-not-allowed" : ""}`}
+                      title={card.scheduled || card.posted ? "Already scheduled/posted — unpost first to change approval" : ""}
                     >
                       ✓ {card.approved ? "Approved" : "Approve"}
                     </button>
-                    <button
-                      onClick={() =>
-                        setApproval(card, card.rejected ? "pending" : "rejected")
-                      }
-                      className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${
-                        card.rejected
-                          ? "bg-red-700 text-white"
-                          : "bg-[#1f1f26] text-[#a1a1aa] hover:bg-red-900/40 hover:text-red-300 border border-[#2a2a32]"
-                      }`}
-                    >
-                      ✕ {card.rejected ? "Rejected" : "Reject"}
-                    </button>
+                    {!(card.scheduled || card.posted) && (
+                      <button
+                        onClick={() =>
+                          setApproval(card, card.rejected ? "pending" : "rejected")
+                        }
+                        className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${
+                          card.rejected
+                            ? "bg-red-700 text-white"
+                            : "bg-[#1f1f26] text-[#a1a1aa] hover:bg-red-900/40 hover:text-red-300 border border-[#2a2a32]"
+                        }`}
+                      >
+                        ✕ {card.rejected ? "Rejected" : "Reject"}
+                      </button>
+                    )}
+                    {/* Unpost button only on posted/scheduled cards */}
+                    {(card.posted || card.scheduled) && (
+                      <button
+                        onClick={() => handleUnpost(card)}
+                        className="flex-1 py-2 text-xs font-medium rounded-lg bg-[#1f1f26] text-amber-300 hover:bg-amber-900/30 border border-amber-700/40 transition-colors"
+                        title="Delete the post from Facebook (keep card)"
+                      >
+                        ↶ Unpost
+                      </button>
+                    )}
                   </div>
+                  {/* Always-available delete button (with confirm) */}
+                  <button
+                    onClick={() => handleDelete(card)}
+                    className="w-full mt-2 py-1.5 text-[11px] text-[#a1a1aa] hover:text-red-300 hover:bg-red-900/20 rounded transition-colors"
+                  >
+                    🗑 Delete card
+                  </button>
                 </div>
               </div>
             ))}

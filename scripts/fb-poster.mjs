@@ -108,6 +108,20 @@ export const postPhotoToPage = async ({
   };
 };
 
+// Delete a previously-posted (or scheduled) item by FB post id.
+// Returns true on success.
+export const deletePost = async (postId, token) => {
+  const resp = await fetch(
+    `${GRAPH_BASE}/${encodeURIComponent(postId)}?access_token=${encodeURIComponent(token)}`,
+    { method: "DELETE" },
+  );
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`FB delete failed: ${resp.status} ${text.slice(0, 300)}`);
+  }
+  return true;
+};
+
 // Look up a previously-scheduled or posted item by FB post id.
 export const getPostStatus = async (postId, token) => {
   const resp = await fetch(

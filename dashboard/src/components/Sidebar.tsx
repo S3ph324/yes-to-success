@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
+import { getVersion } from "../api";
 
 const items = [
   { to: "/generate", label: "Generate", icon: "⚡" },
@@ -11,6 +13,12 @@ const items = [
 ];
 
 export const Sidebar = () => {
+  const [version, setVersion] = useState<string>("…");
+  useEffect(() => {
+    getVersion()
+      .then((v) => setVersion(v.version))
+      .catch(() => setVersion("?"));
+  }, []);
   return (
     <aside className="w-60 border-r border-[#2a2a32] bg-[#0d0d10] flex flex-col">
       <div className="px-6 py-7 border-b border-[#2a2a32]">
@@ -53,10 +61,8 @@ export const Sidebar = () => {
       </nav>
 
       <div className="p-4 border-t border-[#2a2a32] text-[11px] text-[#a1a1aa]">
-        <div className="mb-1">
-          John Calub Training
-        </div>
-        <div className="text-[#FFE17A]/70 font-mono">v0.1 demo</div>
+        <div className="mb-1">John Calub Training</div>
+        <div className="text-[#FFE17A]/70 font-mono">v{version}</div>
       </div>
     </aside>
   );

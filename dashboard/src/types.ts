@@ -46,11 +46,14 @@ export type QuoteEntry = {
 export type BatchCard = QuoteEntry & {
   file: string;
   index: number;
+  cardId?: string;
+  status?: string;
   approved?: boolean;
   rejected?: boolean;
   scheduled?: boolean;
   posted?: boolean;
   failed?: boolean;
+  deleted?: boolean;
   scheduledAt?: string;
   postedAt?: string;
   fbPostId?: string;

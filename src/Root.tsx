@@ -17,6 +17,7 @@ import {
   boldQuoteCardSchema,
   calcMetaBoldQuoteCard,
 } from "./QuoteCard/BoldQuoteCard";
+import { AppIcon, appIconSchema } from "./AppIcon/AppIcon";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -89,6 +90,23 @@ export const RemotionRoot: React.FC = () => {
           brandAccentDeep: "#C9952B",
           brandRed: "#C8001E",
           url: "JOHNCALUBTRAINING.COM",
+        }}
+      />
+
+      <Composition
+        id="AppIcon"
+        component={AppIcon}
+        durationInFrames={1}
+        fps={1}
+        width={1024}
+        height={1024}
+        schema={appIconSchema}
+        defaultProps={{
+          logoSrc: "yes-to-success-logo.png",
+          brandPrimary: "#C8001E",
+          brandDeep: "#3A0008",
+          brandAccent: "#FFE17A",
+          brandAccentDeep: "#C9952B",
         }}
       />
 

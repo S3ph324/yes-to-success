@@ -59,6 +59,8 @@ import {
   validatePage as fbValidatePage,
   postPhotoToPage as fbPostPhoto,
   nextSlots as fbNextSlots,
+  getPostStatus as fbGetPostStatus,
+  deletePost as fbDeletePost,
 } from "./fb-poster.mjs";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
@@ -403,10 +405,14 @@ app.get("/api/batches", async (_req, res) => {
   const summaries = await Promise.all(
     stamps.map(async (stamp) => {
       const files = await fs.readdir(path.join(cardsDir, stamp));
-      const cards = files.filter(
+      const allCards = files.filter(
         (f) => !f.startsWith(".") && (f.endsWith(".png") || f.endsWith(".mp4")),
       );
-      return { stamp, count: cards.length, cards: [] };
+      const approval = await loadBatchApproval(stamp);
+      const visible = allCards.filter(
+        (_, idx) => approval[idx]?.status !== "deleted",
+      );
+      return { stamp, count: visible.length, cards: [] };
     }),
   );
   res.json(summaries);
@@ -433,30 +439,41 @@ app.get("/api/batches/:stamp", async (req, res) => {
     }
   }
   const approval = await loadBatchApproval(stamp);
-  const cards = cardFiles.map((file, idx) => {
-    const q = quotes[idx] || {};
-    const a = approval[idx] || {};
-    return {
-      index: idx,
-      file,
-      quote: q.quote || "",
-      caption: q.caption || "",
-      theme: q.theme || "",
-      variant: q.variant || "classic",
-      aspectRatio: q.aspectRatio || "4:5",
-      bgPrompt: q.bgPrompt,
-      keyword: q.keyword,
-      approved: a.status === "approved",
-      rejected: a.status === "rejected",
-      scheduled: a.status === "scheduled",
-      posted: a.status === "posted",
-      failed: a.status === "failed",
-      scheduledAt: a.scheduledAt,
-      postedAt: a.postedAt,
-      fbPostId: a.fbPostId,
-      fbUrl: a.fbUrl,
-    };
-  });
+  const cards = cardFiles
+    .map((file, idx) => {
+      const q = quotes[idx] || {};
+      const a = approval[idx] || {};
+      return {
+        index: idx,
+        // Short human ID per card: batch-prefix + 1-based number (e.g. "10-28#03")
+        cardId: `${stamp.slice(-5).replace(":", "-")}#${String(idx + 1).padStart(2, "0")}`,
+        file,
+        quote: q.quote || "",
+        caption: q.caption || "",
+        theme: q.theme || "",
+        variant: q.variant || "classic",
+        aspectRatio: q.aspectRatio || "4:5",
+        bgPrompt: q.bgPrompt,
+        keyword: q.keyword,
+        status: a.status || "pending",
+        // Approval is sticky across scheduled / posted states — a card once
+        // approved counts as approved even after it moves on to scheduled.
+        approved:
+          a.status === "approved" ||
+          a.status === "scheduled" ||
+          a.status === "posted",
+        rejected: a.status === "rejected",
+        scheduled: a.status === "scheduled",
+        posted: a.status === "posted",
+        failed: a.status === "failed",
+        deleted: a.status === "deleted",
+        scheduledAt: a.scheduledAt,
+        postedAt: a.postedAt,
+        fbPostId: a.fbPostId,
+        fbUrl: a.fbUrl,
+      };
+    })
+    .filter((c) => !c.deleted);
   res.json({ stamp, count: cards.length, cards });
 });
 
@@ -786,6 +803,175 @@ app.post("/api/queue/:stamp/:idx/post-now", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Delete a card (removes the PNG file). The card disappears from the gallery.
+app.delete("/api/batches/:stamp/cards/:idx", async (req, res) => {
+  const { stamp, idx } = req.params;
+  const batchPath = path.join(OUT_DIR, "cards", stamp);
+  if (!existsSync(batchPath)) {
+    return res.status(404).json({ error: "Batch not found" });
+  }
+  const cardFiles = (await fs.readdir(batchPath))
+    .filter(
+      (f) => !f.startsWith(".") && (f.endsWith(".png") || f.endsWith(".mp4")),
+    )
+    .sort();
+  const file = cardFiles[parseInt(idx, 10)];
+  if (!file) return res.status(404).json({ error: "Card not found" });
+
+  // If this card is already on FB (scheduled or posted), try to delete from FB too.
+  const approval = await loadBatchApproval(stamp);
+  const entry = approval[idx];
+  if (entry?.fbPostId) {
+    const cfg = await readJson("posting.json", {});
+    if (cfg.token) {
+      try {
+        await fbDeletePost(entry.fbPostId, cfg.token);
+      } catch (err) {
+        console.warn(
+          `[delete-card] FB delete failed (continuing with file delete): ${err.message}`,
+        );
+      }
+    }
+  }
+
+  // Soft-delete via approval state — the file stays on disk so the OTHER
+  // cards' numeric indices remain stable. The gallery filters out
+  // status:"deleted" entries before returning to the client.
+  approval[idx] = {
+    status: "deleted",
+    deletedAt: new Date().toISOString(),
+    file,
+  };
+  await saveBatchApproval(stamp, approval);
+
+  res.json({ ok: true, deleted: file });
+});
+
+// Unpost — delete the FB post but keep the card in the gallery so it can be
+// re-scheduled later. The local state returns to "approved".
+app.post("/api/queue/:stamp/:idx/unpost", async (req, res) => {
+  const cfg = await readJson("posting.json", {});
+  if (!cfg.token) {
+    return res.status(400).json({ error: "FB Page not connected" });
+  }
+  const { stamp, idx } = req.params;
+  const approval = await loadBatchApproval(stamp);
+  const entry = approval[idx];
+  if (!entry?.fbPostId) {
+    return res.status(400).json({ error: "No FB post ID on this card" });
+  }
+  try {
+    await fbDeletePost(entry.fbPostId, cfg.token);
+    approval[idx] = {
+      status: "approved",
+      approvedAt: entry.approvedAt || new Date().toISOString(),
+      unpostedFrom: entry.fbPostId,
+      unpostedAt: new Date().toISOString(),
+    };
+    await saveBatchApproval(stamp, approval);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Manual: re-check FB status for all currently-scheduled posts.
+// Anything that's now published flips from scheduled → posted.
+app.post("/api/queue/refresh-status", async (_req, res) => {
+  const cfg = await readJson("posting.json", {});
+  if (!cfg.token) {
+    return res.status(400).json({ error: "FB Page not connected" });
+  }
+  const cardsDir = path.join(OUT_DIR, "cards");
+  if (!existsSync(cardsDir)) return res.json({ updated: 0 });
+  const stamps = (await fs.readdir(cardsDir)).filter((n) => !n.startsWith("."));
+  let updated = 0;
+  for (const stamp of stamps) {
+    const approval = await loadBatchApproval(stamp);
+    let changed = false;
+    for (const [idx, entry] of Object.entries(approval)) {
+      if (entry?.status === "scheduled" && entry?.fbPostId) {
+        try {
+          const fb = await fbGetPostStatus(entry.fbPostId, cfg.token);
+          if (fb.is_published) {
+            approval[idx] = {
+              ...entry,
+              status: "posted",
+              postedAt:
+                fb.created_time || new Date().toISOString(),
+              fbUrl: fb.permalink_url || entry.fbUrl,
+            };
+            changed = true;
+            updated += 1;
+          }
+        } catch (err) {
+          // ignore — token may be stale or post deleted
+        }
+      }
+    }
+    if (changed) await saveBatchApproval(stamp, approval);
+  }
+  res.json({ updated });
+});
+
+// --- Version endpoint -----------------------------------------------------
+
+const PKG_VERSION = JSON.parse(
+  await fs.readFile(path.join(projectRoot, "package.json"), "utf-8"),
+).version;
+
+app.get("/api/version", (_req, res) => {
+  res.json({ version: PKG_VERSION });
+});
+
+// --- Background poller: sync posted status every 5 min --------------------
+
+const POLL_INTERVAL_MS = 5 * 60 * 1000;
+const pollFbStatus = async () => {
+  try {
+    const cfg = await readJson("posting.json", {});
+    if (!cfg.token) return;
+    const cardsDir = path.join(OUT_DIR, "cards");
+    if (!existsSync(cardsDir)) return;
+    const stamps = (await fs.readdir(cardsDir)).filter(
+      (n) => !n.startsWith("."),
+    );
+    let updated = 0;
+    for (const stamp of stamps) {
+      const approval = await loadBatchApproval(stamp);
+      let changed = false;
+      for (const [idx, entry] of Object.entries(approval)) {
+        if (entry?.status === "scheduled" && entry?.fbPostId) {
+          try {
+            const fb = await fbGetPostStatus(entry.fbPostId, cfg.token);
+            if (fb.is_published) {
+              approval[idx] = {
+                ...entry,
+                status: "posted",
+                postedAt: fb.created_time || new Date().toISOString(),
+                fbUrl: fb.permalink_url || entry.fbUrl,
+              };
+              changed = true;
+              updated += 1;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      if (changed) await saveBatchApproval(stamp, approval);
+    }
+    if (updated > 0) {
+      console.log(`[poller] flipped ${updated} scheduled → posted`);
+    }
+  } catch (err) {
+    console.warn(`[poller] error: ${err.message}`);
+  }
+};
+setInterval(pollFbStatus, POLL_INTERVAL_MS);
+// Run once on startup after a short delay so config + auth are ready
+setTimeout(pollFbStatus, 15_000);
 
 // --- API: One-shot migration import ---------------------------------------
 //

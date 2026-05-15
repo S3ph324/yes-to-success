@@ -91,6 +91,24 @@ export const setCardApproval = (
     body: JSON.stringify({ status }),
   });
 
+export const deleteCard = (stamp: string, idx: number) =>
+  json<{ ok: true; deleted: string }>(`/api/batches/${stamp}/cards/${idx}`, {
+    method: "DELETE",
+  });
+
+export const unpostCard = (stamp: string, idx: number) =>
+  json<{ ok: true }>(`/api/queue/${stamp}/${idx}/unpost`, {
+    method: "POST",
+  });
+
+export const refreshPostStatus = () =>
+  json<{ updated: number }>(`/api/queue/refresh-status`, {
+    method: "POST",
+  });
+
+export const getVersion = () =>
+  json<{ version: string }>(`/api/version`);
+
 // Generate
 export type GenerateOpts = {
   count: number;
