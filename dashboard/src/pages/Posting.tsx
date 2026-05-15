@@ -12,7 +12,6 @@ import {
   savePostingConfig,
   pausePosting,
   resumePosting,
-  restorePausedCards,
 } from "../api";
 import type { PostingConfig } from "../api";
 
@@ -70,7 +69,7 @@ export const Posting = () => {
   const handlePause = async () => {
     if (
       !confirm(
-        "Pause autoposting? This will delete ALL currently-scheduled Facebook posts (they'll be marked as 'paused' locally with their original scheduled times preserved). You'll be prompted to reschedule on resume.",
+        "Pause autoposting? Currently-scheduled Facebook posts will stay on FB but their scheduled times will be pushed ~6 months out so they don't fire. They remain marked as 'scheduled' on the dashboard, with a paused badge. Resume restores their original times.",
       )
     )
       return;
@@ -78,9 +77,10 @@ export const Posting = () => {
     try {
       const r = await pausePosting();
       setCfg((prev) => (prev ? { ...prev, paused: true } : prev));
-      alert(
-        `Paused. ${r.paused} scheduled posts were removed from Facebook and saved locally as 'paused'.`,
-      );
+      const msg = r.failed
+        ? `Paused. ${r.paused} posts rescheduled to ~6 months out. ${r.failed} failed (see logs).`
+        : `Paused. ${r.paused} post${r.paused === 1 ? "" : "s"} parked ~6 months out. Resume restores original times.`;
+      alert(msg);
     } catch (e) {
       alert(`Pause failed: ${(e as Error).message}`);
     } finally {
@@ -93,19 +93,13 @@ export const Posting = () => {
     try {
       const r = await resumePosting();
       setCfg((prev) => (prev ? { ...prev, paused: false } : prev));
-      if (r.pausedCards > 0) {
-        const restore = confirm(
-          `${r.pausedCards} card${r.pausedCards === 1 ? "" : "s"} ${r.pausedCards === 1 ? "was" : "were"} unscheduled during the pause.\n\nRestore them as approved so you can re-schedule from the Queue page?`,
+      const parts: string[] = [];
+      if (r.restored > 0) parts.push(`${r.restored} restored to original times`);
+      if (r.needsReschedule > 0)
+        parts.push(
+          `${r.needsReschedule} reverted to approved (their original times passed during the pause — reschedule manually from the Queue page)`,
         );
-        if (restore) {
-          const r2 = await restorePausedCards();
-          alert(
-            `${r2.restored} card${r2.restored === 1 ? "" : "s"} restored as approved. Head to the Queue page to reschedule.`,
-          );
-        }
-      } else {
-        alert("Resumed. No paused cards to restore.");
-      }
+      alert(`Resumed. ${parts.join(". ") || "No paused posts to restore."}`);
     } catch (e) {
       alert(`Resume failed: ${(e as Error).message}`);
     } finally {

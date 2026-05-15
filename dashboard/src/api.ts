@@ -173,13 +173,15 @@ export const savePostingConfig = (cfg: Partial<PostingConfig> & { token?: string
   });
 
 export const pausePosting = () =>
-  json<{ ok: true; paused: number }>("/api/posting/pause", { method: "POST" });
+  json<{ ok: true; paused: number; failed: number }>("/api/posting/pause", {
+    method: "POST",
+  });
 
 export const resumePosting = () =>
-  json<{ ok: true; pausedCards: number }>("/api/posting/resume", { method: "POST" });
-
-export const restorePausedCards = () =>
-  json<{ restored: number }>("/api/queue/restore-paused", { method: "POST" });
+  json<{ ok: true; restored: number; needsReschedule: number }>(
+    "/api/posting/resume",
+    { method: "POST" },
+  );
 
 // Queue
 export type QueueItem = {

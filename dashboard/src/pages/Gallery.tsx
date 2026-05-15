@@ -286,12 +286,20 @@ export const Gallery = () => {
                     className={`absolute top-2 right-2 z-10 px-2 py-1 rounded text-[10px] font-semibold uppercase tracking-wider ${
                       card.posted
                         ? "bg-emerald-600 text-white"
-                        : card.scheduled
-                          ? "bg-blue-600 text-white"
-                          : "bg-red-600 text-white"
+                        : card.scheduledPaused
+                          ? "bg-amber-600 text-white"
+                          : card.scheduled
+                            ? "bg-blue-600 text-white"
+                            : "bg-red-600 text-white"
                     }`}
                   >
-                    {card.posted ? "✅ Posted" : card.scheduled ? "⏰ Scheduled" : "❌ Failed"}
+                    {card.posted
+                      ? "✅ Posted"
+                      : card.scheduledPaused
+                        ? "⏸ Paused"
+                        : card.scheduled
+                          ? "⏰ Scheduled"
+                          : "❌ Failed"}
                   </div>
                 )}
                 <img

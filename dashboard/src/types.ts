@@ -52,6 +52,7 @@ export type BatchCard = QuoteEntry & {
   approved?: boolean;
   rejected?: boolean;
   scheduled?: boolean;
+  scheduledPaused?: boolean;
   posted?: boolean;
   failed?: boolean;
   deleted?: boolean;

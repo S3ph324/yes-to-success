@@ -108,6 +108,32 @@ export const postPhotoToPage = async ({
   };
 };
 
+// Update the scheduled_publish_time of an existing scheduled (unpublished) post.
+// Used by pause/resume to push posts into the future and restore them.
+export const updateScheduledTime = async (postId, token, scheduledAt) => {
+  const minTime = Date.now() + 10 * 60 * 1000; // FB 10-min minimum
+  const t = scheduledAt.getTime();
+  if (t < minTime) {
+    throw new Error(
+      `Scheduled time must be ≥10 min in the future (was ${Math.round((t - Date.now()) / 60000)} min)`,
+    );
+  }
+  const params = new URLSearchParams({
+    scheduled_publish_time: String(Math.floor(t / 1000)),
+    access_token: token,
+  });
+  const resp = await fetch(`${GRAPH_BASE}/${encodeURIComponent(postId)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`FB update failed: ${resp.status} ${text.slice(0, 300)}`);
+  }
+  return true;
+};
+
 // Delete a previously-posted (or scheduled) item by FB post id.
 // Returns true on success.
 export const deletePost = async (postId, token) => {
