@@ -174,6 +174,7 @@ export const savePostingConfig = (cfg: Partial<PostingConfig> & { token?: string
 export type QueueItem = {
   stamp: string;
   index: number;
+  cardId?: string;
   file: string;
   quote: string;
   caption: string;

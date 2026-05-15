@@ -170,6 +170,11 @@ export const Queue = () => {
                     style={{ aspectRatio: "4/5" }}
                   />
                   <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[10px] font-mono text-[#FFE17A]/80">
+                        {item.cardId || `${item.stamp.slice(-5)}#${String(item.index + 1).padStart(2, "0")}`}
+                      </span>
+                    </div>
                     <div className="flex gap-1 mb-1.5 flex-wrap">
                       <Badge color={variantColors[item.variant]}>{item.variant}</Badge>
                       <Badge color={aspectColors[item.aspectRatio]}>{item.aspectRatio}</Badge>
@@ -216,6 +221,9 @@ export const Queue = () => {
                       <div className="flex gap-1.5 items-center mb-1 flex-wrap">
                         <span className={`text-xs font-semibold ${colors.text}`}>
                           {colors.label}
+                        </span>
+                        <span className="text-[10px] font-mono text-[#FFE17A]/80">
+                          {item.cardId || `${item.stamp.slice(-5)}#${String(item.index + 1).padStart(2, "0")}`}
                         </span>
                         <Badge color={variantColors[item.variant]}>{item.variant}</Badge>
                         <Badge color={aspectColors[item.aspectRatio]}>{item.aspectRatio}</Badge>

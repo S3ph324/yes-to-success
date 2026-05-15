@@ -643,6 +643,7 @@ app.get("/api/queue", async (_req, res) => {
         approved.push({
           stamp,
           index: idx,
+          cardId: `${stamp.slice(-5).replace(":", "-")}#${String(idx + 1).padStart(2, "0")}`,
           file,
           quote: q.quote || "",
           caption: q.caption || "",
@@ -693,6 +694,7 @@ app.get("/api/queue/history", async (_req, res) => {
         history.push({
           stamp,
           index: idx,
+          cardId: `${stamp.slice(-5).replace(":", "-")}#${String(idx + 1).padStart(2, "0")}`,
           file,
           quote: q.quote || "",
           caption: q.caption || "",
