@@ -54,8 +54,11 @@ COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
 
 # ── Dashboard deps + build ──────────────────────────────────────────────────
+# NODE_ENV=production above would normally skip devDependencies (incl. tsc),
+# so force-include them just for the dashboard install — we need them for
+# `npm run build`. Once dist/ is produced the dev deps are discarded.
 COPY dashboard/package.json dashboard/package-lock.json* ./dashboard/
-RUN cd dashboard && npm ci
+RUN cd dashboard && npm ci --include=dev
 
 COPY . .
 
