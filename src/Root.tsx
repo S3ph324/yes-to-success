@@ -17,6 +17,11 @@ import {
   boldQuoteCardSchema,
   calcMetaBoldQuoteCard,
 } from "./QuoteCard/BoldQuoteCard";
+import {
+  JurieQuoteCard,
+  jurieQuoteCardSchema,
+  calcMetaJurieQuoteCard,
+} from "./QuoteCard/JurieQuoteCard";
 import { AppIcon, appIconSchema } from "./AppIcon/AppIcon";
 
 export const RemotionRoot: React.FC = () => {
@@ -90,6 +95,43 @@ export const RemotionRoot: React.FC = () => {
           brandAccentDeep: "#C9952B",
           brandRed: "#C8001E",
           url: "JOHNCALUBTRAINING.COM",
+        }}
+      />
+
+      <Composition
+        id="JurieQuoteCard"
+        component={JurieQuoteCard}
+        durationInFrames={90}
+        fps={30}
+        width={1080}
+        height={1350}
+        schema={jurieQuoteCardSchema}
+        calculateMetadata={calcMetaJurieQuoteCard}
+        defaultProps={{
+          topLines: [[{ t: "NAG-OPEN", s: "w" as const }, { t: "KA", s: "w" as const }, { t: "NGA…", s: "w" as const }]],
+          bottomLines: [
+            [
+              { t: "PERO", s: "rb" as const },
+              { t: "SINO", s: "w" as const },
+              { t: "BANG", s: "w" as const },
+              { t: "MAY", s: "w" as const },
+              { t: "ALAM", s: "g" as const },
+              { t: "NA", s: "w" as const },
+              { t: "OPEN", s: "r" as const },
+              { t: "KA?", s: "w" as const },
+            ],
+          ],
+          quote: "Nag-open ka nga… pero sino bang may alam na open ka?",
+          keyword: "ALAM",
+          ctaComment: "MENTOR",
+          ctaTail: "LEARN HOW",
+          bgSrc: "",
+          aspectRatio: "4:5" as const,
+          brandGold: "#F5C13B",
+          brandGoldLight: "#FFE27A",
+          brandGoldDeep: "#C7902A",
+          brandRed: "#E11522",
+          headlineFont: "",
         }}
       />
 

@@ -10,5 +10,35 @@
     "url": "JOHNCALUBTRAINING.COM",
     "signoff": "— John Calub",
     "subtitle": "Philippines' #1 Success Coach"
+  },
+  {
+    "id": "preset_jurie",
+    "name": "Jurie",
+    "client": "jurie",
+    "logoSrc": "",
+    "brandPrimary": "#E11522",
+    "brandDeep": "#0A0A0A",
+    "brandAccent": "#F5C13B",
+    "brandAccentDeep": "#C7902A",
+    "url": "",
+    "signoff": "",
+    "subtitle": "",
+    "ctaComment": "MENTOR",
+    "ctaTail": "LEARN HOW"
+  },
+  {
+    "id": "preset_tranzzie",
+    "name": "Tranzzie Eyeglasses",
+    "client": "tranzzie",
+    "logoSrc": "brand/tranzzie-logo.png",
+    "brandPrimary": "#E11522",
+    "brandDeep": "#0A0A0A",
+    "brandAccent": "#F4B400",
+    "brandAccentDeep": "#B97A00",
+    "url": "",
+    "signoff": "",
+    "subtitle": "SINCE 2019",
+    "ctaComment": "EYECARE",
+    "ctaTail": "LEARN MORE"
   }
 ]

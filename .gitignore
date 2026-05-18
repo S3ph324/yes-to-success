@@ -8,8 +8,11 @@ dist
 # Ignore the output video from Git but not videos you import into src/.
 out
 
-# AI-generated backgrounds (regenerated per batch — don't commit)
+# AI-generated backgrounds / b-roll frames (regenerated per batch — don't commit)
 public/generated-bg
+public/broll-frames
+public/broll-clips
+out/broll-uploads
 
 # Uploaded brand assets and character photos — generated at runtime
 public/characters
@@ -23,6 +26,7 @@ config/posting.json
 # Vertex AI service account key — NEVER commit
 service-account*.json
 gcp-credentials*.json
+gcp-sa.json
 .gcloud/
 
 # Dashboard build artifacts (regenerated)

@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1.7
+# Multi-client Quote Poster Studio + B-Roll (scripts/jurie-dashboard.mjs).
+# Separate from the existing Dockerfile (which ships server.mjs) — do not
+# merge. Includes Chromium deps for Remotion rendering.
+
+FROM node:20-bookworm-slim AS base
+
+# ── Chromium / headless browser dependencies (Remotion renders via Chrome) ──
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates fonts-liberation fonts-noto-color-emoji \
+      libasound2 libatk-bridge2.0-0 libatk1.0-0 libc6 libcairo2 libcups2 \
+      libdbus-1-3 libexpat1 libfontconfig1 libgbm1 libglib2.0-0 libgtk-3-0 \
+      libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 \
+      libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 \
+      libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxtst6 \
+      lsb-release wget xdg-utils tini \
+   && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ENV NODE_ENV=production
+ENV HOSTED=1
+ENV EXPORT_BASE=/app/exports
+
+# Runtime deps only (express, multer, @google/genai, remotion bundler/renderer…)
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev
+
+COPY . .
+
+# Pre-download Remotion's Chromium so the first render isn't slow (non-fatal).
+RUN npx remotion browser ensure || echo "browser ensure deferred to runtime"
+
+# Writable output + working dirs (mount a Railway volume at /app/exports)
+RUN mkdir -p /app/exports /app/out /app/public/generated-bg \
+      /app/public/broll-frames /app/public/characters
+
+EXPOSE 8080
+ENTRYPOINT ["/usr/bin/tini", "--"]
+# Materialize the GCP service-account key from $GCP_SA_KEY (Railway secret),
+# point Google libs at it, then start the studio on Railway's $PORT.
+CMD ["sh","-c","if [ -n \"$GCP_SA_KEY\" ]; then printf '%s' \"$GCP_SA_KEY\" > /app/gcp-sa.json && export GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-sa.json; fi; exec node scripts/jurie-dashboard.mjs"]

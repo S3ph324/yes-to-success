@@ -15,5 +15,93 @@
       "this supplement cures"
     ],
     "activeCampaigns": ""
+  },
+  {
+    "id": "brief_jurie",
+    "name": "Jurie — AI for Business Owners",
+    "client": "jurie",
+    "topics": [
+      "how AI can help business owners",
+      "AI tools that save time and money",
+      "working smart vs working hard with AI",
+      "future-proofing a small business with AI",
+      "common AI mistakes business owners make"
+    ],
+    "voiceNotes": "Jurie's voice: empathetic Filipino AI/business mentor. Taglish, punchy, conversational. Two-zone structure: a HOOK that names a relatable daily-grind pain or limiting belief, an ellipsis beat, then a PAYOFF reframe that points to AI/working smart. Validate the audience's effort first — never shame them for their current work or for not knowing AI. Aspirational, practical, never hypey.",
+    "bannedPhrases": [
+      "tanga ka",
+      "tamad ka",
+      "walang kwenta ang ginagawa mo",
+      "you are poor because",
+      "guaranteed income",
+      "get rich quick",
+      "mawawalan ka ng trabaho kung hindi"
+    ],
+    "activeCampaigns": ""
+  },
+  {
+    "id": "brief_jurie_money",
+    "name": "Jurie — Money & Mindset",
+    "client": "jurie",
+    "topics": [
+      "building income streams with AI",
+      "money mindset for Filipino entrepreneurs",
+      "escaping the 9-to-5 trap",
+      "investing time vs trading time for money",
+      "scaling a side hustle into a real business"
+    ],
+    "voiceNotes": "Same Jurie voice — empathetic Taglish, hook→payoff, validate effort, never shame. Lean slightly more aspirational about freedom and income, still practical and grounded in AI/working smart.",
+    "bannedPhrases": [
+      "tanga ka",
+      "tamad ka",
+      "guaranteed income",
+      "get rich quick"
+    ],
+    "activeCampaigns": ""
+  },
+  {
+    "id": "brief_tranzzie",
+    "name": "Tranzzie — Eyewear & Eye Care",
+    "client": "tranzzie",
+    "topics": [
+      "why regular eye check-ups matter",
+      "blue-light / anti-radiation lenses for screen users",
+      "choosing the right frame for your face",
+      "UV protection and eye health",
+      "kids' eyewear and screen time",
+      "signs you need new eyeglasses"
+    ],
+    "voiceNotes": "Tranzzie Eyeglasses voice: warm, trustworthy, educational optical clinic in the Philippines (since 2019). Taglish, friendly, caring — like a tito/ate optometrist who explains simply. Two-zone HOOK→PAYOFF: hook names a relatable eye/vision pain (headaches, blurry, eye strain, sun glare), payoff points to the right eyewear / an eye check at Tranzzie. Never fear-monger, never make medical cure claims. Encouraging and practical.",
+    "bannedPhrases": [
+      "cure",
+      "gagaling ang mata mo",
+      "permanenteng solusyon",
+      "100% guaranteed",
+      "no need for doctor",
+      "instant na malinaw"
+    ],
+    "activeCampaigns": ""
+  },
+  {
+    "id": "brief_tranzzie_photochromic",
+    "name": "Tranzzie — Photochromic Lenses",
+    "client": "tranzzie",
+    "topics": [
+      "photochromic (transitions) lenses explained",
+      "one pair for indoors and outdoors",
+      "photochromic lenses for drivers and commuters",
+      "UV protection that adjusts to sunlight",
+      "photochromic vs separate sunglasses",
+      "are photochromic lenses worth it"
+    ],
+    "voiceNotes": "Same Tranzzie voice — warm, educational, Taglish. Focus every poster on PHOTOCHROMIC / transitions lenses: lenses that darken under sunlight and clear up indoors. Hook = a relatable sun-glare / two-glasses hassle; payoff = photochromic lenses from Tranzzie solve it. Explain the benefit simply, no medical cure claims, no over-promising.",
+    "bannedPhrases": [
+      "cure",
+      "100% guaranteed",
+      "permanenteng solusyon",
+      "instant na malinaw",
+      "no need for doctor"
+    ],
+    "activeCampaigns": ""
   }
 ]
