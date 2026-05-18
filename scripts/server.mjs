@@ -1012,6 +1012,68 @@ app.post("/api/queue/:stamp/:idx/post-now", async (req, res) => {
   }
 });
 
+// Schedule a single card at an explicit, user-chosen time.
+// Optional per-card scheduling — separate from the bulk peak-hour auto
+// scheduler in /api/queue/schedule-all (that flow is unchanged).
+app.post("/api/queue/:stamp/:idx/schedule", async (req, res) => {
+  const cfg = await readJson("posting.json", {});
+  if (!cfg.token || !cfg.pageId) {
+    return res.status(400).json({ error: "FB Page not connected" });
+  }
+  if (cfg.paused) {
+    return res.status(400).json({
+      error: "Autoposting is paused. Resume from Posting Settings first.",
+    });
+  }
+  const { stamp, idx } = req.params;
+  const { at } = req.body || {};
+  if (!at) {
+    return res.status(400).json({ error: "Missing scheduled time ('at')" });
+  }
+  const when = new Date(at);
+  if (isNaN(when.getTime())) {
+    return res.status(400).json({ error: "Invalid scheduled time" });
+  }
+  const batchPath = path.join(OUT_DIR, "cards", stamp);
+  const cardFiles = (await fs.readdir(batchPath))
+    .filter((f) => f.endsWith(".png"))
+    .sort();
+  const file = cardFiles[parseInt(idx, 10)];
+  if (!file) return res.status(404).json({ error: "Card not found" });
+  const quotesFile = await findQuotesForBatch(stamp);
+  let caption = "";
+  if (quotesFile) {
+    try {
+      const quotes = JSON.parse(
+        await fs.readFile(path.join(OUT_DIR, quotesFile), "utf-8"),
+      );
+      caption = quotes[parseInt(idx, 10)]?.caption || "";
+    } catch {
+      /* ignore */
+    }
+  }
+  try {
+    const result = await fbPostPhoto({
+      pageId: cfg.pageId,
+      token: cfg.token,
+      imagePath: path.join(batchPath, file),
+      caption,
+      scheduledAt: when,
+    });
+    const approval = await loadBatchApproval(stamp);
+    approval[idx] = {
+      status: "scheduled",
+      scheduledAt: when.toISOString(),
+      fbPostId: result.id,
+      fbUrl: result.fbUrl,
+    };
+    await saveBatchApproval(stamp, approval);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Delete a card (removes the PNG file). The card disappears from the gallery.
 app.delete("/api/batches/:stamp/cards/:idx", async (req, res) => {
   const { stamp, idx } = req.params;

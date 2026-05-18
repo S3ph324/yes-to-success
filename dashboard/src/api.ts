@@ -221,3 +221,13 @@ export const postNow = (stamp: string, idx: number) =>
     `/api/queue/${stamp}/${idx}/post-now`,
     { method: "POST" },
   );
+
+// Schedule a single card at an explicit time (optional per-card scheduling).
+export const scheduleAt = (stamp: string, idx: number, at: string) =>
+  json<{ ok: boolean; fbUrl: string; id: string }>(
+    `/api/queue/${stamp}/${idx}/schedule`,
+    {
+      method: "POST",
+      body: JSON.stringify({ at }),
+    },
+  );

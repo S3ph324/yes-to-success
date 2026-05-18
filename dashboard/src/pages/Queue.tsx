@@ -7,7 +7,14 @@ import {
   Label,
   PageHeader,
 } from "../components/ui";
-import { getQueue, getHistory, scheduleAll, postNow, assetUrl } from "../api";
+import {
+  getQueue,
+  getHistory,
+  scheduleAll,
+  scheduleAt,
+  postNow,
+  assetUrl,
+} from "../api";
 import type { QueueItem, HistoryItem } from "../api";
 
 const variantColors: Record<string, string> = {
@@ -56,6 +63,7 @@ export const Queue = () => {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [startAt, setStartAt] = useState<string>(defaultStartAt());
+  const [cardTimes, setCardTimes] = useState<Record<string, string>>({});
 
   const refresh = async () => {
     const [q, h] = await Promise.all([getQueue(), getHistory()]);
@@ -103,6 +111,37 @@ export const Queue = () => {
     try {
       const result = await postNow(item.stamp, item.index);
       setFeedback(`✅ Posted! ${result.fbUrl}`);
+      await refresh();
+    } catch (e) {
+      setFeedback(`❌ ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleScheduleAt = async (item: QueueItem) => {
+    const key = `${item.stamp}-${item.index}`;
+    const local = cardTimes[key];
+    if (!local) {
+      setFeedback("❌ Pick a date & time for this card first.");
+      return;
+    }
+    const iso = new Date(local).toISOString();
+    const disp = new Date(local).toLocaleString("en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+    if (
+      !confirm(
+        `Schedule this card to post on Facebook at ${disp}? (Must be at least ~10 minutes from now.)`,
+      )
+    )
+      return;
+    setBusy(true);
+    setFeedback(null);
+    try {
+      await scheduleAt(item.stamp, item.index, iso);
+      setFeedback(`✅ Scheduled for ${disp}.`);
       await refresh();
     } catch (e) {
       setFeedback(`❌ ${(e as Error).message}`);
@@ -182,13 +221,39 @@ export const Queue = () => {
                     <p className="text-xs text-[#c8c8d0] line-clamp-2 mb-2 leading-snug">
                       {item.quote}
                     </p>
-                    <button
-                      onClick={() => handlePostNow(item)}
-                      disabled={busy}
-                      className="text-[10px] uppercase tracking-wider text-[#FFE17A] border border-[#FFE17A]/40 px-2 py-1 rounded hover:bg-[#FFE17A] hover:text-black transition-colors disabled:opacity-50"
-                    >
-                      Post Now
-                    </button>
+                    <div className="space-y-1.5">
+                      <button
+                        onClick={() => handlePostNow(item)}
+                        disabled={busy}
+                        className="text-[10px] uppercase tracking-wider text-[#FFE17A] border border-[#FFE17A]/40 px-2 py-1 rounded hover:bg-[#FFE17A] hover:text-black transition-colors disabled:opacity-50"
+                      >
+                        Post Now
+                      </button>
+                      <input
+                        type="datetime-local"
+                        value={cardTimes[`${item.stamp}-${item.index}`] || ""}
+                        min={defaultStartAt()}
+                        step={60}
+                        onChange={(e) =>
+                          setCardTimes((m) => ({
+                            ...m,
+                            [`${item.stamp}-${item.index}`]: e.target.value,
+                          }))
+                        }
+                        className="w-full bg-[#0a0a0c] border border-[#2a2a32] rounded px-2 py-1 text-[10px] text-[#f5f5f7] font-mono focus:outline-none focus:border-[#FFE17A] transition-colors"
+                      />
+                      <button
+                        onClick={() => handleScheduleAt(item)}
+                        disabled={busy}
+                        className="w-full text-[10px] uppercase tracking-wider text-[#3B82F6] border border-[#3B82F6]/40 px-2 py-1 rounded hover:bg-[#3B82F6] hover:text-white transition-colors disabled:opacity-50"
+                      >
+                        Schedule at this time
+                      </button>
+                      <p className="text-[9px] text-[#a1a1aa] leading-tight">
+                        Optional: post this one card at an exact time. Leave
+                        blank to use “Schedule {queue.length} Approved” above.
+                      </p>
+                    </div>
                   </div>
                 </div>
               ))}
