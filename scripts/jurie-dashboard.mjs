@@ -13,6 +13,7 @@
 import { spawn } from "node:child_process";
 import express from "express";
 import fs from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import multer from "multer";
 import path from "node:path";
 import url from "node:url";
@@ -21,6 +22,16 @@ const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, "..");
 const cfgDir = path.join(projectRoot, "config");
 const publicDir = path.join(projectRoot, "public");
+
+// Shown in the header as a deploy signal — bump package.json on each change.
+let VERSION = "?";
+try {
+  VERSION = JSON.parse(
+    readFileSync(path.join(projectRoot, "package.json"), "utf8"),
+  ).version;
+} catch {
+  /* leave "?" */
+}
 
 const PORT = parseInt(
   process.env.PORT || process.env.JURIE_DASHBOARD_PORT || "4317",
@@ -538,8 +549,53 @@ app.post("/api/broll/pick", async (req, res) => {
   res.json({ ok: true, picked: picks.length });
 });
 
+// Zip + stream all PNGs in a folder (batch download).
+const sendZip = async (dir, zipName, res) => {
+  let files;
+  try {
+    files = (await fs.readdir(dir)).filter((f) => f.endsWith(".png"));
+  } catch {
+    return res.status(404).json({ error: "not found" });
+  }
+  if (!files.length) return res.status(404).json({ error: "no images" });
+  const tmp = path.join("/tmp", `dl-${Date.now()}-${zipName}`);
+  const zp = spawn("zip", ["-j", "-q", tmp, ...files], { cwd: dir });
+  zp.on("error", () =>
+    res.status(500).json({ error: "zip not available on server" }),
+  );
+  zp.on("close", (code) => {
+    if (code !== 0)
+      return res.status(500).json({ error: "zip failed" });
+    res.download(tmp, zipName, () => fs.unlink(tmp).catch(() => {}));
+  });
+};
+
+app.get("/api/batch-zip", async (req, res) => {
+  const c = await getClient(req.query.client);
+  const stamp = String(req.query.stamp || "");
+  if (!c || !safeStamp(stamp))
+    return res.status(400).json({ error: "bad request" });
+  await sendZip(
+    path.join(clientExportDir(c), stamp),
+    `${c.id}-${stamp}.zip`,
+    res,
+  );
+});
+
+app.get("/api/broll/zip", async (req, res) => {
+  const stamp = String(req.query.stamp || "");
+  if (!safeStamp(stamp))
+    return res.status(400).json({ error: "bad request" });
+  await sendZip(path.join(BROLL_BASE, stamp), `broll-${stamp}.zip`, res);
+});
+
 app.get("/api/env", (_q, res) =>
-  res.json({ hosted: HOSTED, dailyCap: CAP_DAY, ipPerHour: CAP_IP_HR }),
+  res.json({
+    hosted: HOSTED,
+    dailyCap: CAP_DAY,
+    ipPerHour: CAP_IP_HR,
+    version: VERSION,
+  }),
 );
 app.get("/healthz", (_q, res) => res.json({ ok: true }));
 app.get("/", (_q, res) => res.type("html").send(PAGE));
@@ -642,7 +698,8 @@ font-size:11.5px;line-height:1.62;letter-spacing:0;color:#a8a8af}
 #toast{font-size:13px;letter-spacing:.004em}
 h1,h2,h3{font-feature-settings:"kern","liga"}
 </style></head><body>
-<header><b>QUOTE&nbsp;POSTER&nbsp;<i>STUDIO</i></b><span class="sp"></span>
+<header><b>QUOTE&nbsp;POSTER&nbsp;<i>STUDIO</i></b>
+<span class="pill" title="deployed version">v${VERSION}</span><span class="sp"></span>
 <div class="sw">Client <select id="client"></select></div>
 <span class="pill">manual posting</span></header>
 <div id="toast"></div>
@@ -860,7 +917,8 @@ async function viewBatches(){
       if(!idx.length)return '';
       nb++;np+=idx.length;
       return '<div class="card"><div class="bx-row"><b>'+B.stamp+'</b>'
-       +'<span class="pill">'+idx.length+(idx.length!==B.count?(' / '+B.count):'')+' posters</span></div>'
+       +'<span><span class="pill">'+idx.length+(idx.length!==B.count?(' / '+B.count):'')+' posters</span> '
+       +'<a class="sec" style="text-decoration:none" href="/api/batch-zip?client='+CLIENT+'&stamp='+encodeURIComponent(B.stamp)+'">⬇ All (.zip)</a></span></div>'
        +'<div class="grid" style="margin-top:14px">'+idx.map(i=>{
          const f=B.files[i],u='/posters/'+CLIENT+'/'+encodeURIComponent(B.stamp)+'/'+encodeURIComponent(f);
          return '<figure><img loading="lazy" src="'+u+'"><a class="dl" href="'+u+'?dl=1" download>↓ PNG</a>'
@@ -963,6 +1021,7 @@ async function viewBroll(){
        +'<span class="pill">'+(m.aspect||'')+'</span>'
        +'<span class="pill">'+(m.charMode==='reference-image'?'character':'no character')+'</span>'
        +(S.hasHtml?' <a class="sec" style="text-decoration:none" target="_blank" href="/broll-asset/'+encodeURIComponent(S.stamp)+'/broll.html">Open HTML</a>':'')
+       +' <a class="sec" style="text-decoration:none" href="/api/broll/zip?stamp='+encodeURIComponent(S.stamp)+'">⬇ All (.zip)</a>'
        +' <button class="go br_save" data-s="'+S.stamp+'" style="padding:8px 14px;font-size:12px">Save picks</button></span></div>'
        +'<div class="grid" style="margin-top:14px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">'+shots+'</div></div>';
     }).join('');
