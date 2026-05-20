@@ -4,6 +4,9 @@ dashboard/dist
 out
 public/generated-bg
 public/characters
+!public/characters/jurie
+public/broll-frames
+public/broll-clips
 public/logo-*
 config/posting.json
 .git
