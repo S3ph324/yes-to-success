@@ -208,19 +208,22 @@ const photoStore = multer.diskStorage({
 const uploadPhoto = multer({ storage: photoStore });
 app.post(
   "/api/characters/photo",
-  uploadPhoto.single("photo"),
+  uploadPhoto.array("photo", 8),
   async (req, res) => {
     const { client, charId } = req.query;
-    if (!req.file) return res.status(400).json({ error: "no file" });
-    const rel = path.posix.join("characters", client, req.file.filename);
+    const files = req.files || [];
+    if (!files.length) return res.status(400).json({ error: "no files" });
+    const paths = files.map((f) =>
+      path.posix.join("characters", client, f.filename),
+    );
     const all = await readCfg("characters.json", []);
     const ch = all.find((x) => x.id === charId);
     if (ch) {
       ch.photos = ch.photos || [];
-      ch.photos.push(rel);
+      ch.photos.push(...paths);
       await writeCfg("characters.json", all);
     }
-    res.json({ ok: true, path: rel });
+    res.json({ ok: true, paths });
   },
 );
 
@@ -738,10 +741,12 @@ async function render(){
 }
 let es;
 async function viewGenerate(){
-  const briefs=await api('/api/briefs?client='+CLIENT);
-  const brands=await api('/api/brand?client='+CLIENT);
-  const chars=await api('/api/characters?client='+CLIENT);
-  const cls=await api('/api/clients');
+  const [briefs,brands,chars,cls]=await Promise.all([
+    api('/api/briefs?client='+CLIENT),
+    api('/api/brand?client='+CLIENT),
+    api('/api/characters?client='+CLIENT),
+    api('/api/clients'),
+  ]);
   const defChar=(cls.find(c=>c.id===CLIENT)||{}).characterId||'';
   const photoOf={};chars.forEach(c=>{photoOf[c.id]=(c.photos&&c.photos[0])||'';});
   const charOpts='<option value="">— none (scene only) —</option>'
@@ -879,23 +884,22 @@ async function viewChars(){
    +'<h2 style="margin-top:18px">Create / update a character</h2>'
    +'<div class="row"><div><label>ID</label><input id="c_id" placeholder="char_'+CLIENT+'"></div>'
    +'<div><label>Name</label><input id="c_name"></div></div>'
-   +'<p style="margin-top:12px"><button class="go" id="c_save">Save character</button></p>'
-   +'<h2 style="margin-top:18px">Add a photo to a character</h2>'
-   +'<div class="row"><div><label>Character ID</label><input id="c_pid" placeholder="char_'+CLIENT+'"></div>'
-   +'<div><label>Photo</label><input id="c_file" type="file" accept="image/*"></div></div>'
-   +'<p style="margin-top:12px"><button class="sec" id="c_up">Upload photo</button></p></div>';
+   +'<label>Photos (optional — pick one or many to add)</label>'
+   +'<input id="c_files" type="file" accept="image/*" multiple>'
+   +'<p style="margin-top:14px"><button class="go" id="c_save">Save character</button></p></div>';
   $('#c_save').onclick=async()=>{
-    const body={id:$('#c_id').value.trim(),client:CLIENT,name:$('#c_name').value.trim()||$('#c_id').value,enabled:true};
-    if(!body.id)return toast('Character ID required',true);
-    await fetch('/api/characters',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const id=$('#c_id').value.trim();
+    if(!id)return toast('Character ID required',true);
+    const body={id,client:CLIENT,name:$('#c_name').value.trim()||id,enabled:true};
+    await fetch('/api/characters',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body)});
+    const files=$('#c_files').files;
+    if(files&&files.length){
+      const fd=new FormData();for(const f of files)fd.append('photo',f);
+      await fetch('/api/characters/photo?client='+CLIENT+'&charId='+encodeURIComponent(id),
+        {method:'POST',body:fd});
+    }
     toast('Character saved');viewChars();
-  };
-  $('#c_up').onclick=async()=>{
-    const f=$('#c_file').files[0],id=$('#c_pid').value.trim();
-    if(!f||!id)return toast('Pick a character ID and a file',true);
-    const fd=new FormData();fd.append('photo',f);
-    await fetch('/api/characters/photo?client='+CLIENT+'&charId='+encodeURIComponent(id),{method:'POST',body:fd});
-    toast('Photo uploaded');viewChars();
   };
 }
 async function viewBatches(){
@@ -937,8 +941,10 @@ async function viewBatches(){
   paint();
 }
 async function viewBroll(){
-  const chars=await api('/api/characters');
-  const ENV=await api('/api/env').catch(()=>({}));
+  const [chars,ENV]=await Promise.all([
+    api('/api/characters'),
+    api('/api/env').catch(()=>({})),
+  ]);
   let src='script';
   const charOpts='<option value="none">— none (scenes only) —</option>'
    +chars.map(c=>'<option value="'+c.id+'">'+c.name+' ('+c.client+', '
