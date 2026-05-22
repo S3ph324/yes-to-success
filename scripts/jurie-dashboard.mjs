@@ -654,10 +654,13 @@ figure{margin:0;background:#0d0d0f;border:1px solid var(--line);border-radius:12
 position:relative;transition:border-color .2s}
 figure:hover{border-color:var(--line2)}
 figure img{width:100%;display:block;aspect-ratio:4/5;object-fit:cover}
-.dl{position:absolute;top:9px;right:9px;background:rgba(0,0,0,.6);color:#fff;
+.dl,.cp{position:absolute;top:9px;background:rgba(0,0,0,.6);color:#fff;
 border:1px solid rgba(255,255,255,.2);text-decoration:none;font-size:11px;font-weight:600;
-padding:6px 11px;border-radius:7px;opacity:0;transition:opacity .18s,background .15s;backdrop-filter:blur(4px)}
-figure:hover .dl{opacity:1}.dl:hover{background:var(--gold);color:#15120a;border-color:var(--gold)}
+padding:6px 11px;border-radius:7px;opacity:0;transition:opacity .18s,background .15s;
+backdrop-filter:blur(4px);cursor:pointer;font-family:inherit}
+.dl{right:9px}.cp{left:9px}
+figure:hover .dl,figure:hover .cp{opacity:1}
+.dl:hover,.cp:hover{background:var(--gold);color:#15120a;border-color:var(--gold)}
 figcaption{padding:12px 13px;font-size:11px;line-height:1.55;color:var(--mut);
 white-space:pre-wrap;max-height:112px;overflow:auto}
 .muted{color:var(--mut);font-size:13px}
@@ -911,6 +914,8 @@ async function viewBatches(){
    +'<button class="sec" id="bx_ref">Refresh</button></div></div>'
    +'<div id="bx_meta" class="muted" style="margin:0 0 14px"></div><div id="bx_list"></div>';
   const esc=s=>(s||'').replace(/[<>]/g,'');
+  const b64=s=>btoa(unescape(encodeURIComponent(String(s||''))));
+  const fromB64=s=>decodeURIComponent(escape(atob(s||'')));
   function paint(){
     const q=($('#bx_q').value||'').trim().toLowerCase();
     let nb=0,np=0;
@@ -920,12 +925,17 @@ async function viewBatches(){
       const idx=B.files.map((_f,i)=>i).filter(i=>!q||stampHit||(caps[i]||'').toLowerCase().indexOf(q)>-1);
       if(!idx.length)return '';
       nb++;np+=idx.length;
+      const allCaps=idx.map(i=>'#'+(i+1)+'\\n'+(caps[i]||'')).join('\\n\\n---\\n\\n');
       return '<div class="card"><div class="bx-row"><b>'+B.stamp+'</b>'
        +'<span><span class="pill">'+idx.length+(idx.length!==B.count?(' / '+B.count):'')+' posters</span> '
+       +'<button class="sec" data-cp-all="'+b64(allCaps)+'">📋 All captions</button> '
        +'<a class="sec" style="text-decoration:none" href="/api/batch-zip?client='+CLIENT+'&stamp='+encodeURIComponent(B.stamp)+'">⬇ All (.zip)</a></span></div>'
        +'<div class="grid" style="margin-top:14px">'+idx.map(i=>{
          const f=B.files[i],u='/posters/'+CLIENT+'/'+encodeURIComponent(B.stamp)+'/'+encodeURIComponent(f);
-         return '<figure><img loading="lazy" src="'+u+'"><a class="dl" href="'+u+'?dl=1" download>↓ PNG</a>'
+         return '<figure>'
+          +'<a href="'+u+'" target="_blank" rel="noopener" title="Open full size"><img loading="lazy" src="'+u+'"></a>'
+          +'<button class="cp" data-c="'+b64(caps[i]||'')+'" title="Copy caption">📋</button>'
+          +'<a class="dl" href="'+u+'?dl=1" download>↓ PNG</a>'
           +'<figcaption>'+(esc(caps[i])||'—')+'</figcaption></figure>';}).join('')
        +'</div></div>';}).join('');
     $('#bx_list').innerHTML=ALL.length?(html||'<p class="muted">No posters match “'+esc(q)+'”.</p>')
@@ -933,6 +943,14 @@ async function viewBatches(){
     $('#bx_meta').textContent=ALL.length
       ?(nb+' batch'+(nb===1?'':'es')+' · '+np+' poster'+(np===1?'':'s')+(q?' (filtered)':''))
       :'';
+    document.querySelectorAll('#bx_list .cp').forEach(b=>b.onclick=ev=>{
+      ev.preventDefault();
+      navigator.clipboard.writeText(fromB64(b.dataset.c)).then(()=>toast('Caption copied'));
+    });
+    document.querySelectorAll('#bx_list [data-cp-all]').forEach(b=>b.onclick=ev=>{
+      ev.preventDefault();
+      navigator.clipboard.writeText(fromB64(b.dataset.cpAll)).then(()=>toast('All captions copied'));
+    });
   }
   $('#bx_q').oninput=paint;
   $('#bx_ref').onclick=viewBatches;

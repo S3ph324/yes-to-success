@@ -305,8 +305,13 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
   const logo = resolveSrc(logoSrc);
   const padX = Math.round(width * 0.055);
   const ctaSize = Math.round(width * 0.0225);
+  // Logo (when present): top inset + height as fractions of canvas height.
+  // hookTop is derived from logoTop+logoHeight so changing logo size auto-
+  // adjusts the hook position with a consistent gap.
+  const logoTop = Math.round(height * 0.04);
+  const logoHeight = Math.round(height * 0.16);
   const hookTop = logo
-    ? Math.round(height * 0.135)
+    ? logoTop + logoHeight + Math.round(height * 0.025)
     : Math.round(height * 0.065);
 
   return (
@@ -344,7 +349,7 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
         <div
           style={{
             position: "absolute",
-            top: Math.round(height * 0.045),
+            top: logoTop,
             left: 0,
             right: 0,
             display: "flex",
@@ -354,12 +359,10 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
           <Img
             src={logo}
             style={{
-              height: Math.round(height * 0.082),
+              height: logoHeight,
               width: "auto",
               objectFit: "contain",
-              // The brand logo ships on a solid black field; "screen" makes
-              // the black drop out so only the mark shows over the photo.
-              mixBlendMode: "screen",
+              filter: "drop-shadow(0 6px 22px rgba(0,0,0,0.5))",
             }}
           />
         </div>
