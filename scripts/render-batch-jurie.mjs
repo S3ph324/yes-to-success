@@ -52,12 +52,15 @@ try {
   /* fall back to component defaults */
 }
 
+// Per-run override from the dashboard "Include logo" checkbox.
+const NO_LOGO = process.env.DASHBOARD_NO_LOGO === "1";
+
 const brand = {
   brandGold: preset?.brandAccent || "#F5C13B",
   brandGoldLight: "#FFE27A",
   brandGoldDeep: preset?.brandAccentDeep || "#C7902A",
   brandRed: preset?.brandPrimary || "#E11522",
-  logoSrc: preset?.logoSrc || "",
+  logoSrc: NO_LOGO ? "" : preset?.logoSrc || "",
   ctaComment: preset?.ctaComment || "MENTOR",
   ctaTail: preset?.ctaTail || "LEARN MORE",
 };

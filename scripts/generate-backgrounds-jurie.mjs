@@ -64,18 +64,31 @@ const mimeFor = (p) => {
   return "image/png";
 };
 
+// Per-run extra references uploaded from the dashboard override the
+// character's saved photos for this batch only.
+let extraRefs = [];
+try {
+  if (process.env.DASHBOARD_EXTRA_REFS) {
+    const parsed = JSON.parse(process.env.DASHBOARD_EXTRA_REFS);
+    if (Array.isArray(parsed)) extraRefs = parsed;
+  }
+} catch {
+  /* malformed env — ignore */
+}
 const refParts = [];
-if (character?.photos?.length) {
-  for (const rel of character.photos.slice(0, 3)) {
-    const full = path.join(projectRoot, "public", rel);
-    try {
-      const buf = await fs.readFile(full);
-      refParts.push({
-        inlineData: { mimeType: mimeFor(rel), data: buf.toString("base64") },
-      });
-    } catch {
-      console.warn(`  ref photo missing, skipping: ${rel}`);
-    }
+const refSources =
+  extraRefs.length > 0
+    ? extraRefs.slice(0, 3).map((p) => ({ abs: true, p }))
+    : (character?.photos || []).slice(0, 3).map((p) => ({ abs: false, p }));
+for (const { abs, p } of refSources) {
+  const full = abs ? p : path.join(projectRoot, "public", p);
+  try {
+    const buf = await fs.readFile(full);
+    refParts.push({
+      inlineData: { mimeType: mimeFor(p), data: buf.toString("base64") },
+    });
+  } catch {
+    console.warn(`  ref photo missing, skipping: ${p}`);
   }
 }
 const hasRef = refParts.length > 0;

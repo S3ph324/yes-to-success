@@ -275,11 +275,37 @@ app.get("/api/status", (_q, res) =>
     code: job?.code ?? null,
   }),
 );
-app.post("/api/generate", async (req, res) => {
+// Per-batch one-off reference photos uploaded from the Generate tab.
+// Saved to out/extra-refs (gitignored); their absolute paths are passed to
+// the pipeline via DASHBOARD_EXTRA_REFS and override the character's saved
+// photos for that batch only.
+const extraRefUpload = multer({
+  storage: multer.diskStorage({
+    destination: async (_r, _f, cb) => {
+      const d = path.join(projectRoot, "out", "extra-refs");
+      await fs.mkdir(d, { recursive: true });
+      cb(null, d);
+    },
+    filename: (_r, file, cb) =>
+      cb(
+        null,
+        `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.originalname.replace(/[^\w.\-]/g, "_")}`,
+      ),
+  }),
+});
+
+app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) => {
   if (job?.running)
     return res.status(409).json({ error: "A batch is already running." });
-  const { client, topic, count, briefId, brandPresetId, characterId } =
-    req.body || {};
+  const {
+    client,
+    topic,
+    count,
+    briefId,
+    brandPresetId,
+    characterId,
+    useLogo,
+  } = req.body || {};
   const c = await getClient(client);
   if (!c) return res.status(400).json({ error: "Unknown client" });
   const t = String(topic || "").trim().slice(0, 200);
@@ -289,13 +315,23 @@ app.post("/api/generate", async (req, res) => {
   if (!t) return res.status(400).json({ error: "Topic is required." });
   if (!guard(req, res)) return;
 
+  const extraRefPaths = (req.files || []).map((f) => f.path);
+
   job = { running: true, client, log: [], code: null };
-  log(`▶ [${c.label}] ${n} poster(s) about "${t}"…`);
+  log(
+    `▶ [${c.label}] ${n} poster(s) about "${t}"` +
+      (extraRefPaths.length ? ` · ${extraRefPaths.length} extra ref(s)` : "") +
+      (useLogo === "1" ? " · with logo" : " · no logo") +
+      "…",
+  );
   const env = { ...process.env };
   if (EXPORT_BASE) env.JURIE_EXPORT_DIR = path.join(EXPORT_BASE, client);
   if (briefId) env.DASHBOARD_BRIEF_ID = briefId;
   if (brandPresetId) env.DASHBOARD_BRAND_PRESET_ID = brandPresetId;
   if (characterId !== undefined) env.DASHBOARD_CHARACTER_ID = characterId;
+  if (useLogo !== "1") env.DASHBOARD_NO_LOGO = "1";
+  if (extraRefPaths.length)
+    env.DASHBOARD_EXTRA_REFS = JSON.stringify(extraRefPaths);
   env.JURIE_NO_OPEN = "1";
   const child = spawn(
     "node",
@@ -775,6 +811,12 @@ async function viewGenerate(){
    +'<div id="g_lprev" style="width:130px;height:130px;border:1px solid var(--line);border-radius:10px;'
    +'background:#000 center/contain no-repeat;display:flex;align-items:center;justify-content:center;'
    +'color:var(--mut);font-size:11px">none</div></div></div>'
+   +'<div class="row" style="align-items:flex-end;margin-top:6px">'
+   +'<div style="flex:0 0 220px"><label style="display:inline-flex;gap:8px;align-items:center;color:var(--txt);font-size:13px;cursor:pointer;margin:0">'
+   +'<input type="checkbox" id="g_logo_on" style="width:auto;margin:0"> Include logo on posters</label></div>'
+   +'<div style="flex:1;min-width:240px"><label>Extra reference photos (optional — used instead of the character\\\'s saved photos for this batch)</label>'
+   +'<input id="g_extras" type="file" accept="image/*" multiple></div>'
+   +'</div>'
    +'<p style="margin:14px 0"><button class="go" id="g_go">Generate posters</button></p>'
    +'<div id="g_prog" style="display:none;margin:4px 0 14px">'
    +'<div style="height:12px;background:#0a0a0b;border:1px solid var(--line);border-radius:999px;overflow:hidden">'
@@ -811,9 +853,18 @@ async function viewGenerate(){
     if(line.indexOf('✓ Done')>-1)return 100;
     return -1;}
   $('#g_go').onclick=async()=>{
-    const body={client:CLIENT,topic:$('#g_topic').value.trim(),count:+$('#g_count').value||8,
-      briefId:$('#g_brief').value,brandPresetId:$('#g_brand').value,characterId:$('#g_char').value};
-    if(!body.topic)return toast('Enter a topic first',true);
+    const topic=$('#g_topic').value.trim();
+    if(!topic)return toast('Enter a topic first',true);
+    const fd=new FormData();
+    fd.append('client',CLIENT);
+    fd.append('topic',topic);
+    fd.append('count',String(+$('#g_count').value||8));
+    fd.append('briefId',$('#g_brief').value);
+    fd.append('brandPresetId',$('#g_brand').value);
+    fd.append('characterId',$('#g_char').value);
+    fd.append('useLogo',$('#g_logo_on').checked?'1':'0');
+    const ef=$('#g_extras').files||[];
+    for(const f of ef)fd.append('extraRef',f);
     $('#g_go').disabled=true;phase='';
     $('#g_log').style.display='block';$('#g_log').textContent='';
     $('#g_prog').style.display='block';
@@ -825,7 +876,7 @@ async function viewGenerate(){
       const p=progFrom(line);if(p>=0)setProg(p,false);
       if(line.indexOf('✓ Done')>-1){es.close();$('#g_go').disabled=false;
         toast('Batch complete \\u2713');setTimeout(()=>{TAB='batches';render();},850);}};
-    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const r=await fetch('/api/generate',{method:'POST',body:fd});
     if(!r.ok){toast((await r.json()).error||'Failed to start',true);$('#g_go').disabled=false;$('#g_prog').style.display='none';}
   };
 }
