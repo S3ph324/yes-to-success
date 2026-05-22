@@ -839,13 +839,27 @@ async function viewBrand(){
    +'<h2 style="margin-top:18px">Create / update a brand kit</h2>'
    +'<div class="row"><div><label>ID</label><input id="b_id" placeholder="preset_'+CLIENT+'_2"></div>'
    +'<div><label>Name</label><input id="b_name"></div></div>'
-   +'<div class="row"><div><label>Gold (accent)</label><input id="b_gold" value="#F5C13B"></div>'
-   +'<div><label>Gold deep</label><input id="b_goldd" value="#C7902A"></div>'
-   +'<div><label>Red</label><input id="b_red" value="#E11522"></div></div>'
+   +'<div class="row">'
+   +'<div><label>Gold (accent)</label>'
+   +'<div style="display:flex;gap:8px;align-items:center"><input type="color" id="b_gold_c" value="#F5C13B" style="width:42px;height:38px;padding:2px;cursor:pointer">'
+   +'<input id="b_gold" value="#F5C13B" placeholder="#F5C13B" style="flex:1"></div></div>'
+   +'<div><label>Gold deep</label>'
+   +'<div style="display:flex;gap:8px;align-items:center"><input type="color" id="b_goldd_c" value="#C7902A" style="width:42px;height:38px;padding:2px;cursor:pointer">'
+   +'<input id="b_goldd" value="#C7902A" placeholder="#C7902A" style="flex:1"></div></div>'
+   +'<div><label>Red</label>'
+   +'<div style="display:flex;gap:8px;align-items:center"><input type="color" id="b_red_c" value="#E11522" style="width:42px;height:38px;padding:2px;cursor:pointer">'
+   +'<input id="b_red" value="#E11522" placeholder="#E11522" style="flex:1"></div></div>'
+   +'</div>'
    +'<div class="row"><div><label>CTA comment word</label><input id="b_cta" value="MENTOR"></div>'
    +'<div><label>CTA tail</label><input id="b_tail" value="LEARN MORE"></div></div>'
    +'<label>Logo (optional)</label><input id="b_logo" type="file" accept="image/*">'
    +'<p style="margin-top:14px"><button class="go" id="b_save">Save brand kit</button></p></div>';
+  // Keep each color picker in sync with its hex text input (two-way).
+  [['b_gold','b_gold_c'],['b_goldd','b_goldd_c'],['b_red','b_red_c']].forEach(([hexId,pickId])=>{
+    const h=$('#'+hexId),p=$('#'+pickId);
+    h.oninput=()=>{if(/^#[0-9a-fA-F]{6}$/.test(h.value))p.value=h.value;};
+    p.oninput=()=>{h.value=p.value;};
+  });
   $('#b_save').onclick=async()=>{
     let logoSrc='';const f=$('#b_logo').files[0];
     if(f){const fd=new FormData();fd.append('logo',f);
