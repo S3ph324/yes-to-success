@@ -309,7 +309,7 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
   // hookTop is derived from logoTop+logoHeight so changing logo size auto-
   // adjusts the hook position with a consistent gap.
   const logoTop = Math.round(height * 0.04);
-  const logoHeight = Math.round(height * 0.16);
+  const logoHeight = Math.round(height * 0.2);
   const hookTop = logo
     ? logoTop + logoHeight + Math.round(height * 0.025)
     : Math.round(height * 0.065);
