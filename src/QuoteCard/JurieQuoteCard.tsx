@@ -150,11 +150,13 @@ const headlineFontSize = (lines: Tok[][], width: number) => {
     for (const tk of l)
       maxTok = Math.max(maxTok, tk.t.length * SIZE_MUL[tk.s]);
   let base: number;
-  if (maxLen <= 9) base = 104;
-  else if (maxLen <= 14) base = 92;
-  else if (maxLen <= 20) base = 80;
-  else if (maxLen <= 27) base = 72;
-  else base = 62;
+  // Slightly trimmed (~12%) vs prior values so the headline doesn't smother
+  // the photo subject. Combined with softer scrims below, the subject reads.
+  if (maxLen <= 9) base = 92;
+  else if (maxLen <= 14) base = 82;
+  else if (maxLen <= 20) base = 70;
+  else if (maxLen <= 27) base = 62;
+  else base = 54;
   const fitCap = contentW / (maxTok * CHARW);
   return Math.round(Math.min(base * scale, fitCap));
 };
@@ -334,14 +336,14 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
       <AbsoluteFill
         style={{
           background:
-            "linear-gradient(180deg, rgba(0,0,0,0.80) 0%, rgba(0,0,0,0.45) 22%, rgba(0,0,0,0) 44%)",
+            "linear-gradient(180deg, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.28) 22%, rgba(0,0,0,0) 44%)",
         }}
       />
       {/* bottom scrim */}
       <AbsoluteFill
         style={{
           background:
-            "linear-gradient(0deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.62) 24%, rgba(0,0,0,0) 54%)",
+            "linear-gradient(0deg, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.42) 24%, rgba(0,0,0,0) 54%)",
         }}
       />
 
