@@ -818,6 +818,101 @@ box-shadow:0 1px 4px rgba(0,0,0,.35) inset}
 object-fit:cover;flex:0 0 54px;background:#0d0d0f}
 .thumb.ph{display:flex;align-items:center;justify-content:center;color:var(--mut);
 font-size:9px;letter-spacing:.06em;text-transform:uppercase}
+/* — UI overhaul v0.16 — sidebar layout + premium buttons — */
+:root{--gold-deep:#D9A02E;--line-soft:rgba(255,255,255,.04)}
+/* Header: stickier, subtle gradient, frosted */
+header{padding:16px 32px;background:linear-gradient(180deg,rgba(20,20,22,.92),rgba(10,10,11,.86));
+backdrop-filter:blur(14px) saturate(130%);-webkit-backdrop-filter:blur(14px) saturate(130%);
+border-bottom:1px solid var(--line-bright)}
+header b{font-size:12px;letter-spacing:.32em;color:var(--mut)}
+header b i{color:var(--gold);font-weight:700}
+header b::before{box-shadow:0 0 14px rgba(232,182,74,.7),0 0 2px rgba(232,182,74,1)}
+header .sw{font-size:12px;letter-spacing:.04em;color:var(--mut);text-transform:uppercase;font-weight:600}
+header .sw select{min-width:170px;font-size:13px;letter-spacing:.005em;text-transform:none;
+font-weight:500;color:var(--txt)}
+/* Sidebar layout */
+main{max-width:1320px;display:grid;grid-template-columns:220px 1fr;gap:44px;
+padding:36px 40px 80px;align-items:start}
+nav{flex-direction:column;border:0;margin:0;gap:3px;align-self:start;
+position:sticky;top:78px;padding:6px 0;flex-wrap:nowrap}
+nav button{width:100%;text-align:left;padding:11px 14px;border-radius:9px;font-size:13.5px;
+color:var(--mut);border:1px solid transparent;letter-spacing:.005em;font-weight:500;
+display:flex;align-items:center;gap:10px}
+nav button:hover{background:rgba(255,255,255,.04);color:var(--txt)}
+nav button.on{background:linear-gradient(180deg,rgba(232,182,74,.14),rgba(232,182,74,.05));
+color:var(--gold-hi);border-color:rgba(232,182,74,.24);font-weight:600;
+box-shadow:0 1px 0 rgba(255,255,255,.05) inset}
+nav button.on::after,nav button::after{display:none!important}
+nav button::before{content:"";width:4px;height:4px;border-radius:50%;background:currentColor;
+opacity:.32;flex-shrink:0}
+nav button.on::before{opacity:1;background:var(--gold);box-shadow:0 0 8px rgba(232,182,74,.7)}
+@media(max-width:880px){
+main{grid-template-columns:1fr;gap:22px;padding:24px 20px 80px}
+nav{flex-direction:row;flex-wrap:wrap;border-bottom:1px solid var(--line);
+padding:0 0 14px;position:static;gap:6px}
+nav button{width:auto}
+}
+/* Cards: soft top highlight, gradient surface */
+.card{background:linear-gradient(180deg,#15151a 0%,#101013 100%);
+border:1px solid var(--line-bright);position:relative;overflow:hidden;
+box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 1px 2px rgba(0,0,0,.4)}
+.card::before{content:"";position:absolute;left:24px;right:24px;top:0;height:1px;
+background:linear-gradient(90deg,transparent,rgba(255,255,255,.13),transparent)}
+.card.disabled::before{display:none}
+/* h2 with brand-dot */
+h2{display:flex;align-items:center;gap:11px;color:var(--txt)}
+h2::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--gold);
+box-shadow:0 0 9px rgba(232,182,74,.55)}
+/* Premium primary button — gradient, deep shadow, active depress */
+button.go{background:linear-gradient(180deg,#F5C66A 0%,var(--gold) 52%,var(--gold-deep) 100%);
+color:#1a1306;padding:13px 28px;border-radius:11px;
+border:1px solid rgba(0,0,0,.22);
+text-shadow:0 1px 0 rgba(255,255,255,.24);
+font-weight:700;letter-spacing:.018em;
+box-shadow:0 1px 0 rgba(255,255,255,.38) inset,
+0 -1px 0 rgba(0,0,0,.2) inset,
+0 1px 2px rgba(0,0,0,.32),
+0 10px 22px -10px rgba(232,182,74,.55)}
+button.go:hover:not(:disabled){transform:translateY(-1.5px);
+box-shadow:0 1px 0 rgba(255,255,255,.46) inset,
+0 -1px 0 rgba(0,0,0,.2) inset,
+0 2px 5px rgba(0,0,0,.36),
+0 16px 32px -12px rgba(232,182,74,.72)}
+button.go:active:not(:disabled){transform:translateY(0);
+box-shadow:0 1px 1px rgba(0,0,0,.5) inset,0 1px 0 rgba(255,255,255,.15) inset}
+/* Refined secondary button */
+button.sec{background:rgba(255,255,255,.04);border:1px solid var(--line-bright);
+color:var(--txt);padding:10px 16px;border-radius:9px;font-weight:500;
+letter-spacing:.005em;font-size:12.5px}
+button.sec:hover{background:rgba(255,255,255,.08);border-color:var(--gold);
+color:var(--gold-hi);transform:translateY(-1px)}
+button.sec:active{transform:translateY(0);background:rgba(255,255,255,.05)}
+/* Inputs */
+input,select,textarea{background:#0d0d10;border-color:var(--line-bright);font-weight:500}
+input:focus,select:focus,textarea:focus{
+box-shadow:0 0 0 3px rgba(232,182,74,.18),0 1px 0 rgba(255,255,255,.04) inset;
+background:#0f0f12}
+/* Pills with surface */
+.pill{background:rgba(255,255,255,.05);color:var(--txt);
+border:1px solid var(--line-bright);font-weight:600}
+/* Items */
+.item{background:rgba(255,255,255,.022);border:1px solid var(--line-bright);border-radius:11px}
+.item:hover{background:rgba(255,255,255,.05);border-color:rgba(232,182,74,.22)}
+/* Thumb hover ring */
+.thumb{transition:border-color .15s,transform .15s}
+.thumb:hover{border-color:var(--gold)}
+/* Posters tile */
+figure{background:#0a0a0c;border-color:var(--line-bright);
+box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 6px 16px -8px rgba(0,0,0,.55)}
+figure:hover{transform:translateY(-3px);
+box-shadow:0 1px 0 rgba(255,255,255,.06) inset,
+0 14px 28px -10px rgba(0,0,0,.65),
+0 0 0 1px rgba(232,182,74,.22)}
+.dl,.cp{font-weight:600;letter-spacing:.05em;text-transform:uppercase;font-size:10px;
+padding:7px 11px;border-radius:8px}
+/* Toast */
+#toast{background:rgba(16,16,18,.92);border:1px solid var(--line-bright);
+box-shadow:0 24px 50px -20px rgba(0,0,0,.72),0 0 0 1px rgba(255,255,255,.04)}
 </style></head><body>
 <header><b>QUOTE&nbsp;POSTER&nbsp;<i>STUDIO</i></b>
 <span class="pill" title="deployed version">v${VERSION}</span><span class="sp"></span>
