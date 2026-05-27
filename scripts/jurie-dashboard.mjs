@@ -741,6 +741,83 @@ font-size:11.5px;line-height:1.62;letter-spacing:0;color:#a8a8af}
 #g_pct{font-variant-numeric:tabular-nums;letter-spacing:.02em}
 #toast{font-size:13px;letter-spacing:.004em}
 h1,h2,h3{font-feature-settings:"kern","liga"}
+/* — UI polish v0.15 — */
+:root{--gold-hi:#FFE27A;--panel-hi:#16161a;--line-bright:rgba(255,255,255,.22);--txt-dim:#b9b9bf}
+body{background:radial-gradient(1100px 700px at 8% -12%,rgba(232,182,74,.05),transparent 58%),var(--bg)}
+header{padding:20px 32px}
+header b{font-size:13px;letter-spacing:.26em;display:flex;align-items:center;gap:11px}
+header b::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--gold);
+box-shadow:0 0 10px rgba(232,182,74,.55)}
+nav{margin-bottom:30px;gap:28px}
+nav button{padding:0 2px 16px;font-size:13.5px;font-weight:500}
+nav button.on::after{height:2px;border-radius:2px}
+.card{padding:28px 30px;margin-bottom:22px;border-radius:14px;transition:border-color .2s}
+h2{font-size:11px;letter-spacing:.18em;margin-bottom:20px}
+label{font-size:11.5px;letter-spacing:.02em;margin:14px 0 7px;color:var(--mut)}
+.row{gap:18px}
+input,select,textarea{padding:11px 14px;border-radius:9px;background:#0e0e10;
+transition:border-color .15s,box-shadow .15s,background .15s}
+input:focus,select:focus,textarea:focus{border-color:var(--gold);
+box-shadow:0 0 0 3px rgba(232,182,74,.13);outline:none}
+input:hover:not(:focus),select:hover:not(:focus),textarea:hover:not(:focus){border-color:var(--line-bright)}
+button{transition:all .15s ease}
+button.go{padding:13px 26px;border-radius:10px;font-size:13.5px;font-weight:600;letter-spacing:.02em;
+box-shadow:0 1px 0 rgba(255,255,255,.14) inset,0 0 0 1px rgba(0,0,0,.12)}
+button.go:hover:not(:disabled){transform:translateY(-1px);
+box-shadow:0 6px 18px rgba(232,182,74,.28),0 1px 0 rgba(255,255,255,.18) inset}
+button.go:active:not(:disabled){transform:translateY(0)}
+button.sec{padding:9px 15px;border-radius:8px;font-size:12.5px;background:transparent}
+button.sec:hover{border-color:var(--gold);color:var(--txt);background:rgba(232,182,74,.06)}
+.item{padding:14px 16px;border-radius:11px;background:rgba(255,255,255,.015);
+transition:border-color .15s,background .15s,transform .15s}
+.item:hover{border-color:var(--line-bright);background:rgba(255,255,255,.035)}
+.pill{font-size:10px;font-weight:600;letter-spacing:.08em;padding:3px 9px;
+background:rgba(255,255,255,.04)}
+.muted{color:var(--mut);font-size:12.5px;line-height:1.55}
+figure{border-radius:13px;transition:transform .2s,border-color .2s}
+figure:hover{transform:translateY(-2px);border-color:var(--line-bright)}
+figcaption{font-size:11.5px;line-height:1.62}
+#toast{padding:13px 20px;border-radius:11px;font-size:13px;
+background:rgba(20,20,22,.95);backdrop-filter:blur(10px);
+box-shadow:0 8px 32px rgba(0,0,0,.45),0 0 0 1px var(--line-bright)}
+pre{padding:16px 18px;font-size:11.5px;line-height:1.65;border-radius:10px}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:6px}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.2)}
+/* progress bar */
+#g_prog>div:first-child{background:#0a0a0b;border:1px solid var(--line);
+border-radius:999px;overflow:hidden;height:7px}
+#g_bar{background:linear-gradient(90deg,var(--gold),var(--gold-hi))!important;
+transition:width .5s cubic-bezier(.2,.7,.3,1)!important;
+box-shadow:0 0 12px rgba(232,182,74,.3) inset}
+#g_pct{font-variant-numeric:tabular-nums;letter-spacing:.05em;font-size:11px;
+color:var(--mut);margin-top:9px}
+/* file + color + range inputs */
+input[type=file]{background:rgba(255,255,255,.02);border:1px dashed var(--line-bright);
+padding:13px;color:var(--mut);cursor:pointer;font-size:12.5px;width:100%}
+input[type=file]:hover{border-color:var(--gold);color:var(--txt);background:rgba(232,182,74,.04)}
+input[type=file]::-webkit-file-upload-button{background:transparent;border:0;color:var(--mut);
+margin-right:14px;font:inherit;cursor:pointer;font-weight:500}
+input[type=file]:hover::-webkit-file-upload-button{color:var(--gold)}
+input[type=color]{padding:2px;border-radius:7px;background:transparent;cursor:pointer;
+border:1px solid var(--line-bright)}
+input[type=color]:hover{border-color:var(--gold)}
+input[type=range]{padding:0;background:transparent;height:22px;cursor:pointer;-webkit-appearance:none;width:100%}
+input[type=range]::-webkit-slider-runnable-track{height:4px;background:var(--line-bright);border-radius:4px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;
+border-radius:50%;background:var(--gold);cursor:grab;margin-top:-6px;
+border:2px solid var(--bg);box-shadow:0 2px 8px rgba(232,182,74,.4)}
+input[type=range]:hover::-webkit-slider-thumb{background:var(--gold-hi)}
+input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;transform:scale(1.08)}
+input[type=checkbox]{accent-color:var(--gold);cursor:pointer}
+/* small reusable visual primitives used in the brand-kit / character lists */
+.swatchrow{display:flex;gap:5px;margin-top:4px}
+.swatchrow span{width:18px;height:18px;border-radius:5px;border:1px solid var(--line-bright);
+box-shadow:0 1px 4px rgba(0,0,0,.35) inset}
+.thumb{width:54px;height:54px;border-radius:9px;border:1px solid var(--line-bright);
+object-fit:cover;flex:0 0 54px;background:#0d0d0f}
+.thumb.ph{display:flex;align-items:center;justify-content:center;color:var(--mut);
+font-size:9px;letter-spacing:.06em;text-transform:uppercase}
 </style></head><body>
 <header><b>QUOTE&nbsp;POSTER&nbsp;<i>STUDIO</i></b>
 <span class="pill" title="deployed version">v${VERSION}</span><span class="sp"></span>
@@ -888,10 +965,22 @@ async function viewGenerate(){
 async function viewBrand(){
   const b=await api('/api/brand?client='+CLIENT);
   $('#view').innerHTML='<div class="card"><h2>Brand Kits — '+CLIENT+'</h2>'
-   +b.map(p=>'<div class="item" style="display:flex;gap:12px;align-items:center">'
-   +(p.logoSrc?'<img src="/api/brandlogo?p='+encodeURIComponent(p.logoSrc)+'" style="width:58px;height:58px;object-fit:contain;background:#000;border-radius:8px;border:1px solid var(--line)">':'<div style="width:58px;height:58px;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:10px">no logo</div>')
-   +'<div><b>'+p.name+'</b> <span class="pill">'+p.id+'</span><br>'
-   +'<span class="muted">gold '+p.brandAccent+' · red '+p.brandPrimary+' · CTA "'+(p.ctaComment||'')+'" / '+(p.ctaTail||'')+'</span></div></div>').join('')
+   +b.map(p=>{
+     const logo=p.logoSrc
+       ?'<img class="thumb" style="object-fit:contain;background:#000" src="/api/brandlogo?p='+encodeURIComponent(p.logoSrc)+'">'
+       :'<div class="thumb ph">no logo</div>';
+     const sw=(c)=>'<span style="background:'+(c||'#000')+'" title="'+(c||'')+'"></span>';
+     return '<div class="item" style="display:flex;gap:14px;align-items:center">'
+       +logo
+       +'<div style="flex:1;min-width:0">'
+       +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>'+p.name+'</b>'
+       +'<span class="pill">'+p.id+'</span></div>'
+       +'<div class="swatchrow">'+sw(p.brandAccent)+sw(p.brandAccentDeep)+sw(p.brandPrimary)+'</div>'
+       +'<div class="muted" style="margin-top:5px">CTA "'+(p.ctaComment||'')+'" → '+(p.ctaTail||'')
+       +(p.logoPosition?' · logo '+p.logoPosition.replace("-"," "):'')
+       +(typeof p.logoSize==="number"?' · '+Math.round(p.logoSize*100)+"%":'')
+       +'</div></div></div>';
+   }).join('')
    +'<h2 style="margin-top:18px">Create / update a brand kit</h2>'
    +'<div class="row"><div><label>ID</label><input id="b_id" placeholder="preset_'+CLIENT+'_2"></div>'
    +'<div><label>Name</label><input id="b_name"></div></div>'
@@ -967,9 +1056,21 @@ async function viewTopics(){
 async function viewChars(){
   const c=await api('/api/characters?client='+CLIENT);
   $('#view').innerHTML='<div class="card"><h2>Characters — '+CLIENT+'</h2>'
-   +(c.length?c.map(x=>'<div class="item"><b>'+x.name+'</b> <span class="pill">'+x.id+'</span> '
-   +'<span class="muted">'+(x.photos||[]).length+' photo(s)'+(x.enabled?'':' · disabled')+'</span></div>').join('')
-   :'<p class="muted">No character yet. Optional — Tranzzie can run scene-only.</p>')
+   +(c.length?c.map(x=>{
+     const first=(x.photos||[])[0];
+     const thumb=first
+       ?'<img class="thumb" src="/api/charphoto?p='+encodeURIComponent(first)+'">'
+       :'<div class="thumb ph">no photo</div>';
+     return '<div class="item" style="display:flex;gap:14px;align-items:center">'
+       +thumb
+       +'<div style="flex:1;min-width:0">'
+       +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>'+x.name+'</b>'
+       +'<span class="pill">'+x.id+'</span></div>'
+       +'<div class="muted" style="margin-top:5px">'+(x.photos||[]).length+' photo'
+       +((x.photos||[]).length===1?'':'s')+(x.enabled?'':' · disabled')+'</div>'
+       +'</div></div>';
+   }).join('')
+   :'<p class="muted" style="text-align:center;padding:24px 0">No character yet. Optional — Tranzzie can run scene-only.</p>')
    +'<h2 style="margin-top:18px">Create / update a character</h2>'
    +'<div class="row"><div><label>ID</label><input id="c_id" placeholder="char_'+CLIENT+'"></div>'
    +'<div><label>Name</label><input id="c_name"></div></div>'
