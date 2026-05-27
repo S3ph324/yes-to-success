@@ -61,6 +61,9 @@ const brand = {
   brandGoldDeep: preset?.brandAccentDeep || "#C7902A",
   brandRed: preset?.brandPrimary || "#E11522",
   logoSrc: NO_LOGO ? "" : preset?.logoSrc || "",
+  logoPosition: preset?.logoPosition || "top-center",
+  logoSize:
+    typeof preset?.logoSize === "number" ? preset.logoSize : 0.10,
   ctaComment: preset?.ctaComment || "MENTOR",
   ctaTail: preset?.ctaTail || "LEARN MORE",
 };
@@ -111,6 +114,8 @@ for (const q of quotes) {
     brandGoldDeep: brand.brandGoldDeep,
     brandRed: brand.brandRed,
     logoSrc: brand.logoSrc,
+    logoPosition: brand.logoPosition,
+    logoSize: brand.logoSize,
     headlineFont: "",
   };
   try {

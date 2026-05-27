@@ -909,6 +909,18 @@ async function viewBrand(){
    +'<div class="row"><div><label>CTA comment word</label><input id="b_cta" value="MENTOR"></div>'
    +'<div><label>CTA tail</label><input id="b_tail" value="LEARN MORE"></div></div>'
    +'<label>Logo (optional)</label><input id="b_logo" type="file" accept="image/*">'
+   +'<div class="row" style="margin-top:10px">'
+   +'<div><label>Logo position</label><select id="b_lpos">'
+   +'<option value="top-left">Top left</option>'
+   +'<option value="top-center" selected>Top center</option>'
+   +'<option value="top-right">Top right</option>'
+   +'<option value="bottom-left">Bottom left</option>'
+   +'<option value="bottom-center">Bottom center</option>'
+   +'<option value="bottom-right">Bottom right</option>'
+   +'</select></div>'
+   +'<div><label>Logo size — <span id="b_lsizeval">10</span>% of poster height</label>'
+   +'<input type="range" id="b_lsize" min="6" max="22" step="1" value="10" style="width:100%"></div>'
+   +'</div>'
    +'<p style="margin-top:14px"><button class="go" id="b_save">Save brand kit</button></p></div>';
   // Keep each color picker in sync with its hex text input (two-way).
   [['b_gold','b_gold_c'],['b_goldd','b_goldd_c'],['b_red','b_red_c']].forEach(([hexId,pickId])=>{
@@ -916,13 +928,17 @@ async function viewBrand(){
     h.oninput=()=>{if(/^#[0-9a-fA-F]{6}$/.test(h.value))p.value=h.value;};
     p.oninput=()=>{h.value=p.value;};
   });
+  // Live numeric label for the logo size slider.
+  $('#b_lsize').oninput=()=>{$('#b_lsizeval').textContent=$('#b_lsize').value;};
   $('#b_save').onclick=async()=>{
     let logoSrc='';const f=$('#b_logo').files[0];
     if(f){const fd=new FormData();fd.append('logo',f);
       const u=await api('/api/brand/logo',{method:'POST',body:fd});logoSrc=u.path||'';}
     const p={id:$('#b_id').value.trim(),client:CLIENT,name:$('#b_name').value.trim()||$('#b_id').value,
       brandAccent:$('#b_gold').value,brandAccentDeep:$('#b_goldd').value,brandPrimary:$('#b_red').value,
-      brandDeep:'#0A0A0A',ctaComment:$('#b_cta').value.toUpperCase(),ctaTail:$('#b_tail').value.toUpperCase()};
+      brandDeep:'#0A0A0A',ctaComment:$('#b_cta').value.toUpperCase(),ctaTail:$('#b_tail').value.toUpperCase(),
+      logoPosition:$('#b_lpos').value,
+      logoSize:Number($('#b_lsize').value)/100};
     if(logoSrc)p.logoSrc=logoSrc;
     if(!p.id)return toast('Brand kit ID required',true);
     await fetch('/api/brand',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});

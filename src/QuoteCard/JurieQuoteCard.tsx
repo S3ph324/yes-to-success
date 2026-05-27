@@ -51,6 +51,19 @@ export const jurieQuoteCardSchema = z.object({
   brandGoldDeep: z.string().default("#C7902A"),
   brandRed: z.string().default("#E11522"),
   logoSrc: z.string().default(""),
+  // Logo placement + size (controllable per brand kit from the dashboard).
+  logoPosition: z
+    .enum([
+      "top-left",
+      "top-center",
+      "top-right",
+      "bottom-left",
+      "bottom-center",
+      "bottom-right",
+    ])
+    .default("top-center"),
+  // Fraction of canvas height (e.g. 0.10 = 10%). Clamped to a sane range.
+  logoSize: z.number().min(0.04).max(0.30).default(0.10),
   headlineFont: z.string().default(""),
 });
 
@@ -278,6 +291,8 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
   brandGoldDeep,
   brandRed,
   logoSrc,
+  logoPosition,
+  logoSize,
   headlineFont,
 }) => {
   const { width, height } = useVideoConfig();
@@ -318,11 +333,36 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
   const logo = resolveSrc(logoSrc);
   const padX = Math.round(width * 0.055);
   const ctaSize = Math.round(width * 0.0225);
-  // Logo (when present): top inset + height as fractions of canvas height.
-  // hookTop is derived from logoTop+logoHeight so changing logo size auto-
-  // adjusts the hook position with a consistent gap.
-  const logoTop = Math.round(height * 0.04);
-  const logoHeight = Math.round(height * 0.10);
+  // Logo (when present): size + position are brand-kit controlled. Hook
+  // and payoff are bottom-anchored, independent of the logo block.
+  const logoH = Math.round(
+    height * Math.max(0.04, Math.min(0.30, logoSize || 0.10)),
+  );
+  const insetY = Math.round(height * 0.04);
+  const insetX = Math.round(width * 0.045);
+  // Build the absolute box for the logo based on logoPosition.
+  // Center positions span left:0/right:0 + flex-center. Corner positions
+  // anchor to one side with an inset.
+  const POS = logoPosition || "top-center";
+  const isTop = POS.startsWith("top");
+  const isCenter = POS.endsWith("center");
+  const logoBoxStyle: React.CSSProperties = {
+    position: "absolute",
+    display: "flex",
+    alignItems: isTop ? "flex-start" : "flex-end",
+    justifyContent: isCenter
+      ? "center"
+      : POS.endsWith("left")
+        ? "flex-start"
+        : "flex-end",
+    left: isCenter ? 0 : POS.endsWith("left") ? insetX : "auto",
+    right: isCenter ? 0 : POS.endsWith("right") ? insetX : "auto",
+    top: isTop ? insetY : "auto",
+    // Lift bottom logos above the CTA + payoff zone (the CTA lives at ~4.2%
+    // from bottom and is ~12% tall; the payoff sits at ~13%). Sitting at
+    // ~17% from bottom clears both for small/medium logos.
+    bottom: !isTop ? Math.round(height * 0.17) : "auto",
+  };
   // Hook + payoff are both bottom-anchored — the photo subject owns the
   // top half (per the reference posters), and the logo (when present) is
   // a small top-center crest that doesn't push the hook around.
@@ -361,20 +401,11 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
       />
 
       {logo && (
-        <div
-          style={{
-            position: "absolute",
-            top: logoTop,
-            left: 0,
-            right: 0,
-            display: "flex",
-            justifyContent: "center",
-          }}
-        >
+        <div style={logoBoxStyle}>
           <Img
             src={logo}
             style={{
-              height: logoHeight,
+              height: logoH,
               width: "auto",
               objectFit: "contain",
               filter: "drop-shadow(0 6px 22px rgba(0,0,0,0.5))",
