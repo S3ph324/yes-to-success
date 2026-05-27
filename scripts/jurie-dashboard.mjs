@@ -305,6 +305,7 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
     brandPresetId,
     characterId,
     useLogo,
+    tipsEnabled,
   } = req.body || {};
   const c = await getClient(client);
   if (!c) return res.status(400).json({ error: "Unknown client" });
@@ -330,6 +331,7 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
   if (brandPresetId) env.DASHBOARD_BRAND_PRESET_ID = brandPresetId;
   if (characterId !== undefined) env.DASHBOARD_CHARACTER_ID = characterId;
   if (useLogo !== "1") env.DASHBOARD_NO_LOGO = "1";
+  if (tipsEnabled === "1") env.DASHBOARD_TIPS = "1";
   if (extraRefPaths.length)
     env.DASHBOARD_EXTRA_REFS = JSON.stringify(extraRefPaths);
   env.JURIE_NO_OPEN = "1";
@@ -813,7 +815,9 @@ async function viewGenerate(){
    +'color:var(--mut);font-size:11px">none</div></div></div>'
    +'<div class="row" style="align-items:flex-end;margin-top:6px">'
    +'<div style="flex:0 0 220px"><label style="display:inline-flex;gap:8px;align-items:center;color:var(--txt);font-size:13px;cursor:pointer;margin:0">'
-   +'<input type="checkbox" id="g_logo_on" style="width:auto;margin:0"> Include logo on posters</label></div>'
+   +'<input type="checkbox" id="g_logo_on" style="width:auto;margin:0"> Include logo on posters</label>'
+   +'<label style="display:inline-flex;gap:8px;align-items:center;color:var(--txt);font-size:13px;cursor:pointer;margin:8px 0 0">'
+   +'<input type="checkbox" id="g_tips" style="width:auto;margin:0"> Include tip-style posters (mix tips into the batch)</label></div>'
    +'<div style="flex:1;min-width:240px"><label>Extra reference photos (optional — used instead of the character\\\'s saved photos for this batch)</label>'
    +'<input id="g_extras" type="file" accept="image/*" multiple></div>'
    +'</div>'
@@ -863,6 +867,7 @@ async function viewGenerate(){
     fd.append('brandPresetId',$('#g_brand').value);
     fd.append('characterId',$('#g_char').value);
     fd.append('useLogo',$('#g_logo_on').checked?'1':'0');
+    fd.append('tipsEnabled',$('#g_tips').checked?'1':'0');
     const ef=$('#g_extras').files||[];
     for(const f of ef)fd.append('extraRef',f);
     $('#g_go').disabled=true;phase='';

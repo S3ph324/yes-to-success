@@ -39,9 +39,10 @@ export const jurieQuoteCardSchema = z.object({
   // Fallback when structured lines are absent.
   quote: z.string().default(""),
   keyword: z.string().default(""),
-  // Footer call-to-action.
+  // Footer call-to-action. useCta=false hides the lockup (quote-only).
   ctaComment: z.string().default("MENTOR"),
   ctaTail: z.string().default("LEARN HOW"),
+  useCta: z.boolean().default(true),
   // Visuals.
   bgSrc: z.string().default(""),
   aspectRatio: aspectRatioSchema,
@@ -270,6 +271,7 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
   keyword,
   ctaComment,
   ctaTail,
+  useCta,
   bgSrc,
   brandGold,
   brandGoldLight,
@@ -437,7 +439,8 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
         ))}
       </div>
 
-      {/* CTA footer lockup */}
+      {/* CTA footer lockup — hidden when useCta=false (quote-only variant) */}
+      {useCta && (
       <div
         style={{
           position: "absolute",
@@ -494,6 +497,7 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
           {ctaTail}
         </div>
       </div>
+      )}
     </AbsoluteFill>
   );
 };

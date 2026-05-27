@@ -113,7 +113,12 @@ const STYLE =
   "watermarks. Any signs, screens, papers, or packaging must be blank, " +
   "out of focus, or cropped out. The photo must contain zero readable text.";
 
-const targets = quotes.map((q, i) => ({ q, i })).filter((x) => x.q.bgPrompt);
+// Skip entries flagged useFlatBg=true (those posters render with the flat
+// gradient background instead of an AI photo — saves a Nano Banana call
+// per skipped poster and gives the batch visual variety).
+const targets = quotes
+  .map((q, i) => ({ q, i }))
+  .filter((x) => x.q.bgPrompt && !x.q.useFlatBg);
 
 console.log(
   `Generating ${targets.length} ${client.label} background(s) via ${REF_MODEL}` +

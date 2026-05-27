@@ -70,6 +70,19 @@ const briefBlock =
       `\n\n`
     : "");
 
+const TIPS_ENABLED = process.env.DASHBOARD_TIPS === "1";
+const KIND_ENUM = TIPS_ENABLED ? ["hook", "tip"] : ["hook"];
+const kindInstruction = TIPS_ENABLED
+  ? `\n\nVARIETY — mix the kinds across the batch:
+- ~70% of entries use kind="hook" (the default HOOK→PAYOFF format below).
+- ~30% of entries use kind="tip". A TIP swaps the format:
+  - topLines = a short setup like "TIP" or "PRO TIP" or "PARA SA'YO:"
+  - bottomLines = the actionable advice in 2–4 short lines (no ellipsis).
+  - Still picks ONE "rb" or "g" hero word (the strongest action verb or
+    the benefit). Still grammatically correct Taglish. No CTA needed.
+Pick the kind per entry; don't make them all the same.`
+  : `\n\nALL entries use kind="hook" (the HOOK→PAYOFF format below).`;
+
 const systemInstruction = `${voiceProfile}${briefBlock}
 
 You are generating quote-poster entries for ${client.label}'s Facebook page.
@@ -77,7 +90,7 @@ Produce exactly ${COUNT} entries. ${
   TOPIC
     ? `EVERY entry must clearly be about: "${TOPIC}".`
     : `Rotate across the brief topics.`
-}
+}${kindInstruction}
 
 Poster structure EXACTLY:
 - HOOK (top): a relatable problem/feeling, ends with an ellipsis "…".
@@ -153,6 +166,7 @@ const resp = await ai.models.generateContent({
           ctaComment: { type: Type.STRING },
           aspectRatio: { type: Type.STRING, enum: ["4:5"] },
           variant: { type: Type.STRING, enum: ["jurie"] },
+          kind: { type: Type.STRING, enum: KIND_ENUM },
           bgPrompt: { type: Type.STRING },
           theme: { type: Type.STRING },
         },
@@ -206,8 +220,17 @@ for (const q of quotes) {
     continue;
   q.variant = "jurie";
   q.aspectRatio = "4:5";
+  q.kind = q.kind === "tip" && TIPS_ENABLED ? "tip" : "hook";
   q.ctaComment = (q.ctaComment || "").toUpperCase();
   q.ctaTail = q.ctaTail || "";
+  // Per-poster random variants for variety in the batch:
+  //   useCta   — ~50% chance the COMMENT/LEARN-HOW footer is included.
+  //              Tips never carry a CTA (the format doesn't fit).
+  //   useFlatBg — ~20% chance the poster skips the AI photo (cheaper +
+  //              cleaner look for some entries; render falls back to the
+  //              composition's gradient background).
+  q.useCta = q.kind === "tip" ? false : Math.random() < 0.5;
+  q.useFlatBg = Math.random() < 0.2;
   q.topLines = (q.topLines || []).map((l) => l.filter((t) => t && t.t));
   q.bottomLines = (q.bottomLines || []).map((l) => l.filter((t) => t && t.t));
   const decolor = (lines) =>

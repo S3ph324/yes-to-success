@@ -103,6 +103,7 @@ for (const q of quotes) {
     keyword: (q.keyword || "").toUpperCase(),
     ctaComment: (q.ctaComment || brand.ctaComment).toUpperCase(),
     ctaTail: q.ctaTail || brand.ctaTail,
+    useCta: q.useCta !== false,
     bgSrc: q.bgPath || "",
     aspectRatio: q.aspectRatio || "4:5",
     brandGold: brand.brandGold,
