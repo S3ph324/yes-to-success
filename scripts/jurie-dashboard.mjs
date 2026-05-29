@@ -431,10 +431,12 @@ const brollUpload = multer({
     filename: (_r, file, cb) =>
       cb(null, `${Date.now()}-${file.originalname.replace(/[^\w.\-]/g, "_")}`),
   }),
-  // 200 MB per upload — Gemini analyzes inline up to ~19 MB, beyond that
-  // broll-analyze uses the Files API. Anything bigger than 200 MB gets
-  // rejected here so users get a clean error instead of a server timeout.
-  limits: { fileSize: 200 * 1024 * 1024 },
+  // 100 MB per upload — Railway's edge proxy reliably accepts bodies up to
+  // ~120 MB but drops bigger ones with no JSON response, which surfaces as
+  // "Failed" with no detail in the browser. Hard-stop here so the user sees
+  // a clean rejection instead. Gemini handles ≤19 MB inline; bigger files
+  // go through the Files API.
+  limits: { fileSize: 100 * 1024 * 1024 },
 });
 
 // Custom multer wrapper so file-size errors come back as a clean JSON 400
@@ -442,10 +444,12 @@ const brollUpload = multer({
 const brollVideoUpload = (req, res, next) => {
   brollUpload.single("video")(req, res, (err) => {
     if (err) {
+      const code = err.code || "UPLOAD_ERROR";
       const msg =
-        err.code === "LIMIT_FILE_SIZE"
-          ? "Video too large (max 200 MB). Compress it or trim to a shorter clip."
-          : String(err.message || err);
+        code === "LIMIT_FILE_SIZE"
+          ? "Video too large (max 100 MB). Trim to a shorter clip or compress."
+          : `Upload failed (${code}): ${err.message || String(err)}`;
+      console.warn(`broll upload err: ${code} — ${err.message || err}`);
       return res.status(400).json({ error: msg });
     }
     next();
@@ -1277,7 +1281,8 @@ async function viewBroll(){
    +'<div id="br_src_v" style="display:none"><label>Video file</label>'
    +'<input id="br_video" type="file" accept="video/*"><div class="muted" style="margin-top:6px">'
    +'Gemini watches the video directly (sees every frame, hears every word) and writes the shot list. '
-   +'Up to 200 MB — short Taglish/English clips work great. ~1 min ≈ 5–15 MB.</div></div>'
+   +'<b style="color:var(--txt)">Max 100 MB</b> — short Taglish/English clips work great. '
+   +'Phone clips are usually ~5–15 MB per minute; longer recordings should be trimmed or compressed first.</div></div>'
    +'<div class="row" style="margin-top:6px">'
    +'<div><label>Aspect</label><select id="br_aspect"><option value="9:16">9:16 vertical</option>'
    +'<option value="16:9">16:9 landscape</option></select></div>'
@@ -1300,18 +1305,47 @@ async function viewBroll(){
     fd.append('aspect',$('#br_aspect').value);
     fd.append('count',$('#br_count').value||'8');
     fd.append('characterId',$('#br_char').value);
+    let sizeMB=0;
     if(src==='video'){const f=$('#br_video').files[0];
-      if(!f)return alert('Choose a video file');fd.append('video',f);}
+      if(!f)return alert('Choose a video file');
+      sizeMB=f.size/(1024*1024);
+      if(sizeMB>100){return alert('That video is '+sizeMB.toFixed(1)+' MB — please trim it or compress it under 100 MB. '
+        +'On a Mac: File → Export As → 720p in QuickTime, or use HandBrake. Or just trim to a shorter clip.');}
+      fd.append('video',f);}
     else{const t=$('#br_script').value.trim();
       if(t.length<10)return alert('Paste a script (10+ chars)');fd.append('script',t);}
-    $('#br_go').disabled=true;$('#br_log').style.display='block';$('#br_log').textContent='';
+    const L=$('#br_log');$('#br_go').disabled=true;L.style.display='block';
+    L.textContent=src==='video'
+      ? 'Uploading '+sizeMB.toFixed(1)+' MB video to server…  (this can take ~5–60s depending on your internet)\\n'
+      : 'Submitting…\\n';
     es&&es.close();es=new EventSource('/api/log');
-    es.onmessage=ev=>{const line=JSON.parse(ev.data),L=$('#br_log');
+    es.onmessage=ev=>{const line=JSON.parse(ev.data);
       L.textContent+=line+'\\n';L.scrollTop=L.scrollHeight;
       if(line.indexOf('✓ Done')>-1||line.indexOf('✗ Exited')>-1){es.close();
         $('#br_go').disabled=false;loadSets();}};
-    const r=await fetch('/api/broll/generate',{method:'POST',body:fd});
-    if(!r.ok){alert((await r.json()).error||'Failed');$('#br_go').disabled=false;}
+    // Use XHR so we can show real upload progress for big videos.
+    const fail=(msg)=>{alert(msg);L.textContent+='\\n✗ '+msg+'\\n';
+      es&&es.close();$('#br_go').disabled=false;};
+    const xhr=new XMLHttpRequest();
+    xhr.open('POST','/api/broll/generate');
+    xhr.upload.onprogress=(e)=>{if(!e.lengthComputable)return;
+      const pct=Math.round(e.loaded/e.total*100);
+      const a=(e.loaded/(1024*1024)).toFixed(1),b=(e.total/(1024*1024)).toFixed(1);
+      const last=L.textContent.split('\\n').slice(-1)[0];
+      const line='Uploading… '+pct+'%  ('+a+' / '+b+' MB)';
+      if(last.startsWith('Uploading')){L.textContent=L.textContent.replace(/Uploading[^\\n]*$/,line);}
+      else{L.textContent+=line+'\\n';}L.scrollTop=L.scrollHeight;};
+    xhr.upload.onerror=()=>fail('Upload failed mid-transfer (network dropped or server closed connection).');
+    xhr.onerror=()=>fail('Network error reaching the server.');
+    xhr.ontimeout=()=>fail('Upload timed out.');
+    xhr.onload=()=>{
+      const ok=xhr.status>=200&&xhr.status<300;
+      if(ok)return; // success — leave the SSE log running, button re-enables on '✓ Done'/'✗ Exited'.
+      let msg='';try{msg=(JSON.parse(xhr.responseText||'{}').error)||'';}catch{/*not json*/}
+      if(!msg)msg='Server returned '+xhr.status+(xhr.statusText?' '+xhr.statusText:'')
+        +(xhr.responseText?' — '+xhr.responseText.slice(0,200):'');
+      fail(msg);};
+    xhr.send(fd);
   };
   $('#br_ref').onclick=loadSets;
   async function loadSets(){
