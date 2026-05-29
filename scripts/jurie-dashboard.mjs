@@ -431,11 +431,30 @@ const brollUpload = multer({
     filename: (_r, file, cb) =>
       cb(null, `${Date.now()}-${file.originalname.replace(/[^\w.\-]/g, "_")}`),
   }),
+  // 200 MB per upload — Gemini analyzes inline up to ~19 MB, beyond that
+  // broll-analyze uses the Files API. Anything bigger than 200 MB gets
+  // rejected here so users get a clean error instead of a server timeout.
+  limits: { fileSize: 200 * 1024 * 1024 },
 });
+
+// Custom multer wrapper so file-size errors come back as a clean JSON 400
+// instead of bubbling up as an HTML 500.
+const brollVideoUpload = (req, res, next) => {
+  brollUpload.single("video")(req, res, (err) => {
+    if (err) {
+      const msg =
+        err.code === "LIMIT_FILE_SIZE"
+          ? "Video too large (max 200 MB). Compress it or trim to a shorter clip."
+          : String(err.message || err);
+      return res.status(400).json({ error: msg });
+    }
+    next();
+  });
+};
 
 app.post(
   "/api/broll/generate",
-  brollUpload.single("video"),
+  brollVideoUpload,
   async (req, res) => {
     if (job?.running)
       return res.status(409).json({ error: "A job is already running." });
@@ -445,11 +464,8 @@ app.post(
     n = Math.max(1, Math.min(40, n));
     const characterId = String(req.body?.characterId || "");
     const scriptText = String(req.body?.script || "").trim();
-    if (HOSTED && req.file)
-      return res.status(400).json({
-        error:
-          "Video B-roll is disabled on the hosted build — paste a script, or run video locally.",
-      });
+    // Video uploads now work on hosted — Gemini analyzes the video directly
+    // (sees frames + hears audio), no ffmpeg/whisperx required.
     const args = [
       "scripts/broll-batch.mjs",
       "--aspect",
@@ -1260,7 +1276,8 @@ async function viewBroll(){
    +'<textarea id="br_script" placeholder="Paste the script (Taglish ok)…" style="min-height:140px"></textarea></div>'
    +'<div id="br_src_v" style="display:none"><label>Video file</label>'
    +'<input id="br_video" type="file" accept="video/*"><div class="muted" style="margin-top:6px">'
-   +'Transcribed with whisperx (large-v3, tl) — short clips recommended.</div></div>'
+   +'Gemini watches the video directly (sees every frame, hears every word) and writes the shot list. '
+   +'Up to 200 MB — short Taglish/English clips work great. ~1 min ≈ 5–15 MB.</div></div>'
    +'<div class="row" style="margin-top:6px">'
    +'<div><label>Aspect</label><select id="br_aspect"><option value="9:16">9:16 vertical</option>'
    +'<option value="16:9">16:9 landscape</option></select></div>'
@@ -1276,10 +1293,6 @@ async function viewBroll(){
     $('#br_t_v').style.borderColor=src==='video'?'var(--gold)':'';};
   $('#br_t_s').onclick=()=>{src='script';showSrc();};
   $('#br_t_v').onclick=()=>{src='video';showSrc();};
-  if(ENV.hosted){$('#br_t_v').style.display='none';$('#br_src_v').style.display='none';
-    $('#br_t_s').style.display='none';
-    $('#br_src_s').insertAdjacentHTML('afterbegin',
-      '<div class="muted" style="margin-bottom:8px">Hosted build — script input only (video B-roll runs locally).</div>');}
   showSrc();
   let es;
   $('#br_go').onclick=async()=>{

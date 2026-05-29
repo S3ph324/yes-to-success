@@ -48,6 +48,18 @@ const mmss = (s) => {
 
 let sourceKind = "SCRIPT";
 let sourceText = "";
+let videoPart = null; // { inlineData } | { fileData } — direct-to-Gemini video
+
+// Video MIME guesser
+const videoMimeFor = (p) => {
+  const ext = path.extname(p).toLowerCase().slice(1);
+  if (ext === "mov") return "video/quicktime";
+  if (ext === "webm") return "video/webm";
+  if (ext === "mkv") return "video/x-matroska";
+  if (ext === "avi") return "video/x-msvideo";
+  if (ext === "m4v") return "video/x-m4v";
+  return "video/mp4";
+};
 
 if (scriptArg) {
   const p = path.isAbsolute(scriptArg)
@@ -55,50 +67,108 @@ if (scriptArg) {
     : path.join(process.cwd(), scriptArg);
   sourceText = await fs.readFile(p, "utf-8");
 } else {
-  sourceKind = "VIDEO TRANSCRIPT";
+  // Video path — two modes:
+  //   1. BROLL_USE_WHISPERX=1 + WHISPERX_BIN — Mac flow: ffmpeg+whisperx →
+  //      timestamped transcript, then Gemini analyzes the transcript.
+  //   2. Default (hosted & anywhere else) — feed the video directly to
+  //      Gemini 2.5 (it watches frames and listens to audio). No ffmpeg,
+  //      no whisper, no extra binaries.
   const vid = path.isAbsolute(videoArg)
     ? videoArg
     : path.join(process.cwd(), videoArg);
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "broll-"));
-  const audio = path.join(tmp, "audio.mp3");
-  console.log("Extracting audio (ffmpeg)…");
-  let r = spawnSync(
-    "ffmpeg",
-    ["-y", "-i", vid, "-vn", "-acodec", "libmp3lame", "-ar", "16000", "-ac", "1", audio],
-    { stdio: ["ignore", "ignore", "inherit"] },
-  );
-  if (r.status !== 0) {
-    console.error("ffmpeg failed");
-    process.exit(1);
+  const stat = await fs.stat(vid);
+  const sizeMB = stat.size / (1024 * 1024);
+
+  const useWhisper =
+    process.env.BROLL_USE_WHISPERX === "1" && process.env.WHISPERX_BIN;
+
+  if (useWhisper) {
+    sourceKind = "VIDEO TRANSCRIPT";
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "broll-"));
+    const audio = path.join(tmp, "audio.mp3");
+    console.log("Extracting audio (ffmpeg)…");
+    let r = spawnSync(
+      "ffmpeg",
+      ["-y", "-i", vid, "-vn", "-acodec", "libmp3lame", "-ar", "16000", "-ac", "1", audio],
+      { stdio: ["ignore", "ignore", "inherit"] },
+    );
+    if (r.status !== 0) {
+      console.error("ffmpeg failed");
+      process.exit(1);
+    }
+    console.log("Transcribing (whisperx large-v3, tl)… this can take a while.");
+    const wxDir = path.join(tmp, "wx");
+    r = spawnSync(
+      process.env.WHISPERX_BIN,
+      [
+        audio, "--model", "large-v3", "--language", "tl",
+        "--vad_method", "silero", "--no_align", "--output_format", "json",
+        "--output_dir", wxDir, "--chunk_size", "30",
+        "--compute_type", "int8", "--batch_size", "4",
+      ],
+      { stdio: ["ignore", "inherit", "inherit"] },
+    );
+    if (r.status !== 0) {
+      console.error("whisperx failed (set WHISPERX_BIN correctly, or unset BROLL_USE_WHISPERX to use Gemini direct)");
+      process.exit(1);
+    }
+    const jf = (await fs.readdir(wxDir)).find((f) => f.endsWith(".json"));
+    const wx = JSON.parse(await fs.readFile(path.join(wxDir, jf), "utf-8"));
+    sourceText = (wx.segments || [])
+      .map((s) => `[${mmss(s.start)}–${mmss(s.end)}] ${String(s.text).trim()}`)
+      .join("\n");
+  } else {
+    sourceKind = "VIDEO";
+    const mime = videoMimeFor(vid);
+    console.log(
+      `Sending video (${sizeMB.toFixed(1)}MB, ${mime}) directly to Gemini…`,
+    );
+    if (sizeMB <= 19) {
+      // Inline base64 (≤20MB request limit on Vertex inlineData)
+      const buf = await fs.readFile(vid);
+      videoPart = {
+        inlineData: { mimeType: mime, data: buf.toString("base64") },
+      };
+    } else {
+      // Files API (works on Vertex via the managed staging bucket)
+      console.log("Video > 19MB — uploading via Gemini Files API…");
+      try {
+        // Lazy-construct ai client just for the upload (real one is below).
+        const tmpAi = new GoogleGenAI({ vertexai: true, project, location });
+        let file = await tmpAi.files.upload({
+          file: vid,
+          config: { mimeType: mime },
+        });
+        const t0 = Date.now();
+        while (file.state === "PROCESSING") {
+          if (Date.now() - t0 > 5 * 60 * 1000)
+            throw new Error("Files API still PROCESSING after 5 min");
+          await new Promise((r) => setTimeout(r, 3000));
+          file = await tmpAi.files.get({ name: file.name });
+        }
+        if (file.state !== "ACTIVE")
+          throw new Error("Files API ended in state " + file.state);
+        videoPart = { fileData: { fileUri: file.uri, mimeType: mime } };
+      } catch (e) {
+        console.error(
+          "Video too large for inline (>19MB), and Files API upload failed:",
+          e?.message || e,
+        );
+        console.error(
+          "Options: (1) compress the video below 19MB, (2) use a shorter clip, or (3) paste the script as text.",
+        );
+        process.exit(1);
+      }
+    }
   }
-  console.log("Transcribing (whisperx large-v3, tl)… this can take a while.");
-  const wxDir = path.join(tmp, "wx");
-  const WHISPERX =
-    process.env.WHISPERX_BIN || "/Users/macbookpro/.buttercut/whisperx";
-  r = spawnSync(
-    WHISPERX,
-    [
-      audio, "--model", "large-v3", "--language", "tl",
-      "--vad_method", "silero", "--no_align", "--output_format", "json",
-      "--output_dir", wxDir, "--chunk_size", "30",
-      "--compute_type", "int8", "--batch_size", "4",
-    ],
-    { stdio: ["ignore", "inherit", "inherit"] },
-  );
-  if (r.status !== 0) {
-    console.error("whisperx failed (is it on PATH? set WHISPERX_BIN)");
-    process.exit(1);
-  }
-  const jf = (await fs.readdir(wxDir)).find((f) => f.endsWith(".json"));
-  const wx = JSON.parse(await fs.readFile(path.join(wxDir, jf), "utf-8"));
-  sourceText = (wx.segments || [])
-    .map((s) => `[${mmss(s.start)}–${mmss(s.end)}] ${String(s.text).trim()}`)
-    .join("\n");
 }
-sourceText = sourceText.trim();
-if (sourceText.length < 20) {
-  console.error("Source text too short / empty after processing.");
-  process.exit(1);
+
+if (!videoPart) {
+  sourceText = sourceText.trim();
+  if (sourceText.length < 20) {
+    console.error("Source text too short / empty after processing.");
+    process.exit(1);
+  }
 }
 
 // ── build the director instruction ────────────────────────────────────────
@@ -113,7 +183,13 @@ const dynamic = `
 - Aspect ratio: ${aspect} (state it in EVERY image and video prompt)
 - Character mode: ${charMode}${charMode === "reference-image" ? " — a reference image WILL be attached; do not describe the character, use the placeholder and the preserve-the-reference instruction" : " — no character; scenes/objects/places only"}
 - Produce EXACTLY ${count} shots, in story order, each connected to a real beat.
-${sourceKind === "VIDEO TRANSCRIPT" ? "- The source has [m:ss–m:ss] timecodes — set each shot's timecode to when its line is said." : "- No timing in the source — set every timecode to \"\"."}
+${
+  sourceKind === "VIDEO TRANSCRIPT"
+    ? "- The source has [m:ss–m:ss] timecodes — set each shot's timecode to when its line is said."
+    : sourceKind === "VIDEO"
+      ? "- The source is a video you can watch and listen to directly. For each shot, set timecode (m:ss) to the moment in the video the b-roll should cover. Use the visuals AND the spoken audio to find the beats."
+      : "- No timing in the source — set every timecode to \"\"."
+}
 `;
 
 const ai = new GoogleGenAI({ vertexai: true, project, location });
@@ -134,9 +210,19 @@ console.log(
   `Analyzing ${sourceKind.toLowerCase()} → ${count} b-roll shot(s), ${aspect}, character: ${charMode} …`,
 );
 const start = Date.now();
+const userParts = videoPart
+  ? [
+      videoPart,
+      {
+        text:
+          "Watch this video carefully — every frame and all spoken audio — " +
+          "and produce the connected b-roll shot list per the system instruction.",
+      },
+    ]
+  : [{ text: `SOURCE (${sourceKind}):\n\n${sourceText}` }];
 const resp = await ai.models.generateContent({
   model: MODEL,
-  contents: `SOURCE (${sourceKind}):\n\n${sourceText}`,
+  contents: [{ role: "user", parts: userParts }],
   config: {
     systemInstruction: `${director}${dynamic}`,
     responseMimeType: "application/json",
