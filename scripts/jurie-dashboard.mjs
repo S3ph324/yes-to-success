@@ -312,7 +312,7 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
   const t = String(topic || "").trim().slice(0, 200);
   let n = parseInt(count, 10);
   if (!Number.isFinite(n)) n = 8;
-  n = Math.max(1, Math.min(30, n));
+  n = Math.max(1, Math.min(200, n));
   if (!t) return res.status(400).json({ error: "Topic is required." });
   if (!guard(req, res)) return;
 
@@ -969,7 +969,7 @@ async function viewGenerate(){
   $('#view').innerHTML=
    '<div class="card"><h2>Generate</h2>'
    +'<div class="row"><div><label>Topic</label><input id="g_topic" placeholder="type a topic"></div>'
-   +'<div style="flex:0 0 110px"><label>Count</label><input id="g_count" type="number" min="1" max="30" value="8"></div></div>'
+   +'<div style="flex:0 0 110px"><label>Count</label><input id="g_count" type="number" min="1" max="200" value="8"></div></div>'
    +'<div class="row"><div><label>Topic preset (brief)</label><select id="g_brief"><option value="">— brief default —</option>'
    +briefs.map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')+'</select></div>'
    +'<div><label>Brand kit</label><select id="g_brand"><option value="">— preset default —</option>'
