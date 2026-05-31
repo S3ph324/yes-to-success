@@ -1275,7 +1275,9 @@ async function viewBroll(){
    +'Nano Banana (first frame) + Veo 3.1 prompts, then renders every first frame. You pick the keepers. '
    +'Veo auto-animation is wired but OFF for now.</div>'
    +'<div class="bx-tools" style="margin-bottom:14px">'
-   +'<button class="sec" id="br_t_s">Script</button><button class="sec" id="br_t_v">Video</button></div>'
+   +'<button class="sec" id="br_t_s">Script</button>'
+   +'<button class="sec" id="br_t_v">Video</button>'
+   +'<button class="sec" id="br_t_c">Use Claude <span style="opacity:.7;font-size:10px;letter-spacing:.06em;text-transform:uppercase">· any size</span></button></div>'
    +'<div id="br_src_s"><label>Script</label>'
    +'<textarea id="br_script" placeholder="Paste the script (Taglish ok)…" style="min-height:140px"></textarea></div>'
    +'<div id="br_src_v" style="display:none"><label>Video file</label>'
@@ -1283,22 +1285,87 @@ async function viewBroll(){
    +'Gemini watches the video directly (sees every frame, hears every word) and writes the shot list. '
    +'<b style="color:var(--txt)">Max 100 MB</b> — short Taglish/English clips work great. '
    +'Phone clips are usually ~5–15 MB per minute; longer recordings should be trimmed or compressed first.</div></div>'
+   +'<div id="br_src_c" style="display:none">'
+   +'<div class="muted" style="margin-bottom:10px;line-height:1.6">'
+   +'For videos that won\\\'t fit the 100 MB cap (multi-hour podcasts, raw 4K interviews, etc.), let Claude run the pipeline locally on the Mac '
+   +'— no upload, no size limit. Pick your settings above, copy the prompt below, paste it into Claude Code (or Claude Desktop with this folder open), and follow what Claude asks for. '
+   +'When it finishes, hit <b style="color:var(--txt)">Refresh</b> on the Sets list to see the batch.</div>'
+   +'<label>Prompt to paste into Claude</label>'
+   +'<pre id="br_claude_prompt" style="max-height:none;background:#0b0b0d;border:1px solid var(--line-bright);border-radius:9px;padding:14px;font-size:11.5px;line-height:1.55;color:#cfcfd2;white-space:pre-wrap;overflow:auto"></pre>'
+   +'<div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
+   +'<button class="go" id="br_copy">Copy prompt</button>'
+   +'<button class="sec" id="br_open_claude">Open Claude in browser</button>'
+   +'<span class="muted" style="font-size:12px">(or paste it into a Claude Code session running on your Mac — that\\\'s the one with file access)</span>'
+   +'</div></div>'
    +'<div class="row" style="margin-top:6px">'
    +'<div><label>Aspect</label><select id="br_aspect"><option value="9:16">9:16 vertical</option>'
    +'<option value="16:9">16:9 landscape</option></select></div>'
-   +'<div style="flex:0 0 120px"><label>Shots</label><input id="br_count" type="number" min="1" max="40" value="8"></div>'
+   +'<div style="flex:0 0 120px"><label>Shots</label><input id="br_count" type="number" min="1" max="200" value="8"></div>'
    +'<div><label>Character (optional)</label><select id="br_char">'+charOpts+'</select></div></div>'
    +'<p style="margin:16px 0"><button class="go" id="br_go">Generate b-rolls</button></p>'
    +'<pre id="br_log" style="display:none"></pre></div>'
    +'<div class="bx-head"><h2 style="margin:0">Sets</h2><div class="bx-tools">'
    +'<button class="sec" id="br_ref">Refresh</button></div></div><div id="br_sets"></div>';
-  const showSrc=()=>{$('#br_src_s').style.display=src==='script'?'':'none';
+  const showSrc=()=>{
+    $('#br_src_s').style.display=src==='script'?'':'none';
     $('#br_src_v').style.display=src==='video'?'':'none';
+    $('#br_src_c').style.display=src==='claude'?'':'none';
     $('#br_t_s').style.borderColor=src==='script'?'var(--gold)':'';
-    $('#br_t_v').style.borderColor=src==='video'?'var(--gold)':'';};
+    $('#br_t_v').style.borderColor=src==='video'?'var(--gold)':'';
+    $('#br_t_c').style.borderColor=src==='claude'?'var(--gold)':'';
+    // In Claude mode, hide the regular Generate button — the action is "Copy prompt" inside the panel.
+    $('#br_go').style.display=src==='claude'?'none':'';
+    if(src==='claude')paintClaudePrompt();
+  };
+  function paintClaudePrompt(){
+    const aspect=$('#br_aspect').value||'9:16';
+    const count=$('#br_count').value||'25';
+    const charId=$('#br_char').value||'none';
+    const charLine=(charId==='none'||!charId)
+      ? '- No character — scene-only b-roll cutaways.'
+      : '- Character: '+charId+' (Claude will load this character\\\'s reference photos from config/characters.json).';
+    const prompt=
+      'Hi Claude — I want to generate a B-Roll batch from a video on my Mac. The web dashboard\\\'s upload cap is 100 MB and my source is bigger, so please run this locally.\\n'
+      +'\\nSettings I picked in the dashboard:\\n'
+      +'- Aspect ratio: '+aspect+'\\n'
+      +'- Number of shots: '+count+'\\n'
+      +charLine+'\\n'
+      +'\\nWhat I\\\'d like you to do:\\n'
+      +'1. Ask me for the absolute path to my video file (any size).\\n'
+      +'2. If the file is bigger than 15 MB, compress it first so it fits Gemini\\\'s inline limit while keeping the audio intelligible:\\n'
+      +'     ffmpeg -y -i "<path>" -vf scale=-2:360 -c:v libx264 -crf 36 -preset veryfast \\\\\\n'
+      +'       -c:a aac -b:a 32k -ac 1 -ar 16000 -movflags +faststart /tmp/broll-source.mp4\\n'
+      +'3. Run the pipeline against the compressed copy:\\n'
+      +'     cd /Users/macbookpro/claude_code/research/remotion-app\\n'
+      +'     node scripts/broll-batch.mjs --aspect '+aspect+' --count '+count+' '+(charId==='none'||!charId?'':'--character '+charId+' ')+'--video /tmp/broll-source.mp4\\n'
+      +'4. After step 2 of the pipeline finishes, retry any shots that hit Vertex 429 quota with 8s throttling between calls (it usually drops 5–15 of them on bigger batches).\\n'
+      +'5. Patch the JSON\\\'s framePath fields for the retried shots, then run scripts/broll-deliverable.mjs to rebuild the HTML so it shows all of them.\\n'
+      +'6. Open the resulting /Users/macbookpro/claude_code/brolls/generated/<stamp>/broll.html in my browser.\\n'
+      +'\\nWhen the batch is done it will show up under the Sets list in the dashboard — I\\\'ll click Refresh there to grab it.';
+    $('#br_claude_prompt').textContent=prompt;
+  }
   $('#br_t_s').onclick=()=>{src='script';showSrc();};
   $('#br_t_v').onclick=()=>{src='video';showSrc();};
+  $('#br_t_c').onclick=()=>{src='claude';showSrc();};
+  // Repaint when any of the settings the prompt depends on change.
+  ['br_aspect','br_count','br_char'].forEach(id=>{
+    const el=$('#'+id);if(el)el.addEventListener('change',()=>{if(src==='claude')paintClaudePrompt();});
+    if(el)el.addEventListener('input',()=>{if(src==='claude')paintClaudePrompt();});
+  });
   showSrc();
+  // Wire up the Claude-mode buttons (works even when not currently visible).
+  document.addEventListener('click',(ev)=>{
+    if(ev.target&&ev.target.id==='br_copy'){
+      const txt=$('#br_claude_prompt').textContent||'';
+      navigator.clipboard.writeText(txt).then(()=>{
+        const b=ev.target;const o=b.textContent;b.textContent='Copied ✓';
+        setTimeout(()=>{b.textContent=o;},1600);
+      },()=>alert('Clipboard blocked — select the prompt manually and Cmd+C'));
+    }
+    if(ev.target&&ev.target.id==='br_open_claude'){
+      window.open('https://claude.ai/new','_blank','noopener');
+    }
+  });
   let es;
   $('#br_go').onclick=async()=>{
     const fd=new FormData();

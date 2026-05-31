@@ -5,11 +5,9 @@
     "enabled": true,
     "client": "jurie",
     "photos": [
-      "characters/jurie/jurie-face.png",
-      "characters/jurie/jurie-01.jpeg",
-      "characters/jurie/jurie-02.jpeg"
+      "characters/jurie/jurie-face.png"
     ],
-    "notes": "Filipina AI/business mentor. Signature look: gray backwards cap, clear-frame glasses, white tee. jurie-face.png is a 6-angle identity sheet (primary). Refs pending user approval — swap here if changed."
+    "notes": "Filipina AI/business mentor. Signature look: gray backwards cap, clear-frame rimless glasses, white tank/tee, silver cross necklace, headphones. jurie-face.png is the canonical multi-angle identity sheet (front + both profiles + accessory close-ups). Older jurie-01/02.jpeg kept on disk; backup at jurie-face-OLD.png."
   },
   {
     "id": "char_tranzzie",
@@ -17,10 +15,8 @@
     "enabled": true,
     "client": "tranzzie",
     "photos": [
-      "characters/jurie/jurie-face.png",
-      "characters/jurie/jurie-01.jpeg",
-      "characters/jurie/jurie-02.jpeg"
+      "characters/jurie/jurie-face.png"
     ],
-    "notes": "Tranzzie's preset model is Jurie — same identity/refs as the Jurie client, per request."
+    "notes": "Tranzzie's preset model is Jurie — same identity as the Jurie client, per request."
   }
 ]

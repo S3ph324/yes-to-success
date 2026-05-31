@@ -87,6 +87,13 @@ for (const s of shots) {
       const resp = await ai.models.generateContent({
         model: REF_MODEL,
         contents: [{ role: "user", parts }],
+        // Lock the API-level aspect ratio. The SDK falls back to the
+        // model's default (usually 1:1) if this isn't passed — that's why
+        // the "Vertical 9:16 composition" in the prompt text was being
+        // ignored. Pulled from the JSON meta so script/video aspect wins.
+        config: {
+          imageConfig: { aspectRatio: data.meta?.aspect || "9:16" },
+        },
       });
       for (const p of resp.candidates?.[0]?.content?.parts || []) {
         if (p.inlineData?.data) {

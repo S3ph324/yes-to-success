@@ -28,7 +28,7 @@ const flag = (name, def = "") => {
   return i !== -1 && argv[i + 1] ? argv[i + 1] : def;
 };
 const aspect = flag("--aspect", "9:16") === "16:9" ? "16:9" : "9:16";
-const count = Math.max(1, Math.min(40, parseInt(flag("--count", "8"), 10) || 8));
+const count = Math.max(1, Math.min(200, parseInt(flag("--count", "8"), 10) || 8));
 const characterId = flag("--character", ""); // "" or "none" = no character
 const scriptArg = flag("--script", "");
 const videoArg = flag("--video", "");
