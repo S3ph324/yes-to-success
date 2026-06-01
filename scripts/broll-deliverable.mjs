@@ -4,6 +4,7 @@
 //
 // Usage: node scripts/broll-deliverable.mjs out/broll-<stamp>.json
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -42,8 +43,15 @@ const esc = (x) =>
 
 const shotHtml = shots
   .map((s) => {
-    const img = s.framePath
-      ? `<img class="frame" src="./shot-${String(s.n).padStart(2, "0")}.png" alt="first frame">`
+    const n2 = String(s.n).padStart(2, "0");
+    const fname = `shot-${n2}.png`;
+    const frameBlock = s.framePath
+      ? `<div class="frame-wrap">
+    <img class="frame" src="./${fname}" alt="first frame ${s.n}" loading="lazy">
+    <a class="download-btn" href="./${fname}" download="${fname}" title="Save shot ${s.n} as PNG">
+      <span class="dl-icon">↓</span> Download PNG
+    </a>
+  </div>`
       : `<div class="frame ph">no first frame</div>`;
     const badge = s.usesCharacter
       ? ` <span class="charbadge">character</span>`
@@ -54,7 +62,7 @@ const shotHtml = shots
     return `<div class="shot">
   <h2>B-Roll ${s.n} — ${esc(s.title)}${badge}</h2>
   <div class="beat">${tc}Beat: ${esc(s.beat)}</div>
-  ${img}
+  ${frameBlock}
   <div class="block image"><div class="label"><span class="dot"></span>Nano Banana — image prompt (first frame)</div>
   <div class="prompt"><button class="copy">Copy</button>${esc(s.imagePrompt)}</div></div>
   <div class="block video"><div class="label"><span class="dot"></span>Veo 3.1 — video prompt</div>
@@ -84,9 +92,31 @@ margin-right:8px;border:1px solid var(--line)}
 .charbadge{display:inline-block;background:#1c1f26;color:var(--vid);font-size:10px;font-weight:600;
 letter-spacing:.06em;padding:2px 8px;border-radius:4px;margin-left:6px;border:1px solid var(--line);
 text-transform:uppercase}
+.frame-wrap{position:relative;display:inline-block;max-width:340px;margin:0 0 16px}
 .frame{display:block;width:100%;max-width:340px;border:1px solid var(--line);border-radius:8px;
-margin:0 0 14px;background:#0a0b0e}
+background:#0a0b0e}
 .frame.ph{padding:40px;text-align:center;color:var(--muted);font-size:12px;max-width:340px}
+.download-btn{display:inline-flex;align-items:center;gap:8px;margin-top:10px;
+padding:10px 18px;background:var(--accent);color:#1a1306;text-decoration:none;
+border-radius:8px;font-weight:700;font-size:13px;letter-spacing:.01em;
+border:1px solid rgba(0,0,0,.18);
+box-shadow:0 1px 0 rgba(255,255,255,.32) inset,0 -1px 0 rgba(0,0,0,.18) inset,
+  0 6px 14px -6px rgba(244,201,93,.5);
+transition:transform .14s,box-shadow .14s,opacity .14s}
+.download-btn:hover{transform:translateY(-1px);
+box-shadow:0 1px 0 rgba(255,255,255,.42) inset,0 -1px 0 rgba(0,0,0,.18) inset,
+  0 10px 22px -8px rgba(244,201,93,.65)}
+.download-btn:active{transform:translateY(0)}
+.dl-icon{font-size:16px;font-weight:800;line-height:1}
+.dl-all{display:inline-flex;align-items:center;gap:9px;margin-top:18px;padding:11px 22px;
+background:var(--accent);color:#1a1306;text-decoration:none;border-radius:10px;
+font-weight:700;font-size:14px;letter-spacing:.012em;border:1px solid rgba(0,0,0,.18);
+box-shadow:0 1px 0 rgba(255,255,255,.34) inset,0 -1px 0 rgba(0,0,0,.18) inset,
+  0 10px 24px -10px rgba(244,201,93,.55)}
+.dl-all:hover{transform:translateY(-1px);
+box-shadow:0 1px 0 rgba(255,255,255,.46) inset,0 -1px 0 rgba(0,0,0,.18) inset,
+  0 14px 30px -10px rgba(244,201,93,.7)}
+.dl-all .dl-icon{font-size:18px}
 .block{margin:12px 0}
 .block .label{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;
 letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
@@ -108,7 +138,10 @@ border-radius:6px;padding:16px 20px;margin-top:30px;font-size:14px}
 <span>${meta.charMode === "reference-image" ? "Character via reference image" : "No character"}</span>
 <span>${esc(meta.sourceKind || "")}</span></p>
 <p>First frame + paired prompts for each shot. Generate the Nano Banana image (already
-rendered above each pair), then feed it as the start frame to Veo 3.1 with the video prompt.</p></header>
+rendered above each pair), then feed it as the start frame to Veo 3.1 with the video prompt.</p>
+<a class="dl-all" href="./broll-frames.zip" download="broll-${esc(meta.createdAt || stem)}.zip">
+  <span class="dl-icon">↓</span> Download all ${shots.length} PNGs (.zip)
+</a></header>
 <main>
 ${shotHtml}
 <div class="howto"><h3>How to use</h3><ol>
@@ -127,6 +160,25 @@ setTimeout(function(){b.textContent='Copy';b.classList.remove('copied');},1400);
 
 await fs.writeFile(path.join(exportDir, "broll.html"), html);
 await fs.copyFile(jsonPath, path.join(exportDir, "manifest.json"));
+
+// Bundle all the shot-NN.png frames into broll-frames.zip so the
+// "Download all" header button in the HTML works with one click.
+const zipPath = path.join(exportDir, "broll-frames.zip");
+try {
+  await fs.unlink(zipPath).catch(() => {});
+  const z = spawnSync(
+    "zip",
+    ["-q", "-j", "broll-frames.zip", ...shots
+      .filter((s) => s.framePath)
+      .map((s) => `shot-${String(s.n).padStart(2, "0")}.png`)],
+    { cwd: exportDir },
+  );
+  if (z.status !== 0) {
+    console.warn("  zip step skipped (zip exited " + z.status + ")");
+  }
+} catch (e) {
+  console.warn("  zip step skipped:", e?.message || e);
+}
 
 console.log(
   `\n✓ Deliverable ready\n  HTML     : ${path.join(exportDir, "broll.html")}\n` +
