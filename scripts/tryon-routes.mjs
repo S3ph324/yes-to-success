@@ -22,7 +22,7 @@ applyGcpEnv();
 
 // Try-On has its own version, independent from the main studio version.
 // Bump this whenever the /tryon feature changes.
-export const TRYON_VERSION = "1.1.0";
+export const TRYON_VERSION = "1.2.0";
 
 const TEXT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const IMG_MODEL  = process.env.REF_MODEL    || "gemini-2.5-flash-image";
@@ -187,17 +187,18 @@ Respond ONLY with valid JSON — no markdown fences, no extra text:
 
     const frameDesc = (description || "stylish eyeglass frames").slice(0, 300);
     const refPart   = { inlineData: { mimeType: stored.mime, data: stored.base64 } };
-    const bg        = ["studio", "indoor", "outdoor"].includes(background) ? background : "studio";
+    const bg        = ["studio", "indoor", "outdoor", "comparison"].includes(background) ? background : "studio";
 
-    const makePrompt = (gender) => {
+    const makePrompt = (gender, bgOverride) => {
       const person = gender === "woman"
         ? "young Filipino woman in her late 20s"
         : "young Filipino man in his late 20s";
       const frameNote =
         `The glasses in the reference image show the frame to use: ${frameDesc}. ` +
         `Reproduce the frame shape, color, and style as closely as possible. `;
+      const mode = bgOverride || bg;
 
-      if (bg === "indoor") {
+      if (mode === "indoor" || mode === "comparison") {
         return (
           `A casual, realistic selfie-style photograph of a ${person} wearing eyeglasses indoors. ` +
           frameNote +
@@ -207,7 +208,7 @@ Respond ONLY with valid JSON — no markdown fences, no extra text:
           `like they just took a quick selfie. Slight shoulder-up framing. Photorealistic, candid feel.`
         );
       }
-      if (bg === "outdoor") {
+      if (mode === "outdoor") {
         return (
           `A casual, realistic selfie-style photograph of a ${person} wearing photochromic eyeglasses outdoors. ` +
           frameNote +
@@ -228,20 +229,41 @@ Respond ONLY with valid JSON — no markdown fences, no extra text:
     };
 
     try {
-      // Generate both in parallel — results returned as base64 data URIs,
-      // no disk writes at all (fixes ENOSPC on Railway /tmp).
-      const [womanBuf, manBuf] = await Promise.all([
-        genImage(aiClient(), [refPart, { text: makePrompt("woman") }], "3:4"),
-        genImage(aiClient(), [refPart, { text: makePrompt("man")   }], "3:4"),
-      ]);
-
-      res.json({
-        ok: true,
-        results: [
-          { gender: "woman", label: "Female model", dataUrl: `data:image/png;base64,${womanBuf.toString("base64")}` },
-          { gender: "man",   label: "Male model",   dataUrl: `data:image/png;base64,${manBuf.toString("base64")}` },
-        ],
-      });
+      if (bg === "comparison") {
+        // Comparison: 4 images (woman-indoor, woman-outdoor, man-indoor, man-outdoor).
+        // Client composites each pair side-by-side using Canvas — no server disk I/O.
+        const [womanIn, womanOut, manIn, manOut] = await Promise.all([
+          genImage(aiClient(), [refPart, { text: makePrompt("woman", "indoor")   }], "3:4"),
+          genImage(aiClient(), [refPart, { text: makePrompt("woman", "outdoor")  }], "3:4"),
+          genImage(aiClient(), [refPart, { text: makePrompt("man",   "indoor")   }], "3:4"),
+          genImage(aiClient(), [refPart, { text: makePrompt("man",   "outdoor")  }], "3:4"),
+        ]);
+        res.json({
+          ok: true,
+          comparison: true,
+          results: [
+            { gender: "woman", label: "Female model",
+              indoorUrl:  `data:image/png;base64,${womanIn.toString("base64")}`,
+              outdoorUrl: `data:image/png;base64,${womanOut.toString("base64")}` },
+            { gender: "man",   label: "Male model",
+              indoorUrl:  `data:image/png;base64,${manIn.toString("base64")}`,
+              outdoorUrl: `data:image/png;base64,${manOut.toString("base64")}` },
+          ],
+        });
+      } else {
+        // Single background mode — 2 images.
+        const [womanBuf, manBuf] = await Promise.all([
+          genImage(aiClient(), [refPart, { text: makePrompt("woman") }], "3:4"),
+          genImage(aiClient(), [refPart, { text: makePrompt("man")   }], "3:4"),
+        ]);
+        res.json({
+          ok: true,
+          results: [
+            { gender: "woman", label: "Female model", dataUrl: `data:image/png;base64,${womanBuf.toString("base64")}` },
+            { gender: "man",   label: "Male model",   dataUrl: `data:image/png;base64,${manBuf.toString("base64")}` },
+          ],
+        });
+      }
     } catch (err) {
       console.error("tryon/generate error:", err.message || err);
       res.status(500).json({ error: "Generation failed: " + (err.message || "unknown") });
@@ -338,6 +360,7 @@ padding:5px 11px;border-radius:7px;font-weight:600;transition:all .14s}
         <option value="studio">🤍 Studio — clean white background</option>
         <option value="indoor">🏠 Indoors — shows lenses clear (photochromic)</option>
         <option value="outdoor">☀️ Outdoors — shows lenses tinted (photochromic)</option>
+        <option value="comparison">⚡ Comparison — indoor vs outdoor side by side</option>
       </select>
       <p id="bg-hint" style="margin:8px 0 0;font-size:12px;color:var(--mut)">Clean product shot. Ideal for catalogue use.</p>
     </div>
@@ -364,7 +387,8 @@ let validToken=null, validMime=null, validDesc=null;
 const BG_HINTS={
   studio:'Clean product shot on white. Ideal for catalogue or social media.',
   indoor:'Realistic indoor selfie — shows how lenses look clear inside (photochromic feature).',
-  outdoor:'Realistic outdoor selfie — lenses darken in sunlight, showing the photochromic tint.'
+  outdoor:'Realistic outdoor selfie — lenses darken in sunlight, showing the photochromic tint.',
+  comparison:'Generates 4 photos then composites each pair into one split image: left = indoors (clear lenses), right = outdoors (tinted lenses). Takes ~60s.'
 };
 function updateBgHint(){const v=$('#bg-select').value;$('#bg-hint').textContent=BG_HINTS[v]||'';}
 
@@ -439,7 +463,8 @@ $('#gen-btn').onclick=async()=>{
   if(!validToken) return;
   $('#gen-btn').disabled=true;
   setErr('');
-  setGenStatus('<span class="spinner"></span> Generating photos… this takes 20–40 seconds.');
+  const isComp=$('#bg-select').value==='comparison';
+  setGenStatus('<span class="spinner"></span> Generating photos… '+(isComp?'comparison mode generates 4 photos, ~60 seconds.':'this takes 20–40 seconds.'));
   try {
     const r=await fetch('/api/tryon/generate',{
       method:'POST',
@@ -450,17 +475,69 @@ $('#gen-btn').onclick=async()=>{
     if(!r.ok||d.error){ setErr(d.error||'Generation failed.'); setGenStatus(''); $('#gen-btn').disabled=false; return; }
     setGenStatus('');
     $('#results-section').style.display='block';
-    $('#results-grid').innerHTML=(d.results||[]).map(item=>{
-      const fname=(item.gender==='woman'?'female':'male')+'-model.png';
-      return '<div class="result-card">'
-        +'<img src="'+item.dataUrl+'" alt="'+item.label+'">'
-        +'<div class="foot">'
-        +'<span class="lbl">'+item.label+'</span>'
-        +'<a href="'+item.dataUrl+'" download="'+fname+'">Download</a>'
-        +'</div></div>';
-    }).join('');
+
+    if(d.comparison){
+      // Composite each indoor+outdoor pair side-by-side using Canvas.
+      setGenStatus('<span class="spinner"></span> Compositing split images…');
+      const cards=await Promise.all((d.results||[]).map(item=>compositeCompare(item)));
+      setGenStatus('');
+      $('#results-grid').innerHTML=cards.join('');
+    } else {
+      $('#results-grid').innerHTML=(d.results||[]).map(item=>{
+        const fname=(item.gender==='woman'?'female':'male')+'-model.png';
+        return '<div class="result-card">'
+          +'<img src="'+item.dataUrl+'" alt="'+item.label+'">'
+          +'<div class="foot">'
+          +'<span class="lbl">'+item.label+'</span>'
+          +'<a href="'+item.dataUrl+'" download="'+fname+'">Download</a>'
+          +'</div></div>';
+      }).join('');
+    }
     $('#results-section').scrollIntoView({behavior:'smooth',block:'start'});
     $('#gen-btn').disabled=false;
   } catch(e){ setErr('Network error. Try again.'); setGenStatus(''); $('#gen-btn').disabled=false; }
 };
+
+// Canvas compositor: draws left=indoor, right=outdoor with divider + labels.
+function compositeCompare(item){
+  return new Promise(resolve=>{
+    const i1=new Image(), i2=new Image();
+    i1.onload=()=>{
+      i2.onload=()=>{
+        const W=i1.width, H=i1.height;
+        const c=document.createElement('canvas');
+        c.width=W; c.height=H;
+        const ctx=c.getContext('2d');
+        // Left half: indoor
+        ctx.drawImage(i1, 0,0,W/2,H, 0,0,W/2,H);
+        // Right half: outdoor
+        ctx.drawImage(i2, W/2,0,W/2,H, W/2,0,W/2,H);
+        // Divider line
+        ctx.strokeStyle='rgba(255,255,255,0.9)';
+        ctx.lineWidth=3;
+        ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
+        // Label bars
+        const lh=Math.round(H*0.072);
+        ctx.fillStyle='rgba(0,0,0,0.62)';
+        ctx.fillRect(0,H-lh,W/2,lh);
+        ctx.fillRect(W/2,H-lh,W/2,lh);
+        const fs=Math.round(lh*0.38);
+        ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.font='600 '+fs+'px system-ui,sans-serif';
+        ctx.fillText('INDOORS — Clear',W/4,H-Math.round(lh*0.32));
+        ctx.fillStyle='#F4B400'; ctx.font='600 '+fs+'px system-ui,sans-serif';
+        ctx.fillText('OUTDOORS — Tinted',W*3/4,H-Math.round(lh*0.32));
+        const dataUrl=c.toDataURL('image/png');
+        const fname=(item.gender==='woman'?'female':'male')+'-comparison.png';
+        resolve('<div class="result-card">'
+          +'<img src="'+dataUrl+'" alt="'+item.label+' comparison" style="aspect-ratio:3/2">'
+          +'<div class="foot">'
+          +'<span class="lbl">'+item.label+' — Comparison</span>'
+          +'<a href="'+dataUrl+'" download="'+fname+'">Download</a>'
+          +'</div></div>');
+      };
+      i2.src=item.outdoorUrl;
+    };
+    i1.src=item.indoorUrl;
+  });
+}
 </script></body></html>`;
