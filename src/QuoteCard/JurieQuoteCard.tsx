@@ -65,6 +65,12 @@ export const jurieQuoteCardSchema = z.object({
   // Fraction of canvas height (e.g. 0.10 = 10%). Clamped to a sane range.
   logoSize: z.number().min(0.04).max(0.30).default(0.10),
   headlineFont: z.string().default(""),
+  // Visual style variant.
+  // "cinematic" — full photo bg + dark scrims + overlay text (default / original)
+  // "flat"      — no photo; deep dark bg + thick left gold stripe; type-forward
+  // "split"     — photo fills top 58%, solid brand-color panel bottom 42%,
+  //               hard gold divider; text lives on the panel (never over photo)
+  posterStyle: z.enum(["cinematic", "flat", "split"]).default("cinematic"),
 });
 
 export type JurieQuoteCardProps = z.infer<typeof jurieQuoteCardSchema>;
@@ -294,6 +300,7 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
   logoPosition,
   logoSize,
   headlineFont,
+  posterStyle,
 }) => {
   const { width, height } = useVideoConfig();
 
@@ -329,6 +336,7 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
   const allLines = [...(top || []), ...(bottom || [])];
   const fontSize = headlineFontSize(allLines, width);
 
+  const style = posterStyle || "cinematic";
   const bg = resolveSrc(bgSrc);
   const logo = resolveSrc(logoSrc);
   const padX = Math.round(width * 0.055);
@@ -369,6 +377,180 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
   const hookBottom = Math.round(height * 0.34);
   const payoffBottom = Math.round(height * 0.13);
 
+  // ── FLAT style ────────────────────────────────────────────────────────────
+  if (style === "flat") {
+    const stripeW = Math.round(width * 0.05);
+    const textLeft = Math.round(width * 0.09);
+    const flatHookBottom = Math.round(height * 0.34);
+    const flatPayoffBottom = Math.round(height * 0.13);
+    const flatLogoBoxStyle: React.CSSProperties = {
+      position: "absolute",
+      top: Math.round(height * 0.04),
+      left: textLeft,
+      right: padX,
+      display: "flex",
+      justifyContent: "flex-start",
+    };
+    const logoH = Math.round(height * Math.max(0.04, Math.min(0.30, logoSize || 0.10)));
+    return (
+      <AbsoluteFill style={{ background: "#0A0A0A", overflow: "hidden" }}>
+        {/* Subtle radial brand glow behind text zone */}
+        <AbsoluteFill style={{
+          background: `radial-gradient(ellipse 80% 55% at 55% 62%, ${brandGold}1A 0%, transparent 68%)`,
+        }} />
+        {/* Left gold accent stripe */}
+        <div style={{
+          position: "absolute", left: 0, top: 0, bottom: 0, width: stripeW,
+          background: `linear-gradient(180deg, ${brandGoldLight} 0%, ${brandGold} 45%, ${brandGoldDeep} 100%)`,
+        }} />
+        {/* Large decorative open-quote — very faint brand accent, background element */}
+        <div style={{
+          position: "absolute", top: Math.round(height * 0.03),
+          left: textLeft, lineHeight: 1,
+          fontSize: Math.round(width * 0.38), fontFamily,
+          fontWeight: 900, color: `${brandGold}1C`,
+          pointerEvents: "none", userSelect: "none",
+        }}>&#8220;</div>
+        {/* Logo */}
+        {logo && (
+          <div style={flatLogoBoxStyle}>
+            <Img src={logo} style={{ height: logoH, width: "auto", objectFit: "contain",
+              filter: "drop-shadow(0 4px 14px rgba(0,0,0,0.5))" }} />
+          </div>
+        )}
+        {/* HOOK */}
+        <div style={{ position: "absolute", bottom: flatHookBottom,
+          left: textLeft, right: padX,
+          display: "flex", flexDirection: "column", gap: "0.04em" }}>
+          {(top || []).map((line, i) => (
+            <Line key={i} line={line} fontSize={fontSize} fontFamily={fontFamily}
+              brandGold={brandGold} brandGoldLight={brandGoldLight}
+              brandGoldDeep={brandGoldDeep} brandRed={brandRed}
+              lead={i === 0 ? "“" : undefined} />
+          ))}
+        </div>
+        {/* PAYOFF */}
+        <div style={{ position: "absolute", bottom: flatPayoffBottom,
+          left: textLeft, right: padX,
+          display: "flex", flexDirection: "column", gap: "0.04em" }}>
+          {(bottom || []).map((line, i) => (
+            <Line key={i} line={line} fontSize={fontSize} fontFamily={fontFamily}
+              brandGold={brandGold} brandGoldLight={brandGoldLight}
+              brandGoldDeep={brandGoldDeep} brandRed={brandRed}
+              trail={i === (bottom || []).length - 1 ? "”" : undefined} />
+          ))}
+        </div>
+        {/* CTA */}
+        {useCta && (
+          <div style={{ position: "absolute", bottom: Math.round(height * 0.042),
+            left: 0, right: 0, textAlign: "center", fontFamily,
+            textTransform: "uppercase", lineHeight: 1.18 }}>
+            <div style={{ fontSize: ctaSize, letterSpacing: "0.12em" }}>
+              <span style={{ color: "#fff", textShadow: "0 2px 8px rgba(0,0,0,0.9)" }}>COMMENT </span>
+              <span style={{ backgroundImage: `linear-gradient(180deg, ${brandGoldLight} 0%, ${brandGold} 50%, ${brandGoldDeep} 100%)`,
+                WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent",
+                filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.9))" }}>"{ctaComment}"</span>
+            </div>
+            <div style={{ fontSize: Math.round(ctaSize * 0.78), color: "#fff",
+              letterSpacing: "0.22em", textShadow: "0 2px 8px rgba(0,0,0,0.9)" }}>TO</div>
+            <div style={{ fontSize: Math.round(ctaSize * 1.08), color: brandRed,
+              fontWeight: 800, letterSpacing: "0.10em", textShadow: "0 2px 8px rgba(0,0,0,0.9)" }}>
+              {ctaTail}
+            </div>
+          </div>
+        )}
+      </AbsoluteFill>
+    );
+  }
+
+  // ── SPLIT style ────────────────────────────────────────────────────────────
+  if (style === "split") {
+    const photoFrac = 0.57; // fraction of canvas height for the photo
+    const photoH = Math.round(height * photoFrac);
+    const dividerH = 4;
+    const panelTop = photoH + dividerH;
+    const logoH = Math.round(height * Math.max(0.04, Math.min(0.30, logoSize || 0.10)));
+    // Text lives entirely inside the solid panel — bottom-anchored inside that panel.
+    const splitHookBottom = Math.round(height * 0.32);
+    const splitPayoffBottom = Math.round(height * 0.125);
+    // Cap font size so text fits comfortably inside the ~43% panel.
+    const panelFontSize = Math.min(fontSize, Math.round(width * 0.072));
+    return (
+      <AbsoluteFill style={{ background: "#0A0A0A", overflow: "hidden" }}>
+        {/* Photo — top portion only */}
+        {bg && (
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: photoH, overflow: "hidden" }}>
+            <Img src={bg} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
+            {/* Light top scrim so logo reads */}
+            <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+              background: "linear-gradient(180deg, rgba(0,0,0,0.28) 0%, rgba(0,0,0,0) 30%)" }} />
+          </div>
+        )}
+        {!bg && (
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: photoH,
+            background: `radial-gradient(ellipse at 50% 40%, #2A2A2E 0%, #0A0A0A 100%)` }} />
+        )}
+        {/* Gold divider line */}
+        <div style={{ position: "absolute", top: photoH, left: 0, right: 0, height: dividerH,
+          background: `linear-gradient(90deg, ${brandGoldDeep}, ${brandGoldLight} 40%, ${brandGold} 60%, ${brandGoldDeep})`,
+        }} />
+        {/* Solid panel */}
+        <div style={{ position: "absolute", top: panelTop, left: 0, right: 0, bottom: 0,
+          background: "#0A0A0A" }} />
+        {/* Logo inside photo region — top-left */}
+        {logo && (
+          <div style={{ position: "absolute", top: Math.round(height * 0.04),
+            left: Math.round(width * 0.05) }}>
+            <Img src={logo} style={{ height: logoH, width: "auto", objectFit: "contain",
+              filter: "drop-shadow(0 4px 16px rgba(0,0,0,0.6))" }} />
+          </div>
+        )}
+        {/* HOOK — bottom-anchored, lives in the panel zone */}
+        <div style={{ position: "absolute", bottom: splitHookBottom,
+          left: padX, right: padX,
+          display: "flex", flexDirection: "column", gap: "0.04em" }}>
+          {(top || []).map((line, i) => (
+            <Line key={i} line={line} fontSize={panelFontSize} fontFamily={fontFamily}
+              brandGold={brandGold} brandGoldLight={brandGoldLight}
+              brandGoldDeep={brandGoldDeep} brandRed={brandRed}
+              lead={i === 0 ? "“" : undefined} />
+          ))}
+        </div>
+        {/* PAYOFF */}
+        <div style={{ position: "absolute", bottom: splitPayoffBottom,
+          left: padX, right: padX,
+          display: "flex", flexDirection: "column", gap: "0.04em" }}>
+          {(bottom || []).map((line, i) => (
+            <Line key={i} line={line} fontSize={panelFontSize} fontFamily={fontFamily}
+              brandGold={brandGold} brandGoldLight={brandGoldLight}
+              brandGoldDeep={brandGoldDeep} brandRed={brandRed}
+              trail={i === (bottom || []).length - 1 ? "”" : undefined} />
+          ))}
+        </div>
+        {/* CTA */}
+        {useCta && (
+          <div style={{ position: "absolute", bottom: Math.round(height * 0.038),
+            left: 0, right: 0, textAlign: "center", fontFamily,
+            textTransform: "uppercase", lineHeight: 1.18 }}>
+            <div style={{ fontSize: ctaSize, letterSpacing: "0.12em" }}>
+              <span style={{ color: "#fff", textShadow: "0 2px 8px rgba(0,0,0,0.9)" }}>COMMENT </span>
+              <span style={{ backgroundImage: `linear-gradient(180deg, ${brandGoldLight} 0%, ${brandGold} 50%, ${brandGoldDeep} 100%)`,
+                WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent",
+                filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.9))" }}>"{ctaComment}"</span>
+            </div>
+            <div style={{ fontSize: Math.round(ctaSize * 0.78), color: "#fff",
+              letterSpacing: "0.22em", textShadow: "0 2px 8px rgba(0,0,0,0.9)" }}>TO</div>
+            <div style={{ fontSize: Math.round(ctaSize * 1.08), color: brandRed,
+              fontWeight: 800, letterSpacing: "0.10em", textShadow: "0 2px 8px rgba(0,0,0,0.9)" }}>
+              {ctaTail}
+            </div>
+          </div>
+        )}
+      </AbsoluteFill>
+    );
+  }
+
+  // ── CINEMATIC style (default) ──────────────────────────────────────────────
   return (
     <AbsoluteFill style={{ background: "#000", overflow: "hidden" }}>
       {bg ? (

@@ -55,6 +55,14 @@ try {
 // Per-run override from the dashboard "Include logo" checkbox.
 const NO_LOGO = process.env.DASHBOARD_NO_LOGO === "1";
 
+// Poster style(s) to render — comma-separated from dashboard checkboxes.
+// Distributed round-robin across quotes: "cinematic,flat" on 8 quotes → 4 each.
+const POSTER_STYLES = (process.env.DASHBOARD_POSTER_STYLES || "cinematic")
+  .split(",")
+  .map((s) => s.trim())
+  .filter((s) => ["cinematic", "flat", "split"].includes(s));
+if (!POSTER_STYLES.length) POSTER_STYLES.push("cinematic");
+
 const brand = {
   brandGold: preset?.brandAccent || "#F5C13B",
   brandGoldLight: "#FFE27A",
@@ -96,8 +104,11 @@ let i = 0;
 let failed = 0;
 for (const q of quotes) {
   i += 1;
+  // Assign style round-robin: quote 1 → styles[0], quote 2 → styles[1], etc.
+  const posterStyle = POSTER_STYLES[(i - 1) % POSTER_STYLES.length];
   const slug = slugify(q.quote || `poster-${i}`);
-  const fname = `${client.id}-${String(i).padStart(2, "0")}-${slug}.png`;
+  const styleSuffix = POSTER_STYLES.length > 1 ? `_${posterStyle}` : "";
+  const fname = `${client.id}-${String(i).padStart(2, "0")}-${slug}${styleSuffix}.png`;
   const outPath = path.join(outDir, fname);
   const inputProps = {
     topLines: q.topLines || [],
@@ -117,6 +128,7 @@ for (const q of quotes) {
     logoPosition: brand.logoPosition,
     logoSize: brand.logoSize,
     headlineFont: "",
+    posterStyle,
   };
   try {
     const tStart = Date.now();
