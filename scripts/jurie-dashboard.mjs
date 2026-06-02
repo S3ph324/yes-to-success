@@ -247,6 +247,17 @@ app.post(
 
 // ── Generate (one job at a time) ──────────────────────────────────────────
 let job = null;
+let jobTimer = null; // auto-kill timer — prevents permanent lock on hung Gemini calls
+const JOB_TIMEOUT_MS = 12 * 60 * 1000; // 12 minutes max per job
+
+// Force-clear a stuck lock (called by the UI "Unlock" button).
+app.post("/api/clear-job", (_q, res) => {
+  if (jobTimer) { clearTimeout(jobTimer); jobTimer = null; }
+  if (job?.child) { try { job.child.kill("SIGTERM"); } catch {} }
+  if (job) { job.running = false; job.code = -99; }
+  res.json({ ok: true });
+});
+
 const sse = new Set();
 const log = (line) => {
   if (!job) return;
@@ -340,6 +351,7 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
     ["scripts/batch-jurie.mjs", "--client", client, String(n), t],
     { cwd: projectRoot, env },
   );
+  job.child = child;
   const onData = (b) =>
     String(b)
       .split(/\r?\n/)
@@ -347,10 +359,41 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
       .forEach(log);
   child.stdout.on("data", onData);
   child.stderr.on("data", onData);
-  child.on("exit", (code) => {
+  // Auto-kill if job hangs for more than 12 minutes (e.g. stalled Gemini call).
+  if (jobTimer) clearTimeout(jobTimer);
+  jobTimer = setTimeout(() => {
+    if (job?.running) {
+      log("⚠ Job timed out after 12 min — killing process. You can generate again.");
+      try { child.kill("SIGTERM"); } catch {}
+      job.running = false;
+      job.code = -1;
+      jobTimer = null;
+    }
+  }, JOB_TIMEOUT_MS);
+  child.on("exit", async (code) => {
+    if (jobTimer) { clearTimeout(jobTimer); jobTimer = null; }
     job.running = false;
     job.code = code;
-    log(code === 0 ? "✓ Done. Refresh Batches." : `✗ Exited (${code}).`);
+    if (code === 0) {
+      // Verify files were actually written — batch can exit 0 on silent Gemini failures.
+      let written = 0;
+      try {
+        const clientCfg = await getClient(client);
+        if (clientCfg) {
+          const expDir = clientExportDir(clientCfg);
+          const stamps = (await fs.readdir(expDir)).filter(safeStamp).sort().reverse();
+          if (stamps[0]) {
+            written = (await fs.readdir(path.join(expDir, stamps[0])))
+              .filter((f) => f.endsWith(".png")).length;
+          }
+        }
+      } catch { /* filesystem unavailable — still show done */ }
+      log(written > 0
+        ? `✓ Done — ${written} poster(s) ready. Switching to Batches…`
+        : "✓ Done. Check Batches tab (no PNGs found — Gemini may have had an error above).");
+    } else {
+      log(`✗ Exited (${code}). Check the log above for the error.`);
+    }
   });
   res.json({ ok: true });
 });
@@ -506,14 +549,26 @@ app.post(
     );
     const env = { ...process.env, BROLL_EXPORT_DIR: BROLL_BASE };
     const child = spawn("node", args, { cwd: projectRoot, env });
+    job.child = child;
     const onData = (b) =>
       String(b).split(/\r?\n/).filter(Boolean).forEach(log);
     child.stdout.on("data", onData);
     child.stderr.on("data", onData);
+    if (jobTimer) clearTimeout(jobTimer);
+    jobTimer = setTimeout(() => {
+      if (job?.running) {
+        log("⚠ B-Roll job timed out after 12 min — killing process. You can generate again.");
+        try { child.kill("SIGTERM"); } catch {}
+        job.running = false;
+        job.code = -1;
+        jobTimer = null;
+      }
+    }, JOB_TIMEOUT_MS);
     child.on("exit", (code) => {
+      if (jobTimer) { clearTimeout(jobTimer); jobTimer = null; }
       job.running = false;
       job.code = code;
-      log(code === 0 ? "✓ Done. Refresh B-Roll sets." : `✗ Exited (${code}).`);
+      log(code === 0 ? "✓ Done. Refresh B-Roll sets." : `✗ Exited (${code}). Check the log above for the error.`);
     });
     res.json({ ok: true });
   },
@@ -1013,7 +1068,9 @@ async function viewGenerate(){
    +'<div style="flex:1;min-width:240px"><label>Extra reference photos (optional — used instead of the character\\\'s saved photos for this batch)</label>'
    +'<input id="g_extras" type="file" accept="image/*" multiple></div>'
    +'</div>'
-   +'<p style="margin:14px 0"><button class="go" id="g_go">Generate posters</button></p>'
+   +'<p style="margin:14px 0;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><button class="go" id="g_go">Generate posters</button>'
+   +'<span id="g_unlock" style="display:none"><button class="sec" id="g_unlock_btn" style="border-color:var(--red);color:var(--red)">⚠ Unlock stuck job</button>'
+   +'<span class="muted" style="font-size:12px">Another job appears stuck. Click to force-clear the lock.</span></span></p>'
    +'<div id="g_prog" style="display:none;margin:4px 0 14px">'
    +'<div style="height:12px;background:#0a0a0b;border:1px solid var(--line);border-radius:999px;overflow:hidden">'
    +'<div id="g_bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--gold),#ffe27a);transition:width .45s"></div></div>'
@@ -1048,6 +1105,15 @@ async function viewGenerate(){
       if(phase==='render')return 62+35*(i/n);}
     if(line.indexOf('✓ Done')>-1)return 100;
     return -1;}
+  // Check if a job is already running (e.g. user refreshed mid-job or lock is stuck).
+  api('/api/status').then(s=>{
+    if(s.running){$('#g_go').disabled=true;$('#g_unlock').style.display='inline-flex';$('#g_unlock').style.gap='10px';$('#g_unlock').style.alignItems='center';}
+  });
+  $('#g_unlock_btn').onclick=async()=>{
+    await fetch('/api/clear-job',{method:'POST'});
+    $('#g_go').disabled=false;$('#g_unlock').style.display='none';
+    toast('Lock cleared — you can generate again.');
+  };
   $('#g_go').onclick=async()=>{
     const topic=$('#g_topic').value.trim();
     if(!topic)return toast('Enter a topic first',true);
@@ -1069,12 +1135,15 @@ async function viewGenerate(){
     es&&es.close();es=new EventSource('/api/log');
     es.onmessage=ev=>{const line=JSON.parse(ev.data),L=$('#g_log');
       L.textContent+=line+'\\n';L.scrollTop=L.scrollHeight;
-      if(line.indexOf('✗ Exited')>-1){setProg(100,true);es.close();$('#g_go').disabled=false;return;}
+      if(line.indexOf('✗ Exited')>-1||line.indexOf('⚠ Job timed out')>-1){setProg(100,true);es.close();$('#g_go').disabled=false;$('#g_unlock').style.display='none';return;}
       const p=progFrom(line);if(p>=0)setProg(p,false);
-      if(line.indexOf('✓ Done')>-1){es.close();$('#g_go').disabled=false;
-        toast('Batch complete \\u2713');setTimeout(()=>{TAB='batches';render();},850);}};
+      if(line.indexOf('✓ Done')>-1){es.close();$('#g_go').disabled=false;$('#g_unlock').style.display='none';
+        const bad=line.indexOf('no PNGs found')>-1;
+        toast(bad?'⚠ Done but no posters found — check log':'Batch complete \\u2713',bad);
+        setTimeout(()=>{TAB='batches';render();},850);}};
     const r=await fetch('/api/generate',{method:'POST',body:fd});
-    if(!r.ok){toast((await r.json()).error||'Failed to start',true);$('#g_go').disabled=false;$('#g_prog').style.display='none';}
+    if(!r.ok){const err=(await r.json()).error||'Failed to start';toast(err,true);$('#g_go').disabled=false;$('#g_prog').style.display='none';
+      if(err.indexOf('already running')>-1){$('#g_unlock').style.display='inline-flex';$('#g_unlock').style.gap='10px';$('#g_unlock').style.alignItems='center';}}
   };
 }
 async function viewBrand(){
