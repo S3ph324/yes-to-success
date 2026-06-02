@@ -20,6 +20,10 @@ import { applyGcpEnv } from "./lib/client.mjs";
 
 applyGcpEnv();
 
+// Try-On has its own version, independent from the main studio version.
+// Bump this whenever the /tryon feature changes.
+export const TRYON_VERSION = "1.0.1";
+
 const TEXT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const IMG_MODEL  = process.env.REF_MODEL    || "gemini-2.5-flash-image";
 
@@ -104,6 +108,9 @@ export function registerTryonRoutes(app, { EXPORT_BASE, guard }) {
 
   // ── GET /tryon — UI page ─────────────────────────────────────────────────
   app.get("/tryon", (_req, res) => res.type("html").send(TRYON_PAGE));
+
+  // ── GET /api/tryon/version ───────────────────────────────────────────────
+  app.get("/api/tryon/version", (_req, res) => res.json({ version: TRYON_VERSION }));
 
   // ── POST /api/tryon/validate ─────────────────────────────────────────────
   app.post("/api/tryon/validate", tryonUpload.single("photo"), async (req, res) => {
@@ -280,6 +287,7 @@ padding:5px 11px;border-radius:7px;font-weight:600;transition:all .14s}
 <header>
   <div class="dot"></div>
   <h1>Tranzzie — Virtual Try-On</h1>
+  <span style="font-size:11px;color:var(--mut);letter-spacing:.04em">v${TRYON_VERSION}</span>
   <span class="sp"></span>
   <a href="/">← Studio</a>
 </header>
