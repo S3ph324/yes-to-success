@@ -22,7 +22,7 @@ applyGcpEnv();
 
 // Try-On has its own version, independent from the main studio version.
 // Bump this whenever the /tryon feature changes.
-export const TRYON_VERSION = "1.0.1";
+export const TRYON_VERSION = "1.1.0";
 
 const TEXT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const IMG_MODEL  = process.env.REF_MODEL    || "gemini-2.5-flash-image";
@@ -173,7 +173,7 @@ Respond ONLY with valid JSON — no markdown fences, no extra text:
   // ── POST /api/tryon/generate ─────────────────────────────────────────────
   app.post("/api/tryon/generate", async (req, res) => {
     if (!guard(req, res)) return;
-    const { token, description } = req.body || {};
+    const { token, description, background } = req.body || {};
     if (!token || !/^[\w.\-]+$/.test(token))
       return res.status(400).json({ error: "Invalid session. Please re-upload the photo." });
 
@@ -187,15 +187,40 @@ Respond ONLY with valid JSON — no markdown fences, no extra text:
 
     const frameDesc = (description || "stylish eyeglass frames").slice(0, 300);
     const refPart   = { inlineData: { mimeType: stored.mime, data: stored.base64 } };
+    const bg        = ["studio", "indoor", "outdoor"].includes(background) ? background : "studio";
 
     const makePrompt = (gender) => {
-      const model = gender === "woman"
+      const person = gender === "woman"
         ? "young Filipino woman in her late 20s"
         : "young Filipino man in his late 20s";
-      return (
-        `Professional studio portrait photograph of a ${model} wearing eyeglasses. ` +
+      const frameNote =
         `The glasses in the reference image show the frame to use: ${frameDesc}. ` +
-        `Reproduce the frame shape, color, and style as closely as possible. ` +
+        `Reproduce the frame shape, color, and style as closely as possible. `;
+
+      if (bg === "indoor") {
+        return (
+          `A casual, realistic selfie-style photograph of a ${person} wearing eyeglasses indoors. ` +
+          frameNote +
+          `They are in a bright, naturally lit indoor setting — a cozy coffee shop, modern home, or office. ` +
+          `The photochromic lenses appear completely clear and transparent indoors (no tint at all). ` +
+          `Warm, soft indoor lighting from nearby windows. Natural, relaxed expression — not posed, ` +
+          `like they just took a quick selfie. Slight shoulder-up framing. Photorealistic, candid feel.`
+        );
+      }
+      if (bg === "outdoor") {
+        return (
+          `A casual, realistic selfie-style photograph of a ${person} wearing photochromic eyeglasses outdoors. ` +
+          frameNote +
+          `They are outside in bright natural sunlight — a street, park, or open area. ` +
+          `The photochromic lenses have darkened noticeably in the sunlight, showing a medium tint ` +
+          `(like light sunglasses). Bright outdoor daylight, natural squint from sun, confident casual smile. ` +
+          `Shoulder-up selfie framing, slightly tilted angle, realistic everyday outdoor photo. Photorealistic.`
+        );
+      }
+      // studio (default)
+      return (
+        `Professional studio portrait photograph of a ${person} wearing eyeglasses. ` +
+        frameNote +
         `Model looks directly at camera, natural confident expression, slight smile. ` +
         `Clean white or light-gray studio background, soft even lighting, ` +
         `portrait crop from shoulders up. Photorealistic, sharp, high quality.`
@@ -307,6 +332,15 @@ padding:5px 11px;border-radius:7px;font-weight:600;transition:all .14s}
       <div id="desc-box"></div>
     </div>
     <div id="err-msg"></div>
+    <div style="margin-top:18px">
+      <label style="display:block;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin-bottom:8px">Background / Environment</label>
+      <select id="bg-select" style="background:#0e0e10;border:1px solid var(--line2);color:var(--txt);border-radius:9px;padding:11px 14px;font:inherit;font-size:13.5px;width:100%;max-width:400px;outline:none;cursor:pointer">
+        <option value="studio">🤍 Studio — clean white background</option>
+        <option value="indoor">🏠 Indoors — shows lenses clear (photochromic)</option>
+        <option value="outdoor">☀️ Outdoors — shows lenses tinted (photochromic)</option>
+      </select>
+      <p id="bg-hint" style="margin:8px 0 0;font-size:12px;color:var(--mut)">Clean product shot. Ideal for catalogue use.</p>
+    </div>
     <p style="margin:18px 0 0">
       <button class="go" id="gen-btn" disabled>Generate Try-On Photos</button>
     </p>
@@ -326,6 +360,14 @@ padding:5px 11px;border-radius:7px;font-weight:600;transition:all .14s}
 <script>
 const $=s=>document.querySelector(s);
 let validToken=null, validMime=null, validDesc=null;
+
+const BG_HINTS={
+  studio:'Clean product shot on white. Ideal for catalogue or social media.',
+  indoor:'Realistic indoor selfie — shows how lenses look clear inside (photochromic feature).',
+  outdoor:'Realistic outdoor selfie — lenses darken in sunlight, showing the photochromic tint.'
+};
+function updateBgHint(){const v=$('#bg-select').value;$('#bg-hint').textContent=BG_HINTS[v]||'';}
+
 
 function setBadge(state, text) {
   const b=$('#val-badge');
@@ -364,6 +406,7 @@ async function validate(file) {
   } catch(e){ setBadge('bad','✗ Error'); setErr('Could not reach server. Try again.'); }
 }
 
+$('#bg-select').onchange=updateBgHint;
 $('#photo-input').onchange=e=>{
   const f=e.target.files[0]; if(!f) return;
   const url=URL.createObjectURL(f);
@@ -401,7 +444,7 @@ $('#gen-btn').onclick=async()=>{
     const r=await fetch('/api/tryon/generate',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({token:validToken, description:validDesc})
+      body:JSON.stringify({token:validToken, description:validDesc, background:$('#bg-select').value})
     });
     const d=await r.json();
     if(!r.ok||d.error){ setErr(d.error||'Generation failed.'); setGenStatus(''); $('#gen-btn').disabled=false; return; }
