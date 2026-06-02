@@ -89,11 +89,18 @@ async function genImage(ai, parts, aspectRatio = "3:4") {
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// ── in-memory upload store (avoids all disk writes between validate+generate)
+// token → { base64, mime, expires }. Expires after 30 min; pruned every 5 min.
+const uploadStore = new Map();
+const UPLOAD_TTL = 30 * 60 * 1000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of uploadStore) if (now > v.expires) uploadStore.delete(k);
+}, 5 * 60 * 1000);
+
 // ── route registrar ────────────────────────────────────────────────────────
 export function registerTryonRoutes(app, { EXPORT_BASE, guard }) {
-  const TRYON_OUT = EXPORT_BASE
-    ? path.join(EXPORT_BASE, "tryon")
-    : path.join("/tmp", "tryon-results");
+  // No TRYON_OUT directory needed — results are returned as base64 data URIs.
 
   // ── GET /tryon — UI page ─────────────────────────────────────────────────
   app.get("/tryon", (_req, res) => res.type("html").send(TRYON_PAGE));
@@ -101,17 +108,22 @@ export function registerTryonRoutes(app, { EXPORT_BASE, guard }) {
   // ── POST /api/tryon/validate ─────────────────────────────────────────────
   app.post("/api/tryon/validate", tryonUpload.single("photo"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No image uploaded." });
+    const filePath = req.file.path;
     try {
-      const imgBuf  = await fs.readFile(req.file.path);
-      const mime    = mimeFor(req.file.originalname || req.file.filename);
-      const ai      = aiClient();
+      const imgBuf = await fs.readFile(filePath);
+      const mime   = mimeFor(req.file.originalname || req.file.filename);
+      const b64    = imgBuf.toString("base64");
 
+      // Delete from disk immediately — we store in memory instead.
+      fs.unlink(filePath).catch(() => {});
+
+      const ai = aiClient();
       const resp = await ai.models.generateContent({
         model: TEXT_MODEL,
         contents: [{
           role: "user",
           parts: [
-            { inlineData: { mimeType: mime, data: imgBuf.toString("base64") } },
+            { inlineData: { mimeType: mime, data: b64 } },
             { text: `Analyze this image carefully.
 Is it a clear, usable photograph of a pair of eyeglasses or spectacle frames?
 
@@ -139,9 +151,13 @@ Respond ONLY with valid JSON — no markdown fences, no extra text:
         parsed = JSON.parse(raw.replace(/```json\n?|\n?```/g, "").trim());
       } catch { /* keep fallback */ }
 
-      const token = path.basename(req.file.path);
+      // Store in memory (not disk) so generate can use it without disk I/O.
+      const token = `t-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      uploadStore.set(token, { base64: b64, mime, expires: Date.now() + UPLOAD_TTL });
+
       res.json({ ...parsed, token, mime });
     } catch (err) {
+      fs.unlink(filePath).catch(() => {});
       console.error("tryon/validate error:", err.message || err);
       res.status(500).json({ error: "Validation failed: " + (err.message || "unknown") });
     }
@@ -150,18 +166,20 @@ Respond ONLY with valid JSON — no markdown fences, no extra text:
   // ── POST /api/tryon/generate ─────────────────────────────────────────────
   app.post("/api/tryon/generate", async (req, res) => {
     if (!guard(req, res)) return;
-    const { token, mime, description } = req.body || {};
+    const { token, description } = req.body || {};
     if (!token || !/^[\w.\-]+$/.test(token))
       return res.status(400).json({ error: "Invalid session. Please re-upload the photo." });
 
-    const uploadPath = path.join(UPLOAD_TMP, token);
-    let imgBuf;
-    try { imgBuf = await fs.readFile(uploadPath); }
-    catch { return res.status(400).json({ error: "Upload expired. Please re-upload the photo." }); }
+    // Read from memory store — no disk read needed.
+    const stored = uploadStore.get(token);
+    if (!stored || Date.now() > stored.expires) {
+      uploadStore.delete(token);
+      return res.status(400).json({ error: "Session expired (30 min limit). Please re-upload." });
+    }
+    uploadStore.delete(token); // single-use — clear immediately
 
     const frameDesc = (description || "stylish eyeglass frames").slice(0, 300);
-    const imgMime   = mime || "image/jpeg";
-    const refPart   = { inlineData: { mimeType: imgMime, data: imgBuf.toString("base64") } };
+    const refPart   = { inlineData: { mimeType: stored.mime, data: stored.base64 } };
 
     const makePrompt = (gender) => {
       const model = gender === "woman"
@@ -178,41 +196,24 @@ Respond ONLY with valid JSON — no markdown fences, no extra text:
     };
 
     try {
-      await fs.mkdir(TRYON_OUT, { recursive: true });
-      const stamp = Date.now();
-
+      // Generate both in parallel — results returned as base64 data URIs,
+      // no disk writes at all (fixes ENOSPC on Railway /tmp).
       const [womanBuf, manBuf] = await Promise.all([
         genImage(aiClient(), [refPart, { text: makePrompt("woman") }], "3:4"),
         genImage(aiClient(), [refPart, { text: makePrompt("man")   }], "3:4"),
       ]);
 
-      const womanFile = `tryon-${stamp}-woman.png`;
-      const manFile   = `tryon-${stamp}-man.png`;
-      await fs.writeFile(path.join(TRYON_OUT, womanFile), womanBuf);
-      await fs.writeFile(path.join(TRYON_OUT, manFile),   manBuf);
-
       res.json({
         ok: true,
         results: [
-          { gender: "woman", file: womanFile, label: "Female model" },
-          { gender: "man",   file: manFile,   label: "Male model"   },
+          { gender: "woman", label: "Female model", dataUrl: `data:image/png;base64,${womanBuf.toString("base64")}` },
+          { gender: "man",   label: "Male model",   dataUrl: `data:image/png;base64,${manBuf.toString("base64")}` },
         ],
       });
     } catch (err) {
       console.error("tryon/generate error:", err.message || err);
       res.status(500).json({ error: "Generation failed: " + (err.message || "unknown") });
     }
-  });
-
-  // ── GET /tryon-asset/:file — serve result images ─────────────────────────
-  app.get("/tryon-asset/:file", (req, res) => {
-    const { file } = req.params;
-    if (!/^tryon-\d+-(woman|man)\.png$/.test(file)) return res.status(400).end();
-    const fp = path.join(TRYON_OUT, file);
-    if (!fp.startsWith(TRYON_OUT)) return res.status(400).end();
-    if (req.query.dl)
-      res.set("Content-Disposition", `attachment; filename="${file}"`);
-    res.sendFile(fp);
   });
 }
 
@@ -392,20 +393,21 @@ $('#gen-btn').onclick=async()=>{
     const r=await fetch('/api/tryon/generate',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({token:validToken, mime:validMime, description:validDesc})
+      body:JSON.stringify({token:validToken, description:validDesc})
     });
     const d=await r.json();
     if(!r.ok||d.error){ setErr(d.error||'Generation failed.'); setGenStatus(''); $('#gen-btn').disabled=false; return; }
     setGenStatus('');
     $('#results-section').style.display='block';
-    $('#results-grid').innerHTML=(d.results||[]).map(item=>
-      '<div class="result-card">'
-      +'<img src="/tryon-asset/'+encodeURIComponent(item.file)+'" alt="'+item.label+'">'
-      +'<div class="foot">'
-      +'<span class="lbl">'+item.label+'</span>'
-      +'<a href="/tryon-asset/'+encodeURIComponent(item.file)+'?dl=1" download="'+item.file+'">Download</a>'
-      +'</div></div>'
-    ).join('');
+    $('#results-grid').innerHTML=(d.results||[]).map(item=>{
+      const fname=(item.gender==='woman'?'female':'male')+'-model.png';
+      return '<div class="result-card">'
+        +'<img src="'+item.dataUrl+'" alt="'+item.label+'">'
+        +'<div class="foot">'
+        +'<span class="lbl">'+item.label+'</span>'
+        +'<a href="'+item.dataUrl+'" download="'+fname+'">Download</a>'
+        +'</div></div>';
+    }).join('');
     $('#results-section').scrollIntoView({behavior:'smooth',block:'start'});
     $('#gen-btn').disabled=false;
   } catch(e){ setErr('Network error. Try again.'); setGenStatus(''); $('#gen-btn').disabled=false; }
