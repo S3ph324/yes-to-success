@@ -1006,6 +1006,12 @@ function toast(msg,bad){const t=$('#toast');if(!t)return;t.textContent=msg;
 let CLIENT=localStorage.getItem('qps_client')||'';
 let TAB='generate';
 const api=(u,o)=>fetch(u,o).then(r=>r.json());
+// Convert folder stamp "2026-05-17T09-38" → "May 17, 2026, 9:38 AM"
+function fmtStamp(s){
+  const m=s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})/);
+  if(!m)return s;
+  const d=new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5]);
+  return d.toLocaleString('en-US',{month:'long',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true});}
 async function boot(){
   const cs=await api('/api/clients');
   $('#client').innerHTML=cs.map(c=>'<option value="'+c.id+'">'+c.label+'</option>').join('');
@@ -1297,7 +1303,7 @@ async function viewBatches(){
       if(!idx.length)return '';
       nb++;np+=idx.length;
       const allCaps=idx.map(i=>'#'+(i+1)+'\\n'+(caps[i]||'')).join('\\n\\n---\\n\\n');
-      return '<div class="card"><div class="bx-row"><b>'+B.stamp+'</b>'
+      return '<div class="card"><div class="bx-row"><b>'+fmtStamp(B.stamp)+'</b>'
        +'<span><span class="pill">'+idx.length+(idx.length!==B.count?(' / '+B.count):'')+' posters</span> '
        +'<button class="sec" data-cp-all="'+b64(allCaps)+'">📋 All captions</button> '
        +'<a class="sec" style="text-decoration:none" href="/api/batch-zip?client='+CLIENT+'&stamp='+encodeURIComponent(B.stamp)+'">⬇ All (.zip)</a></span></div>'
@@ -1505,7 +1511,7 @@ async function viewBroll(){
          +'<button class="sec br_cp" data-t="vid" data-s="'+S.stamp+'" data-n="'+sh.n+'" style="font-size:11px;padding:6px 10px">Copy Veo prompt</button>'
          +'</div>';
       }).join('');
-      return '<div class="card"><div class="bx-row"><b>'+S.stamp+'</b>'
+      return '<div class="card"><div class="bx-row"><b>'+fmtStamp(S.stamp)+'</b>'
        +'<span><span class="pill">'+S.shots.length+' shots</span>'
        +'<span class="pill">'+(m.aspect||'')+'</span>'
        +'<span class="pill">'+(m.charMode==='reference-image'?'character':'no character')+'</span>'
