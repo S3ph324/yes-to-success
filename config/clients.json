@@ -5,7 +5,7 @@
     "voiceProfile": "voice-profile-jurie.md",
     "briefId": "brief_jurie",
     "brandPresetId": "preset_jurie",
-    "characterId": "char_jurie",
+    "characterId": "char_jurie_enhanced",
     "exportDir": "/Users/macbookpro/Downloads/Work/02_Clients/Jurie/Exports/Quote Posters"
   },
   {
@@ -14,7 +14,7 @@
     "voiceProfile": "voice-profile-tranzzie.md",
     "briefId": "brief_tranzzie",
     "brandPresetId": "preset_tranzzie",
-    "characterId": "char_tranzzie",
+    "characterId": "char_tranzzie_enhanced",
     "exportDir": "/Users/macbookpro/Downloads/Work/02_Clients/Tranzzie/05_Exports/Quote Posters"
   }
 ]

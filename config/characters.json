@@ -1,22 +1,42 @@
 [
   {
-    "id": "char_jurie",
-    "name": "Jurie",
+    "id": "char_jurie_normal",
+    "name": "Jurie — Normal",
     "enabled": true,
     "client": "jurie",
     "photos": [
-      "characters/jurie/jurie-face.png"
+      "characters/jurie/jurie-normal.png"
     ],
-    "notes": "Filipina AI/business mentor. Signature look: gray backwards cap, clear-frame rimless glasses, white tank/tee, silver cross necklace, headphones. jurie-face.png is the canonical multi-angle identity sheet (front + both profiles + accessory close-ups). Older jurie-01/02.jpeg kept on disk; backup at jurie-face-OLD.png."
+    "notes": "Real 5-angle photo collage. Gray backwards cap, clear-frame glasses, white graphic tee. Best for realistic/photographic scene outputs."
   },
   {
-    "id": "char_tranzzie",
-    "name": "Jurie",
+    "id": "char_jurie_enhanced",
+    "name": "Jurie — Enhanced",
+    "enabled": true,
+    "client": "jurie",
+    "photos": [
+      "characters/jurie/jurie-enhanced.png"
+    ],
+    "notes": "AI-generated multi-angle character sheet. Backwards cap, rimless glasses, headphones, white tank, silver cross necklace, beaded bracelet. Best for stylized/AI scene outputs."
+  },
+  {
+    "id": "char_tranzzie_normal",
+    "name": "Jurie — Normal",
     "enabled": true,
     "client": "tranzzie",
     "photos": [
-      "characters/jurie/jurie-face.png"
+      "characters/jurie/jurie-normal.png"
     ],
-    "notes": "Tranzzie's preset model is Jurie — same identity as the Jurie client, per request."
+    "notes": "Tranzzie model: Jurie (Normal). Real 5-angle photo reference."
+  },
+  {
+    "id": "char_tranzzie_enhanced",
+    "name": "Jurie — Enhanced",
+    "enabled": true,
+    "client": "tranzzie",
+    "photos": [
+      "characters/jurie/jurie-enhanced.png"
+    ],
+    "notes": "Tranzzie model: Jurie (Enhanced). AI character sheet with headphones and accessories."
   }
 ]
