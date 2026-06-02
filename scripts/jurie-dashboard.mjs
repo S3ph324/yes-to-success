@@ -17,6 +17,7 @@ import { readFileSync } from "node:fs";
 import multer from "multer";
 import path from "node:path";
 import url from "node:url";
+import { registerTryonRoutes } from "./tryon-routes.mjs";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, "..");
@@ -718,8 +719,12 @@ app.get("/api/env", (_q, res) =>
 );
 app.get("/healthz", (_q, res) => res.json({ ok: true }));
 app.get("/", (_q, res) => res.type("html").send(PAGE));
+
+// ── Try-On sub-site (/tryon) ──────────────────────────────────────────────
+registerTryonRoutes(app, { EXPORT_BASE, guard });
+
 app.listen(PORT, () =>
-  console.log(`\n  Quote Poster Studio → http://localhost:${PORT}\n`),
+  console.log(`\n  Quote Poster Studio → http://localhost:${PORT}\n  Try-On         → http://localhost:${PORT}/tryon\n`),
 );
 
 // ── UI ────────────────────────────────────────────────────────────────────
@@ -995,7 +1000,7 @@ box-shadow:0 24px 50px -20px rgba(0,0,0,.72),0 0 0 1px rgba(255,255,255,.04)}
 <header><b>QUOTE&nbsp;POSTER&nbsp;<i>STUDIO</i></b>
 <span class="pill" title="deployed version">v${VERSION}</span><span class="sp"></span>
 <div class="sw">Client <select id="client"></select></div>
-<span class="pill">manual posting</span></header>
+<span class="pill">manual posting</span> <a href="/tryon" style="font-size:11px;color:var(--mut);text-decoration:none;border:1px solid var(--line2);padding:4px 10px;border-radius:6px;margin-left:4px;transition:color .14s,border-color .14s" onmouseover="this.style.color=\'var(--gold)\';this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.color=\'var(--mut)\';this.style.borderColor=\'var(--line2)\'">🕶️ Try-On</a></header>
 <div id="toast"></div>
 <main>
 <nav id="nav"></nav>
