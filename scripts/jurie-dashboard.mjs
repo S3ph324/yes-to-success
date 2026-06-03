@@ -1786,13 +1786,13 @@ async function viewQueue(){
         +'<div style="font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);margin-bottom:12px">Posting Schedule <span style="font-weight:400;letter-spacing:0;text-transform:none;color:var(--mut);font-size:11px">(Manila time · UTC+8)</span></div>'
         +'<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">'
         +'<div style="flex:2;min-width:200px"><label style="font-size:11px;color:var(--mut);display:block;margin-bottom:5px">Strategy</label>'
-        +'<select id="qs-strat-'+qid+'" onchange="qPreview(\''+qid+'\')" style="width:100%;background:#0e0e10;border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:9px 12px;font:inherit;font-size:13px">'
+        +'<select id="qs-strat-'+qid+'" onchange="qPrev(this)" data-qid="'+qid+'" style="width:100%;background:#0e0e10;border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:9px 12px;font:inherit;font-size:13px">'
         +'<option value="light">Light — 2 posts/day (9 AM, 7 PM)</option>'
         +'<option value="standard" selected>Standard — 3 posts/day (9 AM, 1 PM, 7 PM)</option>'
         +'<option value="active">Active — 5 posts/day (9 AM, 11 AM, 1 PM, 5 PM, 8 PM)</option>'
         +'</select></div>'
         +'<div><label style="font-size:11px;color:var(--mut);display:block;margin-bottom:5px">Start date</label>'
-        +'<input type="date" id="qs-date-'+qid+'" onchange="qPreview(\''+qid+'\')" style="background:#0e0e10;border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:9px 12px;font:inherit;font-size:13px"></div>'
+        +'<input type="date" id="qs-date-'+qid+'" onchange="qPrev(this)" data-qid="'+qid+'" style="background:#0e0e10;border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:9px 12px;font:inherit;font-size:13px"></div>'
         +'<div style="margin-left:auto"><button class="go" onclick="qSnd(this)" data-qid="'+qid+'" id="qsend-'+qid+'" style="white-space:nowrap">'
         +(approvedCount>0?'Send '+approvedCount+' to Buffer →':'Approve posters first')+'</button></div></div>'
         +'<div id="qs-preview-'+qid+'" style="font-size:12px;color:var(--mut);line-height:1.8;padding:10px 12px;background:rgba(255,255,255,.02);border-radius:7px;min-height:36px">Select a strategy and date to preview the schedule.</div>'
@@ -1846,6 +1846,7 @@ async function viewQueue(){
   }
 
   // Data-attribute bridge functions — avoids quoting issues in onclick strings.
+  window.qPrev  =el=>qPreview(el.dataset.qid);
   window.qSS    =el=>setStatus(el.dataset.qid,decodeURIComponent(el.dataset.fn||''),el.dataset.s);
   window.qSelA  =el=>qSelectAll(el.dataset.qid,el.dataset.s);
   window.qDel   =el=>qDelete(el.dataset.qid);
