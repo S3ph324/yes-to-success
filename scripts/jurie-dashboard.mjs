@@ -1079,14 +1079,12 @@ figure{margin:0;background:#0d0d0f;border:1px solid var(--line);border-radius:12
 position:relative;transition:border-color .2s}
 figure:hover{border-color:var(--line2)}
 figure img{width:100%;display:block;aspect-ratio:4/5;object-fit:cover}
-.dl,.cp,.rm{position:absolute;top:9px;background:rgba(0,0,0,.6);color:#fff;
+.dl,.cp{position:absolute;top:9px;background:rgba(0,0,0,.6);color:#fff;
 border:1px solid rgba(255,255,255,.2);text-decoration:none;font-size:11px;font-weight:600;
 padding:6px 11px;border-radius:7px;opacity:0;transition:opacity .18s,background .15s;
 backdrop-filter:blur(4px);cursor:pointer;font-family:inherit}
 .dl{right:9px}.cp{left:9px}
-.rm{bottom:9px;right:9px;top:auto;color:#ff8a82;border-color:rgba(255,100,100,.3)}
-figure:hover .dl,figure:hover .cp,figure:hover .rm{opacity:1}
-.rm:hover{background:var(--red);color:#fff;border-color:var(--red)}
+figure:hover .dl,figure:hover .cp{opacity:1}
 .dl:hover,.cp:hover{background:var(--gold);color:#15120a;border-color:var(--gold)}
 figcaption{padding:12px 13px;font-size:11px;line-height:1.55;color:var(--mut);
 white-space:pre-wrap;max-height:112px;overflow:auto}
@@ -1998,15 +1996,19 @@ async function viewBatches(){
           +badgeHtml
           +'<a href="'+u+'" target="_blank" rel="noopener" title="Open full size"><img loading="lazy" src="'+u+'"></a>'
           +'<button class="cp" data-c="'+b64(caps[i]||'')+'" title="Copy caption">📋</button>'
-          +'<a class="dl" href="'+u+'?dl=1" download>↓ PNG</a>'
-          +'<button class="rm del-poster" data-stamp="'+B.stamp+'" data-file="'+encodeURIComponent(f)+'" title="Delete this poster">🗑</button>'
+          +'<a class="dl" href="'+u+'?dl=1" download>↓</a>'
           +'<figcaption>'+(esc(caps[i])||'—')+'</figcaption>'
           +'<div class="ps-actions">'
+          // Row 1: primary approve/decline
           +'<div class="ps-row">'
           +'<button class="ps-btn ps-approve'+(st==='approved'?' ps-on-gold':'')+'" data-stamp="'+B.stamp+'" data-fn="'+encodeURIComponent(f)+'" data-s="approved">'+(st==='approved'?'✓ Approved':'✓ Approve')+'</button>'
           +'<button class="ps-btn ps-decline'+(st==='declined'?' ps-on-red':'')+'" data-stamp="'+B.stamp+'" data-fn="'+encodeURIComponent(f)+'" data-s="declined">'+(st==='declined'?'✗ Declined':'✗ Decline')+'</button>'
           +'</div>'
-          +'<button class="ps-btn ps-btn-secondary ps-posted'+(st==='posted'?' ps-on-green':'')+'" style="width:100%" data-stamp="'+B.stamp+'" data-fn="'+encodeURIComponent(f)+'" data-s="posted">'+(st==='posted'?'✓ Already posted':'Mark as already posted')+'</button>'
+          // Row 2: secondary — mark posted + delete
+          +'<div class="ps-row">'
+          +'<button class="ps-btn ps-btn-secondary ps-posted'+(st==='posted'?' ps-on-green':'')+'" style="flex:3" data-stamp="'+B.stamp+'" data-fn="'+encodeURIComponent(f)+'" data-s="posted">'+(st==='posted'?'✓ Posted':'Already posted')+'</button>'
+          +'<button class="ps-btn ps-btn-secondary del-poster" style="flex:1" data-stamp="'+B.stamp+'" data-file="'+encodeURIComponent(f)+'" title="Delete poster">🗑</button>'
+          +'</div>'
           +'</div></figure>';}).join('')
        +'</div></div>';}).join('');
     $('#bx_list').innerHTML=ALL.length?(html||'<p class="muted">No posters match “'+esc(q)+'”.</p>')
