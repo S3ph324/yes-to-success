@@ -95,10 +95,17 @@ const bundleLocation = await bundle({
 console.log(`  bundled in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 
 const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
-const outDir = path.join(projectRoot, "out", "cards", `${client.id}-${stamp}`);
 const exportDir = path.join(EXPORT_DIR, stamp);
-await fs.mkdir(outDir, { recursive: true });
 await fs.mkdir(exportDir, { recursive: true });
+
+// Clean up old working-copy cache to prevent ENOSPC on container disk.
+const cardsRoot = path.join(projectRoot, "out", "cards");
+try {
+  const oldDirs = await fs.readdir(cardsRoot);
+  for (const d of oldDirs) {
+    fs.rm(path.join(cardsRoot, d), { recursive: true, force: true }).catch(() => {});
+  }
+} catch { /* out/cards may not exist — skip */ }
 
 let i = 0;
 let failed = 0;
@@ -109,7 +116,7 @@ for (const q of quotes) {
   const slug = slugify(q.quote || `poster-${i}`);
   const styleSuffix = POSTER_STYLES.length > 1 ? `_${posterStyle}` : "";
   const fname = `${client.id}-${String(i).padStart(2, "0")}-${slug}${styleSuffix}.png`;
-  const outPath = path.join(outDir, fname);
+  const outPath = path.join(exportDir, fname); // render directly to export — no intermediate copy
   const inputProps = {
     topLines: q.topLines || [],
     bottomLines: q.bottomLines || [],
@@ -145,7 +152,6 @@ for (const q of quotes) {
       imageFormat: "png",
       frame: 60,
     });
-    await fs.copyFile(outPath, path.join(exportDir, fname));
     const dt = ((Date.now() - tStart) / 1000).toFixed(1);
     console.log(`  [${i}/${quotes.length}] ${fname}  (${dt}s)`);
   } catch (err) {
@@ -159,8 +165,10 @@ for (const q of quotes) {
 // Contact-sheet gallery + captions file for manual posting.
 const rows = quotes
   .map((q, idx) => {
+    const style = POSTER_STYLES[idx % POSTER_STYLES.length];
+    const styleSuffix = POSTER_STYLES.length > 1 ? `_${style}` : "";
     const slug = slugify(q.quote || `poster-${idx + 1}`);
-    const fn = `${client.id}-${String(idx + 1).padStart(2, "0")}-${slug}.png`;
+    const fn = `${client.id}-${String(idx + 1).padStart(2, "0")}-${slug}${styleSuffix}.png`;
     const cap = (q.caption || "").replace(/</g, "&lt;");
     return `<figure><img src="./${fn}"/><figcaption><b>#${idx + 1}</b><br>${cap.replace(/\n/g, "<br>")}</figcaption></figure>`;
   })
@@ -183,7 +191,6 @@ await fs.writeFile(
 
 console.log(
   `\n✓ ${quotes.length - failed}/${quotes.length} poster(s)\n` +
-    `  Working copies : ${outDir}\n` +
     `  Client export  : ${exportDir}\n` +
     `  Review         : ${path.join(exportDir, "gallery.html")}`,
 );
