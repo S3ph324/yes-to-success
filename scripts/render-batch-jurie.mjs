@@ -195,3 +195,37 @@ console.log(
     `  Review         : ${path.join(exportDir, "gallery.html")}`,
 );
 if (failed > 0) console.log(`  (${failed} failed — see warnings)`);
+
+// ── Disk cleanup: delete generated backgrounds + quotes JSON ─────────────
+// Background PNGs are now baked into the rendered posters — no longer needed.
+// Quotes JSON is also done. Wipe both to recover container disk space.
+console.log("Cleaning up temp files…");
+const bgRoot = path.join(projectRoot, "public", "generated-bg");
+try {
+  // Delete background images for this batch
+  const usedBgDirs = new Set(
+    quotes.map(q => q.bgPath ? path.dirname(path.join(projectRoot, "public", q.bgPath)) : null)
+      .filter(Boolean)
+  );
+  for (const dir of usedBgDirs) {
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+  // Also sweep ANY remaining generated-bg subdirs (from crashed/failed previous runs)
+  const remaining = await fs.readdir(bgRoot).catch(() => []);
+  for (const sub of remaining) {
+    await fs.rm(path.join(bgRoot, sub), { recursive: true, force: true }).catch(() => {});
+  }
+} catch { /* ignore */ }
+
+// Delete the quotes JSON file (it lives in out/ and is no longer needed)
+fs.rm(quotesPath, { force: true }).catch(() => {});
+
+// Sweep any old JSON files from out/ (from previous crashed runs)
+try {
+  const outFiles = await fs.readdir(path.join(projectRoot, "out"));
+  for (const f of outFiles) {
+    if (f.endsWith(".json") || f.endsWith(".txt"))
+      fs.rm(path.join(projectRoot, "out", f), { force: true }).catch(() => {});
+  }
+} catch { /* ignore */ }
+console.log("Cleanup done.");

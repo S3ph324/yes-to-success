@@ -54,6 +54,25 @@ console.log(
     ` ━━━`,
 );
 
+// Pre-run sweep: clear stale generated-bg and out/ files from crashed previous
+// runs so they don't accumulate and cause ENOSPC before rendering starts.
+{
+  const bgRoot = path.join(projectRoot, "public", "generated-bg");
+  try {
+    const subs = await fs.readdir(bgRoot);
+    await Promise.all(subs.map(s => fs.rm(path.join(bgRoot, s), { recursive: true, force: true }).catch(() => {})));
+    if (subs.length) console.log(`  Cleared ${subs.length} stale generated-bg folder(s).`);
+  } catch { /* generated-bg may not exist yet — fine */ }
+
+  const outDir = path.join(projectRoot, "out");
+  try {
+    const files = await fs.readdir(outDir);
+    const stale = files.filter(f => f.endsWith(".json") || f.endsWith(".txt"));
+    await Promise.all(stale.map(f => fs.rm(path.join(outDir, f), { force: true }).catch(() => {})));
+    if (stale.length) console.log(`  Cleared ${stale.length} stale out/ file(s).`);
+  } catch { /* ignore */ }
+}
+
 console.log(`\n━━━ Step 1: Generate quotes (${client.label} voice) ━━━`);
 await run([
   "scripts/generate-quotes-jurie.mjs",
