@@ -46,27 +46,36 @@ async function gql(query, variables = {}) {
   return json.data;
 }
 
-// ── Create a single scheduled Buffer post ───────────────────────────────────
-async function schedulePost(channelId, imageUrl, caption, scheduledAt) {
+// ── Create a single scheduled Buffer post (updated API schema June 2026) ──────
+async function schedulePost(channelId, imageUrl, caption, dueAt) {
   const data = await gql(`
-    mutation CreatePost($input: CreatePostInput!) {
+    mutation CP($input: CreatePostInput!) {
       createPost(input: $input) {
-        post { id status scheduledAt }
-        errors { message }
+        ... on PostActionSuccess { post { id status dueAt } }
+        ... on InvalidInputError { message }
+        ... on UnexpectedError   { message }
+        ... on LimitReachedError { message }
       }
     }
   `, {
     input: {
-      channelIds: [channelId],
-      text:       caption,
-      mediaUrls:  [imageUrl],
-      scheduledAt,
+      channelId,
+      schedulingType: "automatic",
+      mode: "customScheduled",
+      dueAt,
+      text: caption,
+      assets: [],
+      metadata: {
+        facebook: {
+          type: "post",
+          linkAttachment: { url: imageUrl },
+        },
+      },
     },
   });
-  const post   = data?.createPost?.post;
-  const errors = data?.createPost?.errors;
-  if (errors?.length) throw new Error(errors.map(e => e.message).join("; "));
-  return post;
+  const result = data?.createPost;
+  if (result?.message) throw new Error(result.message);
+  return result?.post;
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────

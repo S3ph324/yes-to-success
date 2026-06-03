@@ -147,7 +147,14 @@ const BUFFER_CHANNEL = {
 const STUDIO_URL = () =>
   (process.env.STUDIO_PUBLIC_URL || "https://jurie-automation-production-5045.up.railway.app").replace(/\/$/, "");
 
-async function bufferPost(channelId, imageUrl, text, scheduledAt) {
+// Buffer GraphQL API — updated for new schema (June 2026).
+// Key changes from old API:
+//   channelIds[] → channelId (singular)
+//   mediaUrls[]  → metadata.facebook.linkAttachment.url
+//   scheduledAt  → dueAt
+//   new required: schedulingType, mode, assets: []
+//   response: inline fragment ... on PostActionSuccess
+async function bufferPost(channelId, imageUrl, text, dueAt) {
   const r = await fetch("https://api.buffer.com", {
     method: "POST",
     headers: {
@@ -155,15 +162,35 @@ async function bufferPost(channelId, imageUrl, text, scheduledAt) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      query: `mutation CreatePost($i: CreatePostInput!) { createPost(input: $i) { post { id status scheduledAt } errors { message } } }`,
-      variables: { i: { channelIds: [channelId], text, mediaUrls: [imageUrl], scheduledAt } },
+      query: `mutation CP($i:CreatePostInput!){createPost(input:$i){
+        ... on PostActionSuccess{post{id status dueAt}}
+        ... on InvalidInputError{message}
+        ... on UnexpectedError{message}
+        ... on LimitReachedError{message}
+      }}`,
+      variables: {
+        i: {
+          channelId,
+          schedulingType: "automatic",
+          mode: "customScheduled",
+          dueAt,
+          text,
+          assets: [],
+          metadata: {
+            facebook: {
+              type: "post",
+              linkAttachment: { url: imageUrl },
+            },
+          },
+        },
+      },
     }),
   });
   const json = await r.json();
   if (json.errors?.length) throw new Error(json.errors.map(e => e.message).join("; "));
-  const errs = json.data?.createPost?.errors;
-  if (errs?.length) throw new Error(errs.map(e => e.message).join("; "));
-  return json.data?.createPost?.post;
+  const result = json.data?.createPost;
+  if (result?.message) throw new Error(result.message); // error union types
+  return result?.post;
 }
 
 // ── Queue API routes ──────────────────────────────────────────────────────
@@ -285,8 +312,8 @@ app.post("/api/queue/cancel", async (req, res) => {
         method: "POST",
         headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          query: `mutation DeletePost($i: DeletePostInput!) { deletePost(input: $i) { deletedPostId } }`,
-          variables: { i: { postId } },
+          query: `mutation DP($i:DeletePostInput!){deletePost(input:$i){__typename}}`,
+          variables: { i: { id: postId } },
         }),
       });
       const json = await r.json();
