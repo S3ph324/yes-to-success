@@ -1126,6 +1126,40 @@ nav button .nav-badge{position:relative;top:-1px}
 .section-label{font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
 color:var(--mut);margin:20px 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line)}
 .section-label:first-child{margin-top:0}
+/* ── Mobile responsive ─────────────────────────────────── */
+@media(max-width:640px){
+  header{padding:14px 16px 12px;gap:10px}
+  header h1{font-size:12px;letter-spacing:.16em}
+  header b{font-size:11px}
+  main{padding:20px 14px 56px}
+  nav{gap:0;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;
+    padding-bottom:1px;margin-bottom:20px;scrollbar-width:none}
+  nav::-webkit-scrollbar{display:none}
+  nav button{padding:0 10px 12px;font-size:12px;white-space:nowrap;flex-shrink:0}
+  .workflow-strip{flex-direction:column;border-radius:10px}
+  .wf-step{padding:10px 14px}
+  .wf-step+.wf-step{border-left:0!important;border-top:1px solid var(--line)}
+  .card{padding:18px 16px;border-radius:12px}
+  h2{font-size:10px}
+  .row{flex-direction:column;gap:10px}
+  .row>div{min-width:0!important;flex:1 1 auto!important}
+  .grid{grid-template-columns:repeat(2,1fr);gap:10px}
+  .result-grid{grid-template-columns:repeat(2,1fr);gap:10px}
+  .bx-head{flex-direction:column;align-items:flex-start;gap:10px}
+  .bx-row{flex-direction:column;align-items:flex-start;gap:8px}
+  button.go{width:100%;padding:14px}
+  .opts-grid{grid-template-columns:1fr 1fr}
+  figure img{aspect-ratio:3/4}
+  .ps-actions{flex-wrap:wrap}
+  .ps-btn{font-size:10px;padding:6px 4px}
+  input[type=number]{width:100%!important}
+  #g_count{width:100%!important}
+}
+@media(max-width:420px){
+  .grid{grid-template-columns:1fr}
+  .result-grid{grid-template-columns:1fr}
+  .opts-grid{grid-template-columns:1fr}
+}
 .item{border:1px solid var(--line);border-radius:10px;padding:15px;margin-bottom:10px;
 transition:border-color .15s}.item:hover{border-color:var(--line2)}
 .pill{font-size:11px;color:var(--mut);border:1px solid var(--line2);padding:3px 10px;
@@ -1365,6 +1399,7 @@ function fmtStamp(s){
   const h=hr%12||12,ap=hr<12?'AM':'PM';
   return _MON[mo]+' '+dy+', '+yr+' \xb7 '+h+':'+(mn<10?'0':'')+mn+' '+ap;}
 function goBatches(){TAB='batches';render();}
+function toggleAdv(){const b=document.getElementById('adv-btn'),d=document.getElementById('adv-body');if(b)b.classList.toggle('open');if(d)d.classList.toggle('open');}
 async function boot(){
   const cs=await api('/api/clients');
   $('#client').innerHTML=cs.map(c=>'<option value="'+c.id+'">'+c.label+'</option>').join('');
@@ -1420,7 +1455,7 @@ async function viewGenerate(){
    +'<div style="flex:0 0 100px"><label style="font-size:11px">Posters</label><input id="g_count" type="number" min="1" max="200" value="8" style="width:100%;text-align:center;font-size:15px;padding:14px 8px"></div>'
    +'</div>'
    // ── Advanced toggle ──
-   +'<button class="adv-toggle" id="adv-btn" onclick="document.getElementById(\'adv-btn\').classList.toggle(\'open\');document.getElementById(\'adv-body\').classList.toggle(\'open\')">'
+   +'<button class="adv-toggle" id="adv-btn" onclick="toggleAdv()">'
    +'⚙ Advanced settings <span class="muted" style="font-size:11px;margin-left:6px">(topic preset, brand kit, character, styles)</span></button>'
    +'<div class="adv-body" id="adv-body">'
    +'<div style="border-top:1px solid var(--line);padding-top:16px;margin-top:4px">'
