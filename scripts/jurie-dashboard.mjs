@@ -1550,9 +1550,9 @@ async function viewQueue(){
         +'<div><div style="font-size:15px;font-weight:600;color:var(--txt)">'+fmtStamp(entry.stamp)+'</div>'
         +'<div class="muted" style="font-size:12px;margin-top:3px">'+totalCount+' posters · <span id="qc-'+qid+'">'+approvedCount+' approved</span></div></div>'
         +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
-        +'<button class="sec" style="font-size:12px" onclick="qSelectAll(\''+qid+'\',\'approved\')">Approve All</button>'
-        +'<button class="sec" style="font-size:12px" onclick="qSelectAll(\''+qid+'\',\'declined\')">Decline All</button>'
-        +'<button class="sec" style="font-size:12px;color:var(--red);border-color:var(--red)" onclick="qDelete(\''+qid+'\')">Remove</button>'
+        +'<button class="sec" style="font-size:12px" onclick="qSelA(this)" data-qid="'+qid+'" data-s="approved">Approve All</button>'
+        +'<button class="sec" style="font-size:12px" onclick="qSelA(this)" data-qid="'+qid+'" data-s="declined">Decline All</button>'
+        +'<button class="sec" style="font-size:12px;color:var(--red);border-color:var(--red)" onclick="qDel(this)" data-qid="'+qid+'">Remove</button>'
         +'</div></div>'
         // Schedule bar
         +'<div style="background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:9px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">'
@@ -1561,7 +1561,7 @@ async function viewQueue(){
         +'<div><label style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);display:block;margin-bottom:5px">Every</label>'
         +'<div style="display:flex;align-items:center;gap:6px"><input type="number" id="qs-space-'+qid+'" value="60" min="5" max="1440" style="background:#0e0e10;border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:8px 12px;font:inherit;font-size:13px;width:80px">'
         +'<span class="muted" style="font-size:12px">minutes</span></div></div>'
-        +'<div style="margin-left:auto"><button class="go" style="background:var(--gold)" onclick="qSend(\''+qid+'\')" id="qsend-'+qid+'">'
+        +'<div style="margin-left:auto"><button class="go" style="background:var(--gold)" onclick="qSnd(this)" data-qid="'+qid+'" id="qsend-'+qid+'">'
         +(approvedCount>0?'Send '+approvedCount+' to Buffer →':'Approve posters first')+'</button></div></div>'
         // Poster grid
         +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px">'
@@ -1575,8 +1575,8 @@ async function viewQueue(){
             +'</div>'
             +'<div style="padding:8px 10px;font-size:10.5px;color:var(--mut);max-height:70px;overflow:auto;line-height:1.45">'+esc(p.caption).slice(0,140)+'</div>'
             +'<div style="display:flex;padding:0 8px 10px;gap:6px">'
-            +'<button class="sec" style="flex:1;font-size:11px;padding:6px 4px;'+(isApp?'border-color:var(--gold);color:var(--gold)':'')+'" onclick="setStatus(\''+qid+'\',\''+p.filename+'\',\'approved\')">'+(isApp?'✓ Approved':'Approve')+'</button>'
-            +'<button class="sec" style="flex:1;font-size:11px;padding:6px 4px;'+(isDec?'border-color:var(--red);color:var(--red)':'')+'" onclick="setStatus(\''+qid+'\',\''+p.filename+'\',\'declined\')">'+(isDec?'✗ Declined':'Decline')+'</button>'
+            +'<button class="sec" style="flex:1;font-size:11px;padding:6px 4px;'+(isApp?'border-color:var(--gold);color:var(--gold)':'')+'" onclick="qSS(this)" data-qid="'+qid+'" data-fn="'+encodeURIComponent(p.filename)+'" data-s="approved">'+(isApp?'✓ Approved':'Approve')+'</button>'
+            +'<button class="sec" style="flex:1;font-size:11px;padding:6px 4px;'+(isDec?'border-color:var(--red);color:var(--red)':'')+'" onclick="qSS(this)" data-qid="'+qid+'" data-fn="'+encodeURIComponent(p.filename)+'" data-s="declined">'+(isDec?'✗ Declined':'Decline')+'</button>'
             +'</div></div>';
         }).join('')
         +'</div></div>';
@@ -1602,6 +1602,11 @@ async function viewQueue(){
     }
   }
 
+  // Data-attribute bridge functions — avoids quoting issues in onclick strings.
+  window.qSS  =el=>setStatus(el.dataset.qid,decodeURIComponent(el.dataset.fn||''),el.dataset.s);
+  window.qSelA=el=>qSelectAll(el.dataset.qid,el.dataset.s);
+  window.qDel =el=>qDelete(el.dataset.qid);
+  window.qSnd =el=>qSend(el.dataset.qid);
   window.setStatus=function(qid,fname,status){
     if(!local[qid])local[qid]={};
     local[qid][fname]=status;
