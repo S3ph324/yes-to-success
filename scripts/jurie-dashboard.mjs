@@ -1014,12 +1014,15 @@ function toast(msg,bad){const t=$('#toast');if(!t)return;t.textContent=msg;
 let CLIENT=localStorage.getItem('qps_client')||'';
 let TAB='generate';
 const api=(u,o)=>fetch(u,o).then(r=>r.json());
-// Convert folder stamp "2026-05-17T09-38" → "May 17, 2026, 9:38 AM"
+// Convert folder stamp "2026-05-17T09-38" → "May 17, 2026 · 9:38 AM"
+// Manual formatter — no toLocaleString so it's identical everywhere.
+const _MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
 function fmtStamp(s){
   const m=s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})/);
   if(!m)return s;
-  const d=new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5]);
-  return d.toLocaleString('en-US',{month:'long',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true});}
+  const yr=+m[1],mo=+m[2]-1,dy=+m[3],hr=+m[4],mn=+m[5];
+  const h=hr%12||12,ap=hr<12?'AM':'PM';
+  return _MON[mo]+' '+dy+', '+yr+' · '+h+':'+(mn<10?'0':'')+mn+' '+ap;}
 async function boot(){
   const cs=await api('/api/clients');
   $('#client').innerHTML=cs.map(c=>'<option value="'+c.id+'">'+c.label+'</option>').join('');
@@ -1103,7 +1106,8 @@ async function viewGenerate(){
    +'<div style="height:12px;background:#0a0a0b;border:1px solid var(--line);border-radius:999px;overflow:hidden">'
    +'<div id="g_bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--gold),#ffe27a);transition:width .45s"></div></div>'
    +'<div id="g_pct" class="muted" style="margin-top:6px;font-size:12px">0%</div></div>'
-   +'<pre id="g_log" style="display:none"></pre></div>'
+   +'<pre id="g_log" style="display:none"></pre>'
+   +'<div id="g_result" style="display:none;margin-top:22px"></div></div>'
    +'<div class="card disabled"><h2>Auto-post to Facebook <span class="pill">coming soon</span></h2>'
    +'<p class="muted">Disabled. Posters are posted manually for now.</p></div>';
   function updPrev(){const id=$('#g_char').value,p=photoOf[id],el=$('#g_cprev');
@@ -1161,6 +1165,7 @@ async function viewGenerate(){
     $('#g_go').disabled=true;phase='';
     $('#g_log').style.display='block';$('#g_log').textContent='';
     $('#g_prog').style.display='block';
+    const gr=$('#g_result');if(gr){gr.style.display='none';gr.innerHTML='';}
     $('#g_bar').style.background='linear-gradient(90deg,var(--gold),#ffe27a)';setProg(2,false);
     es&&es.close();es=new EventSource('/api/log');
     es.onmessage=ev=>{const line=JSON.parse(ev.data),L=$('#g_log');
@@ -1170,11 +1175,42 @@ async function viewGenerate(){
       if(line.indexOf('✓ Done')>-1){es.close();$('#g_go').disabled=false;$('#g_unlock').style.display='none';
         const bad=line.indexOf('no PNGs found')>-1;
         toast(bad?'⚠ Done but no posters found — check log':'Batch complete \\u2713',bad);
-        setTimeout(()=>{TAB='batches';render();},850);}};
+        if(!bad)showLatestBatch();}};
     const r=await fetch('/api/generate',{method:'POST',body:fd});
     if(!r.ok){const err=(await r.json()).error||'Failed to start';toast(err,true);$('#g_go').disabled=false;$('#g_prog').style.display='none';
       if(err.indexOf('already running')>-1){$('#g_unlock').style.display='inline-flex';$('#g_unlock').style.gap='10px';$('#g_unlock').style.alignItems='center';}}
   };
+}
+async function showLatestBatch(){
+  const wrap=$('#g_result');if(!wrap)return;
+  try{
+    const batches=await api('/api/batches?client='+CLIENT);
+    const B=batches[0];if(!B||!B.files.length){return;}
+    const esc=s=>(s||'').replace(/[<>]/g,'');
+    const caps=B.captions.split(/^#\d+\s*$/m).map(s=>s.trim()).filter(Boolean);
+    const posters=B.files.slice(0,12).map((f,i)=>{
+      const u='/posters/'+CLIENT+'/'+encodeURIComponent(B.stamp)+'/'+encodeURIComponent(f);
+      return '<figure style="margin:0;background:#0d0d0f;border:1px solid rgba(255,255,255,.07);border-radius:12px;overflow:hidden;position:relative">'
+        +'<a href="'+u+'" target="_blank"><img src="'+u+'" style="width:100%;display:block;aspect-ratio:4/5;object-fit:cover" loading="lazy"></a>'
+        +'<a href="'+u+'?dl=1" download style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:6px;text-decoration:none;backdrop-filter:blur(4px)">↓</a>'
+        +(caps[i]?'<div style="padding:10px 12px;font-size:11px;color:rgba(255,255,255,.55);line-height:1.5;max-height:80px;overflow:auto">'+esc(caps[i])+'</div>':'')
+        +'</figure>';
+    }).join('');
+    const more=B.files.length>12?'<p style="color:var(--mut);font-size:12px;margin:4px 0 0">+ '+(B.files.length-12)+' more in Batches</p>':'';
+    wrap.style.display='block';
+    wrap.innerHTML=
+      '<div style="border-top:1px solid rgba(255,255,255,.07);padding-top:20px">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">'
+      +'<div><div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--mut);margin-bottom:3px">Latest batch</div>'
+      +'<div style="font-size:15px;font-weight:600;color:var(--txt)">'+fmtStamp(B.stamp)+'</div>'
+      +'<div style="font-size:12px;color:var(--mut);margin-top:2px">'+B.files.length+' poster'+(B.files.length===1?'':'s')+'</div></div>'
+      +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
+      +'<a class="sec" style="text-decoration:none" href="/api/batch-zip?client='+CLIENT+'&stamp='+encodeURIComponent(B.stamp)+'">⬇ Download all (.zip)</a>'
+      +'<button class="go" onclick="TAB=\'batches\';render()" style="padding:10px 18px;font-size:13px">View all batches →</button>'
+      +'</div></div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px">'+posters+'</div>'
+      +more+'</div>';
+  }catch(e){/* silently skip if batches can't be fetched */}
 }
 async function viewBrand(){
   const b=await api('/api/brand?client='+CLIENT);
