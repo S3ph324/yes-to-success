@@ -186,8 +186,37 @@ app.post("/api/queue/review", async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Posting strategy definitions (Manila time, UTC+8) ────────────────────
+// hours[] = Manila local hours to post each day.
+const POST_STRATEGIES = {
+  light:    { label: "Light — 2 posts/day",            hours: [9, 19] },
+  standard: { label: "Standard — 3 posts/day",         hours: [9, 13, 19] },
+  active:   { label: "Active — 5 posts/day",           hours: [9, 11, 13, 17, 20] },
+};
+const MANILA_UTC_OFFSET = 8; // UTC+8
+
+// Build an array of UTC ISO timestamps by filling strategy time-slots day by day.
+// startDate = "YYYY-MM-DD" in Manila local time.
+function buildPostSchedule(strategy, startDate, count) {
+  const hours = (POST_STRATEGIES[strategy] || POST_STRATEGIES.standard).hours;
+  const [y, m, d] = startDate.split("-").map(Number);
+  const timestamps = [];
+  let dayOffset = 0;
+  while (timestamps.length < count) {
+    for (const h of hours) {
+      if (timestamps.length >= count) break;
+      // Convert Manila local time to UTC
+      const utcH = h - MANILA_UTC_OFFSET;
+      // Date.UTC handles negative hours and day rollover automatically
+      timestamps.push(new Date(Date.UTC(y, m - 1, d + dayOffset, utcH, 0, 0)).toISOString());
+    }
+    dayOffset++;
+  }
+  return timestamps;
+}
+
 app.post("/api/queue/send", async (req, res) => {
-  const { client, queueId, scheduledStart, spacingMinutes } = req.body || {};
+  const { client, queueId, strategy, startDate } = req.body || {};
   const clientCfg = await getClient(client);
   if (!clientCfg) return res.status(400).json({ error: "Unknown client" });
   const apiKey = process.env.BUFFER_API_KEY;
@@ -201,17 +230,17 @@ app.post("/api/queue/send", async (req, res) => {
   const approved = entry.posters.filter(p => p.status === "approved");
   if (!approved.length) return res.status(400).json({ error: "No approved posters to send" });
 
-  const startMs  = scheduledStart ? new Date(scheduledStart).getTime() : Date.now() + 60 * 60 * 1000;
-  const spacing  = Math.max(5, parseInt(spacingMinutes || 60, 10));
+  // Build the schedule using strategy slots
+  const sd = startDate || new Date().toISOString().slice(0, 10);
+  const timestamps = buildPostSchedule(strategy || "standard", sd, approved.length);
   const studioUrl = STUDIO_URL();
   let sent = 0, failed = 0;
 
   for (let i = 0; i < approved.length; i++) {
     const p = approved[i];
-    const imageUrl  = `${studioUrl}/posters/${client}/${encodeURIComponent(entry.stamp)}/${encodeURIComponent(p.filename)}`;
-    const schedAt   = new Date(startMs + i * spacing * 60 * 1000).toISOString();
+    const imageUrl = `${studioUrl}/posters/${client}/${encodeURIComponent(entry.stamp)}/${encodeURIComponent(p.filename)}`;
     try {
-      await bufferPost(channelId, imageUrl, p.caption, schedAt);
+      await bufferPost(channelId, imageUrl, p.caption, timestamps[i]);
       p.status = "sent";
       sent++;
     } catch (err) {
@@ -221,10 +250,10 @@ app.post("/api/queue/send", async (req, res) => {
     if (i < approved.length - 1) await new Promise(r => setTimeout(r, 400));
   }
   entry.sentAt = new Date().toISOString();
-  entry.scheduledStart = scheduledStart;
-  entry.spacingMinutes = spacing;
+  entry.strategy = strategy || "standard";
+  entry.startDate = sd;
   await writeQueue(client, queue);
-  res.json({ ok: true, sent, failed });
+  res.json({ ok: true, sent, failed, timestamps });
 });
 
 app.delete("/api/queue/:queueId", async (req, res) => {
@@ -1620,15 +1649,22 @@ async function viewQueue(){
         +'<button class="sec" style="font-size:12px" onclick="qSelA(this)" data-qid="'+qid+'" data-s="declined">Decline All</button>'
         +'<button class="sec" style="font-size:12px;color:var(--red);border-color:var(--red)" onclick="qDel(this)" data-qid="'+qid+'">Remove</button>'
         +'</div></div>'
-        // Schedule bar
-        +'<div style="background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:9px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">'
-        +'<div><label style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);display:block;margin-bottom:5px">Start time</label>'
-        +'<input type="datetime-local" id="qs-start-'+qid+'" style="background:#0e0e10;border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:8px 12px;font:inherit;font-size:13px"></div>'
-        +'<div><label style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);display:block;margin-bottom:5px">Every</label>'
-        +'<div style="display:flex;align-items:center;gap:6px"><input type="number" id="qs-space-'+qid+'" value="60" min="5" max="1440" style="background:#0e0e10;border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:8px 12px;font:inherit;font-size:13px;width:80px">'
-        +'<span class="muted" style="font-size:12px">minutes</span></div></div>'
-        +'<div style="margin-left:auto"><button class="go" style="background:var(--gold)" onclick="qSnd(this)" data-qid="'+qid+'" id="qsend-'+qid+'">'
+        // Schedule bar — strategy + date + live preview
+        +'<div style="background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:9px;padding:16px;margin-bottom:16px">'
+        +'<div style="font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);margin-bottom:12px">Posting Schedule <span style="font-weight:400;letter-spacing:0;text-transform:none;color:var(--mut);font-size:11px">(Manila time · UTC+8)</span></div>'
+        +'<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">'
+        +'<div style="flex:2;min-width:200px"><label style="font-size:11px;color:var(--mut);display:block;margin-bottom:5px">Strategy</label>'
+        +'<select id="qs-strat-'+qid+'" onchange="qPreview(\''+qid+'\')" style="width:100%;background:#0e0e10;border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:9px 12px;font:inherit;font-size:13px">'
+        +'<option value="light">Light — 2 posts/day (9 AM, 7 PM)</option>'
+        +'<option value="standard" selected>Standard — 3 posts/day (9 AM, 1 PM, 7 PM)</option>'
+        +'<option value="active">Active — 5 posts/day (9 AM, 11 AM, 1 PM, 5 PM, 8 PM)</option>'
+        +'</select></div>'
+        +'<div><label style="font-size:11px;color:var(--mut);display:block;margin-bottom:5px">Start date</label>'
+        +'<input type="date" id="qs-date-'+qid+'" onchange="qPreview(\''+qid+'\')" style="background:#0e0e10;border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:9px 12px;font:inherit;font-size:13px"></div>'
+        +'<div style="margin-left:auto"><button class="go" onclick="qSnd(this)" data-qid="'+qid+'" id="qsend-'+qid+'" style="white-space:nowrap">'
         +(approvedCount>0?'Send '+approvedCount+' to Buffer →':'Approve posters first')+'</button></div></div>'
+        +'<div id="qs-preview-'+qid+'" style="font-size:12px;color:var(--mut);line-height:1.8;padding:10px 12px;background:rgba(255,255,255,.02);border-radius:7px;min-height:36px">Select a strategy and date to preview the schedule.</div>'
+        +'</div>'
         // Poster grid
         +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px">'
         +entry.posters.map(p=>{
@@ -1661,10 +1697,14 @@ async function viewQueue(){
       html+='</div>';
     }
     $('#view').innerHTML=html;
-    // Set default start time to 1h from now for all entries
+    // Set default start date to tomorrow (Manila time) for all pending entries.
+    const tomorrow=new Date(Date.now()+8*3600*1000+86400000); // UTC+8 + 1 day
+    const tmrStr=tomorrow.getUTCFullYear()+'-'+String(tomorrow.getUTCMonth()+1).padStart(2,'0')+'-'+String(tomorrow.getUTCDate()).padStart(2,'0');
     for(const entry of pending){
-      const el=document.getElementById('qs-start-'+entry.id);
-      if(el&&!el.value){const d=new Date(Date.now()+3600000);el.value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+      const el=document.getElementById('qs-date-'+entry.id);
+      if(el&&!el.value){el.value=tmrStr;}
+      // Trigger preview with defaults
+      qPreview(entry.id);
     }
   }
 
@@ -1673,6 +1713,48 @@ async function viewQueue(){
   window.qSelA=el=>qSelectAll(el.dataset.qid,el.dataset.s);
   window.qDel =el=>qDelete(el.dataset.qid);
   window.qSnd =el=>qSend(el.dataset.qid);
+
+  // Strategy time-slot definitions (Manila hours).
+  const STRATS={light:[9,19],standard:[9,13,19],active:[9,11,13,17,20]};
+  const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function buildSchedulePreview(strategy,startDateStr,count){
+    const hours=STRATS[strategy]||STRATS.standard;
+    const [y,m,d]=startDateStr.split('-').map(Number);
+    const slots=[]; let dayOff=0;
+    while(slots.length<count){
+      for(const h of hours){
+        if(slots.length>=count)break;
+        // Manila UTC+8 → subtract 8h for UTC
+        const utcMs=Date.UTC(y,m-1,d+dayOff,h-8,0,0);
+        slots.push(new Date(utcMs));
+      }
+      dayOff++;
+    }
+    return slots;
+  }
+  window.qPreview=function(qid){
+    const stratEl=document.getElementById('qs-strat-'+qid);
+    const dateEl=document.getElementById('qs-date-'+qid);
+    const previewEl=document.getElementById('qs-preview-'+qid);
+    if(!stratEl||!dateEl||!previewEl||!dateEl.value)return;
+    const entry=queue.find(e=>e.id===qid);if(!entry)return;
+    const approvedN=entry.posters.filter(p=>(local[qid]?.[p.filename]||p.status)==='approved').length;
+    if(!approvedN){previewEl.textContent='Approve some posters first to see the schedule.';return;}
+    const slots=buildSchedulePreview(stratEl.value,dateEl.value,approvedN);
+    // Group by day for compact display
+    const byDay={};
+    slots.forEach(dt=>{
+      // Convert UTC back to Manila for display
+      const manilaMs=dt.getTime()+8*3600*1000;
+      const local2=new Date(manilaMs);
+      const key=DAYS[local2.getUTCDay()]+', '+MONTHS[local2.getUTCMonth()]+' '+local2.getUTCDate();
+      const h=local2.getUTCHours(),ap=h>=12?'PM':'AM';
+      const h12=h%12||12;
+      (byDay[key]=byDay[key]||[]).push(h12+':00 '+ap);
+    });
+    previewEl.innerHTML=Object.entries(byDay).map(([day,times])=>'<b style="color:var(--txt)">'+day+'</b> — '+times.join(', ')).join('<br>');
+  };
   window.setStatus=function(qid,fname,status){
     if(!local[qid])local[qid]={};
     local[qid][fname]=status;
@@ -1695,17 +1777,20 @@ async function viewQueue(){
     queue=queue.filter(e=>e.id!==qid);renderQueue();
   };
   window.qSend=async function(qid){
-    const startEl=document.getElementById('qs-start-'+qid);
-    const spaceEl=document.getElementById('qs-space-'+qid);
+    const stratEl=document.getElementById('qs-strat-'+qid);
+    const dateEl=document.getElementById('qs-date-'+qid);
     const btn=document.getElementById('qsend-'+qid);
+    const entry=queue.find(e=>e.id===qid);
     const approved=(local[qid]?Object.entries(local[qid]).filter(([,s])=>s==='approved').length:0)
-      +(queue.find(e=>e.id===qid)?.posters.filter(p=>!local[qid]?.[p.filename]&&p.status==='approved').length||0);
+      +(entry?.posters.filter(p=>!local[qid]?.[p.filename]&&p.status==='approved').length||0);
     if(!approved){toast('Approve at least one poster first',true);return;}
-    if(!confirm('Send '+approved+' approved poster(s) to Buffer? This will schedule them to post on Facebook.'))return;
+    if(!dateEl?.value){toast('Choose a start date first',true);dateEl?.focus();return;}
+    const stratLabel=(stratEl?.options[stratEl.selectedIndex]?.text||'Standard');
+    if(!confirm('Schedule '+approved+' poster(s) to Facebook via Buffer?\\n\\nStrategy: '+stratLabel+'\\nStart: '+dateEl.value+' (Manila time)'))return;
     btn.disabled=true;btn.textContent='Sending…';
     try{
       const r=await fetch('/api/queue/send',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({client:CLIENT,queueId:qid,scheduledStart:startEl?.value?new Date(startEl.value).toISOString():null,spacingMinutes:parseInt(spaceEl?.value||'60',10)})});
+        body:JSON.stringify({client:CLIENT,queueId:qid,strategy:stratEl?.value||'standard',startDate:dateEl.value})});
       const d=await r.json();
       if(!r.ok||d.error){toast(d.error||'Send failed',true);btn.disabled=false;btn.textContent='Retry';return;}
       toast('\\u2713 '+d.sent+' poster'+(d.sent===1?'':'s')+' scheduled in Buffer'+(d.failed?' ('+d.failed+' failed)':''));
