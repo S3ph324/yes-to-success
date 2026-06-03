@@ -452,6 +452,29 @@ app.get("/posters/:client/:stamp/:file", async (req, res) => {
     res.set("Content-Disposition", `attachment; filename="${file}"`);
   res.sendFile(fp);
 });
+// DELETE a single poster PNG from a batch
+app.delete("/api/poster", async (req, res) => {
+  const { client, stamp, file } = req.query;
+  const c = await getClient(client);
+  if (!c || !safeStamp(stamp) || !/^[\w.\- ]+\.png$/.test(file))
+    return res.status(400).json({ error: "bad request" });
+  const fp = path.join(clientExportDir(c), stamp, file);
+  if (!fp.startsWith(clientExportDir(c))) return res.status(400).json({ error: "bad path" });
+  try { await fs.unlink(fp); res.json({ ok: true }); }
+  catch { res.status(404).json({ error: "File not found" }); }
+});
+
+// DELETE an entire batch folder
+app.delete("/api/batch", async (req, res) => {
+  const { client, stamp } = req.query;
+  const c = await getClient(client);
+  if (!c || !safeStamp(stamp)) return res.status(400).json({ error: "bad request" });
+  const dir = path.join(clientExportDir(c), stamp);
+  if (!dir.startsWith(clientExportDir(c))) return res.status(400).json({ error: "bad path" });
+  try { await fs.rm(dir, { recursive: true, force: true }); res.json({ ok: true }); }
+  catch { res.status(404).json({ error: "Batch not found" }); }
+});
+
 app.post("/api/reveal", async (req, res) => {
   const c = await getClient(req.body?.client);
   if (!c) return res.status(400).json({ error: "bad client" });
@@ -775,12 +798,14 @@ figure{margin:0;background:#0d0d0f;border:1px solid var(--line);border-radius:12
 position:relative;transition:border-color .2s}
 figure:hover{border-color:var(--line2)}
 figure img{width:100%;display:block;aspect-ratio:4/5;object-fit:cover}
-.dl,.cp{position:absolute;top:9px;background:rgba(0,0,0,.6);color:#fff;
+.dl,.cp,.rm{position:absolute;top:9px;background:rgba(0,0,0,.6);color:#fff;
 border:1px solid rgba(255,255,255,.2);text-decoration:none;font-size:11px;font-weight:600;
 padding:6px 11px;border-radius:7px;opacity:0;transition:opacity .18s,background .15s;
 backdrop-filter:blur(4px);cursor:pointer;font-family:inherit}
 .dl{right:9px}.cp{left:9px}
-figure:hover .dl,figure:hover .cp{opacity:1}
+.rm{bottom:9px;right:9px;top:auto;color:#ff8a82;border-color:rgba(255,100,100,.3)}
+figure:hover .dl,figure:hover .cp,figure:hover .rm{opacity:1}
+.rm:hover{background:var(--red);color:#fff;border-color:var(--red)}
 .dl:hover,.cp:hover{background:var(--gold);color:#15120a;border-color:var(--gold)}
 figcaption{padding:12px 13px;font-size:11px;line-height:1.55;color:var(--mut);
 white-space:pre-wrap;max-height:112px;overflow:auto}
@@ -1365,16 +1390,19 @@ async function viewBatches(){
       if(!idx.length)return '';
       nb++;np+=idx.length;
       const allCaps=idx.map(i=>'#'+(i+1)+'\\n'+(caps[i]||'')).join('\\n\\n---\\n\\n');
-      return '<div class="card"><div class="bx-row"><b>'+fmtStamp(B.stamp)+'</b>'
+      return '<div class="card" data-stamp="'+B.stamp+'"><div class="bx-row"><b>'+fmtStamp(B.stamp)+'</b>'
        +'<span><span class="pill">'+idx.length+(idx.length!==B.count?(' / '+B.count):'')+' posters</span> '
        +'<button class="sec" data-cp-all="'+b64(allCaps)+'">📋 All captions</button> '
-       +'<a class="sec" style="text-decoration:none" href="/api/batch-zip?client='+CLIENT+'&stamp='+encodeURIComponent(B.stamp)+'">⬇ All (.zip)</a></span></div>'
+       +'<a class="sec" style="text-decoration:none" href="/api/batch-zip?client='+CLIENT+'&stamp='+encodeURIComponent(B.stamp)+'">⬇ All (.zip)</a>'
+       +' <button class="sec del-batch" data-stamp="'+B.stamp+'" style="color:var(--red);border-color:rgba(224,86,75,.35)" title="Delete this entire batch">🗑 Delete batch</button>'
+       +'</span></div>'
        +'<div class="grid" style="margin-top:14px">'+idx.map(i=>{
          const f=B.files[i],u='/posters/'+CLIENT+'/'+encodeURIComponent(B.stamp)+'/'+encodeURIComponent(f);
-         return '<figure>'
+         return '<figure data-stamp="'+B.stamp+'" data-file="'+encodeURIComponent(f)+'">'
           +'<a href="'+u+'" target="_blank" rel="noopener" title="Open full size"><img loading="lazy" src="'+u+'"></a>'
           +'<button class="cp" data-c="'+b64(caps[i]||'')+'" title="Copy caption">📋</button>'
           +'<a class="dl" href="'+u+'?dl=1" download>↓ PNG</a>'
+          +'<button class="rm del-poster" data-stamp="'+B.stamp+'" data-file="'+encodeURIComponent(f)+'" title="Delete this poster">🗑</button>'
           +'<figcaption>'+(esc(caps[i])||'—')+'</figcaption></figure>';}).join('')
        +'</div></div>';}).join('');
     $('#bx_list').innerHTML=ALL.length?(html||'<p class="muted">No posters match “'+esc(q)+'”.</p>')
@@ -1389,6 +1417,39 @@ async function viewBatches(){
     document.querySelectorAll('#bx_list [data-cp-all]').forEach(b=>b.onclick=ev=>{
       ev.preventDefault();
       navigator.clipboard.writeText(fromB64(b.dataset.cpAll)).then(()=>toast('All captions copied'));
+    });
+    // Delete poster
+    document.querySelectorAll('#bx_list .del-poster').forEach(b=>b.onclick=async ev=>{
+      ev.stopPropagation();
+      if(!confirm('Delete this poster? This cannot be undone.'))return;
+      const {stamp,file}=b.dataset;
+      const r=await fetch('/api/poster?client='+CLIENT+'&stamp='+encodeURIComponent(stamp)+'&file='+file,{method:'DELETE'});
+      if(!r.ok){toast('Delete failed',true);return;}
+      // Remove from data + DOM
+      const batch=ALL.find(x=>x.stamp===stamp);
+      if(batch)batch.files=batch.files.filter(f=>f!==decodeURIComponent(file));
+      b.closest('figure')?.remove();
+      toast('Poster deleted');
+      // If no files left in batch, remove the card
+      if(batch&&!batch.files.length){
+        const card=document.querySelector('#bx_list .card[data-stamp="'+stamp+'"]');
+        card?.remove();
+        const bIdx=ALL.findIndex(x=>x.stamp===stamp);
+        if(bIdx>-1)ALL.splice(bIdx,1);
+      }
+    });
+    // Delete batch
+    document.querySelectorAll('#bx_list .del-batch').forEach(b=>b.onclick=async ev=>{
+      ev.stopPropagation();
+      const {stamp}=b.dataset;
+      const count=ALL.find(x=>x.stamp===stamp)?.files?.length||0;
+      if(!confirm('Delete entire batch ('+count+' poster'+(count===1?'':'s')+')? This cannot be undone.'))return;
+      const r=await fetch('/api/batch?client='+CLIENT+'&stamp='+encodeURIComponent(stamp),{method:'DELETE'});
+      if(!r.ok){toast('Delete failed',true);return;}
+      const bIdx=ALL.findIndex(x=>x.stamp===stamp);
+      if(bIdx>-1)ALL.splice(bIdx,1);
+      document.querySelector('#bx_list .card[data-stamp="'+stamp+'"]')?.remove();
+      toast('Batch deleted');
     });
   }
   $('#bx_q').oninput=paint;
