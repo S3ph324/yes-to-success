@@ -110,6 +110,30 @@ await run([
   latestPath,
 ]);
 
+// ── Step 4 (optional): Schedule to Buffer ────────────────────────────────────
+// Only runs when BUFFER_AUTOPOST=1 and BUFFER_API_KEY is set.
+if (process.env.BUFFER_AUTOPOST === "1" && process.env.BUFFER_API_KEY) {
+  const EXPORT_DIR = process.env.JURIE_EXPORT_DIR || client.exportDir;
+  try {
+    const stamps = (await fs.readdir(EXPORT_DIR)).filter(s => /^[0-9T\-]+$/.test(s)).sort();
+    const latestStamp = stamps[stamps.length - 1];
+    if (latestStamp) {
+      const captionsPath = path.join(EXPORT_DIR, latestStamp, "captions.txt");
+      console.log("\n━━━ Step 4: Schedule to Buffer ━━━");
+      await run([
+        "scripts/buffer-poster.mjs",
+        "--client", client.id,
+        latestStamp,
+        captionsPath,
+      ]);
+    }
+  } catch (err) {
+    console.warn("Buffer posting skipped:", err.message);
+  }
+} else if (process.env.BUFFER_API_KEY && process.env.BUFFER_AUTOPOST !== "1") {
+  console.log("\n  (Buffer autopost is off — set BUFFER_AUTOPOST=1 to enable)");
+}
+
 // The dashboard sets JURIE_NO_OPEN=1 so it does NOT pop a gallery window —
 // results show in the dashboard's Batches tab instead. CLI runs still open it.
 if (!process.env.JURIE_NO_OPEN) {

@@ -319,6 +319,7 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
     useLogo,
     tipsEnabled,
     posterStyles,
+    bufferAutopost,
   } = req.body || {};
   const c = await getClient(client);
   if (!c) return res.status(400).json({ error: "Unknown client" });
@@ -347,6 +348,7 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
   if (useLogo !== "1") env.DASHBOARD_NO_LOGO = "1";
   if (tipsEnabled === "1") env.DASHBOARD_TIPS = "1";
   if (posterStyles) env.DASHBOARD_POSTER_STYLES = String(posterStyles);
+  if (bufferAutopost === "1") env.BUFFER_AUTOPOST = "1";
   if (extraRefPaths.length)
     env.DASHBOARD_EXTRA_REFS = JSON.stringify(extraRefPaths);
   env.JURIE_NO_OPEN = "1";
@@ -1125,6 +1127,9 @@ async function viewGenerate(){
    +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);line-height:1.4;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.02)">'
    +'<input type="checkbox" id="g_tips" style="width:auto;margin:3px 0 0;flex-shrink:0">'
    +'<span><b>Tips</b><br><span class="muted" style="font-size:11px">AI tip-style posters mixed into the batch</span></span></label>'
+   +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);line-height:1.4;padding:10px 12px;border:1px solid rgba(244,180,0,.25);border-radius:9px;background:rgba(244,180,0,.04)">'
+   +'<input type="checkbox" id="g_buffer" style="width:auto;margin:3px 0 0;flex-shrink:0;accent-color:var(--gold)">'
+   +'<span><b style="color:var(--gold)">Auto-post to Buffer</b><br><span class="muted" style="font-size:11px">Schedule each poster to Facebook via Buffer after render (1 post/hour, starts in 1h)</span></span></label>'
    +'</div></div>'
    +'<p style="margin:14px 0;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><button class="go" id="g_go">Generate posters</button>'
    +'<span id="g_unlock" style="display:none"><button class="sec" id="g_unlock_btn" style="border-color:var(--red);color:var(--red)">⚠ Unlock stuck job</button>'
@@ -1187,6 +1192,7 @@ async function viewGenerate(){
     fd.append('tipsEnabled',$('#g_tips').checked?'1':'0');
     const styles=['cinematic','flat','split'].filter(s=>$('#g_style_'+s)?.checked);
     fd.append('posterStyles',styles.length?styles.join(','):'cinematic');
+    fd.append('bufferAutopost',$('#g_buffer')?.checked?'1':'0');
     const ef=$('#g_extras').files||[];
     for(const f of ef)fd.append('extraRef',f);
     $('#g_go').disabled=true;phase='';
