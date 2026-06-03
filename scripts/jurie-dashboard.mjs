@@ -1018,11 +1018,12 @@ const api=(u,o)=>fetch(u,o).then(r=>r.json());
 // Manual formatter — no toLocaleString so it's identical everywhere.
 const _MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
 function fmtStamp(s){
-  const m=s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})/);
+  const m=s.match(/^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2})-(\\d{2})/);
   if(!m)return s;
   const yr=+m[1],mo=+m[2]-1,dy=+m[3],hr=+m[4],mn=+m[5];
   const h=hr%12||12,ap=hr<12?'AM':'PM';
-  return _MON[mo]+' '+dy+', '+yr+' · '+h+':'+(mn<10?'0':'')+mn+' '+ap;}
+  return _MON[mo]+' '+dy+', '+yr+' \xb7 '+h+':'+(mn<10?'0':'')+mn+' '+ap;}
+function goBatches(){TAB='batches';render();}
 async function boot(){
   const cs=await api('/api/clients');
   $('#client').innerHTML=cs.map(c=>'<option value="'+c.id+'">'+c.label+'</option>').join('');
@@ -1187,7 +1188,7 @@ async function showLatestBatch(){
     const batches=await api('/api/batches?client='+CLIENT);
     const B=batches[0];if(!B||!B.files.length){return;}
     const esc=s=>(s||'').replace(/[<>]/g,'');
-    const caps=B.captions.split(/^#\d+\s*$/m).map(s=>s.trim()).filter(Boolean);
+    const caps=B.captions.split(/^#\\d+\\s*$/m).map(s=>s.trim()).filter(Boolean);
     const posters=B.files.slice(0,12).map((f,i)=>{
       const u='/posters/'+CLIENT+'/'+encodeURIComponent(B.stamp)+'/'+encodeURIComponent(f);
       return '<figure style="margin:0;background:#0d0d0f;border:1px solid rgba(255,255,255,.07);border-radius:12px;overflow:hidden;position:relative">'
@@ -1206,7 +1207,7 @@ async function showLatestBatch(){
       +'<div style="font-size:12px;color:var(--mut);margin-top:2px">'+B.files.length+' poster'+(B.files.length===1?'':'s')+'</div></div>'
       +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
       +'<a class="sec" style="text-decoration:none" href="/api/batch-zip?client='+CLIENT+'&stamp='+encodeURIComponent(B.stamp)+'">⬇ Download all (.zip)</a>'
-      +'<button class="go" onclick="TAB=\'batches\';render()" style="padding:10px 18px;font-size:13px">View all batches →</button>'
+      +'<button class="go" onclick="goBatches()" style="padding:10px 18px;font-size:13px">View all batches →</button>'
       +'</div></div>'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px">'+posters+'</div>'
       +more+'</div>';
