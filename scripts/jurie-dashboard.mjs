@@ -585,7 +585,67 @@ app.get("/api/batches", async (req, res) => {
     }
     out.push({ stamp, count: files.length, files, captions });
   }
+  // Attach per-poster queue statuses so the Batches tab can show approve/posted badges.
+  try {
+    const queue = await readQueue(c.id);
+    const statusMap = {};
+    for (const entry of queue) {
+      for (const p of entry.posters) {
+        statusMap[`${entry.stamp}/${p.filename}`] = p.status;
+      }
+    }
+    for (const batch of out) {
+      batch.statuses = {};
+      for (const f of batch.files) {
+        const s = statusMap[`${batch.stamp}/${f}`];
+        if (s) batch.statuses[f] = s;
+      }
+    }
+  } catch { /* statuses optional */ }
   res.json(out);
+});
+
+// ── Poster tagging — approve / decline / mark-as-posted from Batches tab ──
+app.post("/api/poster/tag", async (req, res) => {
+  const { client, stamp, filename, status } = req.body || {};
+  const valid = ["approved", "declined", "posted", "pending"];
+  if (!client || !stamp || !filename || !valid.includes(status))
+    return res.status(400).json({ error: "Invalid params" });
+  const clientCfg = await getClient(client);
+  if (!clientCfg) return res.status(400).json({ error: "Unknown client" });
+
+  const queue = await readQueue(client);
+  let entry = queue.find(e => e.stamp === stamp);
+  if (!entry) {
+    // Create a queue entry for this batch on the fly.
+    try {
+      const batchDir = path.join(clientExportDir(clientCfg), stamp);
+      const pngs = (await fs.readdir(batchDir)).filter(f => f.endsWith(".png")).sort();
+      let captText = "";
+      try { captText = await fs.readFile(path.join(batchDir, "captions.txt"), "utf-8"); } catch {}
+      const captions = captText.split(/^-{20,}\s*$/m)
+        .map(s => s.replace(/^#\\d+\\s*/m, "").trim()).filter(Boolean);
+      entry = {
+        id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        stamp, clientId: client,
+        createdAt: new Date().toISOString(),
+        posters: pngs.map((fn, i) => ({ filename: fn, caption: captions[i] || "", status: "pending" })),
+        sentAt: null, scheduledStart: null, spacingMinutes: 60,
+      };
+      queue.unshift(entry);
+    } catch (err) {
+      return res.status(500).json({ error: "Could not read batch: " + err.message });
+    }
+  }
+  let poster = entry.posters.find(p => p.filename === filename);
+  if (!poster) {
+    poster = { filename, caption: "", status };
+    entry.posters.push(poster);
+  } else {
+    poster.status = status;
+  }
+  await writeQueue(client, queue);
+  res.json({ ok: true, status });
 });
 app.get("/posters/:client/:stamp/:file", async (req, res) => {
   const { client, stamp, file } = req.params;
@@ -958,6 +1018,13 @@ figure:hover .dl,figure:hover .cp,figure:hover .rm{opacity:1}
 figcaption{padding:12px 13px;font-size:11px;line-height:1.55;color:var(--mut);
 white-space:pre-wrap;max-height:112px;overflow:auto}
 .muted{color:var(--mut);font-size:13px}
+.ps-badge{position:absolute;top:8px;left:8px;font-size:10px;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:.04em;pointer-events:none;z-index:2}
+.ps-actions{display:flex;gap:4px;padding:6px 8px 8px;background:#0d0d0f}
+.ps-btn{flex:1;font-size:10px;font-weight:600;padding:5px 2px;border-radius:6px;cursor:pointer;border:1px solid var(--line2);background:transparent;color:var(--mut);transition:all .14s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ps-btn:hover{border-color:var(--gold);color:var(--txt)}
+.ps-btn.ps-on-gold{border-color:var(--gold);color:var(--gold);background:rgba(232,182,74,.1)}
+.ps-btn.ps-on-green{border-color:#3cb454;color:#3cb454;background:rgba(60,180,84,.1)}
+.ps-btn.ps-on-red{border-color:var(--red);color:var(--red);background:rgba(224,86,75,.1)}
 .item{border:1px solid var(--line);border-radius:10px;padding:15px;margin-bottom:10px;
 transition:border-color .15s}.item:hover{border-color:var(--line2)}
 .pill{font-size:11px;color:var(--mut);border:1px solid var(--line2);padding:3px 10px;
@@ -1648,7 +1715,7 @@ async function viewQueue(){
   renderQueue();
 }
 async function viewBatches(){
-  const ALL=await api('/api/batches?client='+CLIENT);
+  let ALL=await api('/api/batches?client='+CLIENT);
   $('#view').innerHTML=
    '<div class="bx-head"><h2 style="margin:0">Batches <span class="pill">'+CLIENT+'</span></h2>'
    +'<div class="bx-tools"><input id="bx_q" placeholder="Filter by date or caption…">'
@@ -1676,18 +1743,45 @@ async function viewBatches(){
        +'</span></div>'
        +'<div class="grid" style="margin-top:14px">'+idx.map(i=>{
          const f=B.files[i],u='/posters/'+CLIENT+'/'+encodeURIComponent(B.stamp)+'/'+encodeURIComponent(f);
-         return '<figure data-stamp="'+B.stamp+'" data-file="'+encodeURIComponent(f)+'">'
+         const st=(B.statuses&&B.statuses[f])||'pending';
+         const badgeHtml=st==='approved'?'<div class="ps-badge" style="background:var(--gold);color:#15120a">✓ Approved</div>'
+           :st==='posted'?'<div class="ps-badge" style="background:#3cb454;color:#fff">✓ Posted</div>'
+           :st==='declined'?'<div class="ps-badge" style="background:var(--red);color:#fff">✗ Declined</div>':'';
+         return '<figure data-stamp="'+B.stamp+'" data-file="'+encodeURIComponent(f)+'" style="opacity:'+(st==='declined'?'.4':'1')+';transition:opacity .2s">'
+          +badgeHtml
           +'<a href="'+u+'" target="_blank" rel="noopener" title="Open full size"><img loading="lazy" src="'+u+'"></a>'
           +'<button class="cp" data-c="'+b64(caps[i]||'')+'" title="Copy caption">📋</button>'
           +'<a class="dl" href="'+u+'?dl=1" download>↓ PNG</a>'
           +'<button class="rm del-poster" data-stamp="'+B.stamp+'" data-file="'+encodeURIComponent(f)+'" title="Delete this poster">🗑</button>'
-          +'<figcaption>'+(esc(caps[i])||'—')+'</figcaption></figure>';}).join('')
+          +'<figcaption>'+(esc(caps[i])||'—')+'</figcaption>'
+          +'<div class="ps-actions">'
+          +'<button class="ps-btn ps-approve'+(st==='approved'?' ps-on-gold':'')+'" data-stamp="'+B.stamp+'" data-fn="'+encodeURIComponent(f)+'" data-s="approved">'+( st==='approved'?'✓ Approved':'Approve')+'</button>'
+          +'<button class="ps-btn ps-posted'+(st==='posted'?' ps-on-green':'')+'" data-stamp="'+B.stamp+'" data-fn="'+encodeURIComponent(f)+'" data-s="posted">'+(st==='posted'?'✓ Posted':'Mark Posted')+'</button>'
+          +'<button class="ps-btn ps-decline'+(st==='declined'?' ps-on-red':'')+'" data-stamp="'+B.stamp+'" data-fn="'+encodeURIComponent(f)+'" data-s="declined">'+(st==='declined'?'✗ Declined':'Decline')+'</button>'
+          +'</div></figure>';}).join('')
        +'</div></div>';}).join('');
     $('#bx_list').innerHTML=ALL.length?(html||'<p class="muted">No posters match “'+esc(q)+'”.</p>')
       :'<p class="muted">No batches yet. Generate some on the Generate tab.</p>';
     $('#bx_meta').textContent=ALL.length
       ?(nb+' batch'+(nb===1?'':'es')+' · '+np+' poster'+(np===1?'':'s')+(q?' (filtered)':''))
       :'';
+    // Poster status action buttons (Approve / Mark Posted / Decline)
+    document.querySelectorAll('#bx_list .ps-btn').forEach(b=>b.onclick=async ev=>{
+      ev.stopPropagation();
+      const stamp=b.dataset.stamp, fn=decodeURIComponent(b.dataset.fn), status=b.dataset.s;
+      b.disabled=true; b.textContent='…';
+      try{
+        const r=await fetch('/api/poster/tag',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({client:CLIENT,stamp,filename:fn,status})});
+        const d=await r.json();
+        if(!r.ok||d.error){toast(d.error||'Failed',true);b.disabled=false;return;}
+        const msgs={approved:'✓ Approved — go to Queue tab to schedule',posted:'✓ Marked as posted',declined:'Declined',pending:'Reset to pending'};
+        toast(msgs[status]||'Updated');
+        // Refresh the batches list to show updated badges
+        ALL=await api('/api/batches?client='+CLIENT);paint();
+        if(status==='approved')setTimeout(()=>{TAB='queue';render();},1800);
+      }catch(e){toast('Error',true);b.disabled=false;}
+    });
     document.querySelectorAll('#bx_list .cp').forEach(b=>b.onclick=ev=>{
       ev.preventDefault();
       navigator.clipboard.writeText(fromB64(b.dataset.c)).then(()=>toast('Caption copied'));
