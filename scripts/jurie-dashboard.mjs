@@ -103,6 +103,138 @@ const getClients = () => readCfg("clients.json", []);
 const getClient = async (id) =>
   (await getClients()).find((c) => c.id === id) || null;
 
+// ── Queue helpers ─────────────────────────────────────────────────────────
+const queuePath  = (clientId) => path.join(cfgDir, `queue-${clientId}.json`);
+const readQueue  = async (clientId) => {
+  try { return JSON.parse(await fs.readFile(queuePath(clientId), "utf-8")); }
+  catch { return []; }
+};
+const writeQueue = (clientId, data) =>
+  fs.writeFile(queuePath(clientId), JSON.stringify(data, null, 2));
+
+async function addBatchToQueue(clientId, batchDir, stamp) {
+  try {
+    const pngs = (await fs.readdir(batchDir)).filter(f => f.endsWith(".png")).sort();
+    let captText = "";
+    try { captText = await fs.readFile(path.join(batchDir, "captions.txt"), "utf-8"); } catch {}
+    const captions = captText.split(/^-{20,}\s*$/m)
+      .map(s => s.replace(/^#\d+\s*/m, "").trim()).filter(Boolean);
+    const posters = pngs.map((filename, i) => ({
+      filename, caption: captions[i] || "", status: "pending",
+    }));
+    const queue = await readQueue(clientId);
+    const entry = {
+      id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      stamp, clientId,
+      createdAt: new Date().toISOString(),
+      posters, sentAt: null, scheduledStart: null, spacingMinutes: 60,
+    };
+    queue.unshift(entry);
+    if (queue.length > 30) queue.splice(30);
+    await writeQueue(clientId, queue);
+    return entry;
+  } catch (err) {
+    console.warn("addBatchToQueue error:", err.message);
+    return null;
+  }
+}
+
+// Buffer GraphQL call used by the send endpoint.
+const BUFFER_CHANNEL = {
+  tranzzie: () => process.env.BUFFER_TRANZZIE_CHANNEL || "6a1fb490c687a22dd4554170",
+  jurie:    () => process.env.BUFFER_JURIE_CHANNEL    || "6a1fb490c687a22dd455416f",
+};
+const STUDIO_URL = () =>
+  (process.env.STUDIO_PUBLIC_URL || "https://jurie-automation-production-5045.up.railway.app").replace(/\/$/, "");
+
+async function bufferPost(channelId, imageUrl, text, scheduledAt) {
+  const r = await fetch("https://api.buffer.com", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${process.env.BUFFER_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      query: `mutation CreatePost($i: CreatePostInput!) { createPost(input: $i) { post { id status scheduledAt } errors { message } } }`,
+      variables: { i: { channelIds: [channelId], text, mediaUrls: [imageUrl], scheduledAt } },
+    }),
+  });
+  const json = await r.json();
+  if (json.errors?.length) throw new Error(json.errors.map(e => e.message).join("; "));
+  const errs = json.data?.createPost?.errors;
+  if (errs?.length) throw new Error(errs.map(e => e.message).join("; "));
+  return json.data?.createPost?.post;
+}
+
+// ── Queue API routes ──────────────────────────────────────────────────────
+app.get("/api/queue", async (req, res) => {
+  const c = await getClient(req.query.client);
+  if (!c) return res.json([]);
+  res.json(await readQueue(c.id));
+});
+
+app.post("/api/queue/review", async (req, res) => {
+  const { client, queueId, decisions } = req.body || {};
+  const queue = await readQueue(client);
+  const entry = queue.find(e => e.id === queueId);
+  if (!entry) return res.status(404).json({ error: "Not found" });
+  for (const { filename, status } of (decisions || [])) {
+    const p = entry.posters.find(x => x.filename === filename);
+    if (p) p.status = status;
+  }
+  await writeQueue(client, queue);
+  res.json({ ok: true });
+});
+
+app.post("/api/queue/send", async (req, res) => {
+  const { client, queueId, scheduledStart, spacingMinutes } = req.body || {};
+  const clientCfg = await getClient(client);
+  if (!clientCfg) return res.status(400).json({ error: "Unknown client" });
+  const apiKey = process.env.BUFFER_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "BUFFER_API_KEY not configured" });
+  const channelId = BUFFER_CHANNEL[client]?.();
+  if (!channelId) return res.status(500).json({ error: `No Buffer channel for ${client}` });
+
+  const queue = await readQueue(client);
+  const entry = queue.find(e => e.id === queueId);
+  if (!entry) return res.status(404).json({ error: "Queue entry not found" });
+  const approved = entry.posters.filter(p => p.status === "approved");
+  if (!approved.length) return res.status(400).json({ error: "No approved posters to send" });
+
+  const startMs  = scheduledStart ? new Date(scheduledStart).getTime() : Date.now() + 60 * 60 * 1000;
+  const spacing  = Math.max(5, parseInt(spacingMinutes || 60, 10));
+  const studioUrl = STUDIO_URL();
+  let sent = 0, failed = 0;
+
+  for (let i = 0; i < approved.length; i++) {
+    const p = approved[i];
+    const imageUrl  = `${studioUrl}/posters/${client}/${encodeURIComponent(entry.stamp)}/${encodeURIComponent(p.filename)}`;
+    const schedAt   = new Date(startMs + i * spacing * 60 * 1000).toISOString();
+    try {
+      await bufferPost(channelId, imageUrl, p.caption, schedAt);
+      p.status = "sent";
+      sent++;
+    } catch (err) {
+      console.warn(`Buffer send failed ${p.filename}:`, err.message);
+      failed++;
+    }
+    if (i < approved.length - 1) await new Promise(r => setTimeout(r, 400));
+  }
+  entry.sentAt = new Date().toISOString();
+  entry.scheduledStart = scheduledStart;
+  entry.spacingMinutes = spacing;
+  await writeQueue(client, queue);
+  res.json({ ok: true, sent, failed });
+});
+
+app.delete("/api/queue/:queueId", async (req, res) => {
+  const { client } = req.query;
+  const queue = await readQueue(client);
+  const filtered = queue.filter(e => e.id !== req.params.queueId);
+  await writeQueue(client, filtered);
+  res.json({ ok: true });
+});
+
 // ── Clients ───────────────────────────────────────────────────────────────
 app.get("/api/clients", async (_q, res) =>
   res.json(
@@ -394,9 +526,23 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
           }
         }
       } catch { /* filesystem unavailable — still show done */ }
-      log(written > 0
-        ? `✓ Done — ${written} poster(s) ready. Switching to Batches…`
-        : "✓ Done. Check Batches tab (no PNGs found — Gemini may have had an error above).");
+      if (written > 0) {
+        log(`✓ Done — ${written} poster(s) ready. Added to Queue for review.`);
+        // Auto-add to queue for approval before posting.
+        try {
+          const clientCfg = await getClient(client);
+          if (clientCfg) {
+            const expDir = clientExportDir(clientCfg);
+            const stamps2 = (await fs.readdir(expDir)).filter(safeStamp).sort().reverse();
+            if (stamps2[0]) {
+              await addBatchToQueue(client, path.join(expDir, stamps2[0]), stamps2[0]);
+              log("📋 Batch added to Queue tab — review and schedule from there.");
+            }
+          }
+        } catch (qErr) { console.warn("Queue add error:", qErr.message); }
+      } else {
+        log("✓ Done. Check Batches tab (no PNGs found — Gemini may have had an error above).");
+      }
     } else {
       log(`✗ Exited (${code}). Check the log above for the error.`);
     }
@@ -1057,7 +1203,7 @@ async function boot(){
   if(!cs.find(c=>c.id===CLIENT))CLIENT=cs[0]?.id||'';
   $('#client').value=CLIENT;
   $('#client').onchange=e=>{CLIENT=e.target.value;localStorage.setItem('qps_client',CLIENT);render();};
-  const tabs=[['generate','Generate'],['brand','Brand Kits'],['topics','Topics'],['chars','Characters'],['batches','Batches'],['broll','B-Roll']];
+  const tabs=[['generate','Generate'],['brand','Brand Kits'],['topics','Topics'],['chars','Characters'],['batches','Batches'],['queue','Queue'],['broll','B-Roll']];
   $('#nav').innerHTML=tabs.map(([k,l])=>'<button data-t="'+k+'">'+l+'</button>').join('');
   document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{TAB=b.dataset.t;render();});
   render();
@@ -1070,6 +1216,7 @@ async function render(){
   if(TAB==='topics')return viewTopics();
   if(TAB==='chars')return viewChars();
   if(TAB==='batches')return viewBatches();
+  if(TAB==='queue')return viewQueue();
   if(TAB==='broll')return viewBroll();
 }
 let es;
@@ -1127,9 +1274,9 @@ async function viewGenerate(){
    +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);line-height:1.4;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.02)">'
    +'<input type="checkbox" id="g_tips" style="width:auto;margin:3px 0 0;flex-shrink:0">'
    +'<span><b>Tips</b><br><span class="muted" style="font-size:11px">AI tip-style posters mixed into the batch</span></span></label>'
-   +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);line-height:1.4;padding:10px 12px;border:1px solid rgba(244,180,0,.25);border-radius:9px;background:rgba(244,180,0,.04)">'
-   +'<input type="checkbox" id="g_buffer" style="width:auto;margin:3px 0 0;flex-shrink:0;accent-color:var(--gold)">'
-   +'<span><b style="color:var(--gold)">Auto-post to Buffer</b><br><span class="muted" style="font-size:11px">Schedule each poster to Facebook via Buffer after render (1 post/hour, starts in 1h)</span></span></label>'
+   +'<label style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--mut);line-height:1.4;padding:10px 12px;border:1px dashed rgba(232,182,74,.2);border-radius:9px">'
+   +'<span style="font-size:16px;flex-shrink:0">📋</span>'
+   +'<span><b style="color:var(--txt)">Posts go to Queue after render</b><br><span style="font-size:11px">Review, approve, and schedule from the Queue tab before anything is posted to Buffer.</span></span></label>'
    +'</div></div>'
    +'<p style="margin:14px 0;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><button class="go" id="g_go">Generate posters</button>'
    +'<span id="g_unlock" style="display:none"><button class="sec" id="g_unlock_btn" style="border-color:var(--red);color:var(--red)">⚠ Unlock stuck job</button>'
@@ -1192,7 +1339,6 @@ async function viewGenerate(){
     fd.append('tipsEnabled',$('#g_tips').checked?'1':'0');
     const styles=['cinematic','flat','split'].filter(s=>$('#g_style_'+s)?.checked);
     fd.append('posterStyles',styles.length?styles.join(','):'cinematic');
-    fd.append('bufferAutopost',$('#g_buffer')?.checked?'1':'0');
     const ef=$('#g_extras').files||[];
     for(const f of ef)fd.append('extraRef',f);
     $('#g_go').disabled=true;phase='';
@@ -1207,8 +1353,8 @@ async function viewGenerate(){
       const p=progFrom(line);if(p>=0)setProg(p,false);
       if(line.indexOf('✓ Done')>-1){es.close();$('#g_go').disabled=false;$('#g_unlock').style.display='none';
         const bad=line.indexOf('no PNGs found')>-1;
-        toast(bad?'⚠ Done but no posters found — check log':'Batch complete \\u2713',bad);
-        if(!bad)showLatestBatch();}};
+        toast(bad?'⚠ Done but no posters found — check log':'Batch complete \\u2713 — check Queue tab',bad);
+        if(!bad){showLatestBatch();setTimeout(()=>{TAB='queue';render();},2500);}}};
     const r=await fetch('/api/generate',{method:'POST',body:fd});
     if(!r.ok){const err=(await r.json()).error||'Failed to start';toast(err,true);$('#g_go').disabled=false;$('#g_prog').style.display='none';
       if(err.indexOf('already running')>-1){$('#g_unlock').style.display='inline-flex';$('#g_unlock').style.gap='10px';$('#g_unlock').style.alignItems='center';}}
@@ -1374,6 +1520,128 @@ async function viewChars(){
     }
     toast('Character saved');viewChars();
   };
+}
+async function viewQueue(){
+  const esc=s=>(s||'').replace(/[<>&"]/g,'');
+  let queue=await api('/api/queue?client='+CLIENT);
+  // Local state for unsaved decisions before sending.
+  const local={}; // queueId → { filename → status }
+  function getStatus(qid,fname){return local[qid]?.[fname]||queue.find(e=>e.id===qid)?.posters.find(p=>p.filename===fname)?.status||'pending';}
+  function setStatus(qid,fname,status){if(!local[qid])local[qid]={};local[qid][fname]=status;renderQueue();}
+
+  function renderQueue(){
+    const pending=queue.filter(e=>!e.sentAt);
+    const sent=queue.filter(e=>e.sentAt);
+    let html='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px">'
+      +'<div><h2 style="margin:0">Queue <span class="pill">'+CLIENT+'</span></h2>'
+      +'<p class="muted" style="margin:6px 0 0;font-size:12px">Review posters before they post to Facebook via Buffer. Approve what you want, decline the rest, then schedule.</p></div>'
+      +'<button class="sec" onclick="viewQueue()">Refresh</button></div>';
+
+    if(!pending.length&&!sent.length){
+      html+='<div class="card"><p class="muted" style="text-align:center;padding:24px 0">No batches in queue yet — generate some posters and they\\\'ll appear here for review.</p></div>';
+    }
+
+    for(const entry of pending){
+      const qid=entry.id;
+      const approvedCount=entry.posters.filter(p=>(local[qid]?.[p.filename]||p.status)==='approved').length;
+      const totalCount=entry.posters.length;
+      html+='<div class="card" id="q-'+qid+'">'
+        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:18px">'
+        +'<div><div style="font-size:15px;font-weight:600;color:var(--txt)">'+fmtStamp(entry.stamp)+'</div>'
+        +'<div class="muted" style="font-size:12px;margin-top:3px">'+totalCount+' posters · <span id="qc-'+qid+'">'+approvedCount+' approved</span></div></div>'
+        +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+        +'<button class="sec" style="font-size:12px" onclick="qSelectAll(\''+qid+'\',\'approved\')">Approve All</button>'
+        +'<button class="sec" style="font-size:12px" onclick="qSelectAll(\''+qid+'\',\'declined\')">Decline All</button>'
+        +'<button class="sec" style="font-size:12px;color:var(--red);border-color:var(--red)" onclick="qDelete(\''+qid+'\')">Remove</button>'
+        +'</div></div>'
+        // Schedule bar
+        +'<div style="background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:9px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">'
+        +'<div><label style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);display:block;margin-bottom:5px">Start time</label>'
+        +'<input type="datetime-local" id="qs-start-'+qid+'" style="background:#0e0e10;border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:8px 12px;font:inherit;font-size:13px"></div>'
+        +'<div><label style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);display:block;margin-bottom:5px">Every</label>'
+        +'<div style="display:flex;align-items:center;gap:6px"><input type="number" id="qs-space-'+qid+'" value="60" min="5" max="1440" style="background:#0e0e10;border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:8px 12px;font:inherit;font-size:13px;width:80px">'
+        +'<span class="muted" style="font-size:12px">minutes</span></div></div>'
+        +'<div style="margin-left:auto"><button class="go" style="background:var(--gold)" onclick="qSend(\''+qid+'\')" id="qsend-'+qid+'">'
+        +(approvedCount>0?'Send '+approvedCount+' to Buffer →':'Approve posters first')+'</button></div></div>'
+        // Poster grid
+        +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px">'
+        +entry.posters.map(p=>{
+          const st=local[qid]?.[p.filename]||p.status;
+          const isApp=st==='approved',isDec=st==='declined';
+          return '<div style="border-radius:12px;overflow:hidden;border:2px solid '+(isApp?'var(--gold)':isDec?'var(--red)':'var(--line)')+';background:#0d0d0f;opacity:'+(isDec?'.45':'1')+';transition:all .18s">'
+            +'<div style="position:relative"><img src="/posters/'+CLIENT+'/'+encodeURIComponent(entry.stamp)+'/'+encodeURIComponent(p.filename)+'" style="width:100%;display:block;aspect-ratio:4/5;object-fit:cover" loading="lazy">'
+            +(isApp?'<div style="position:absolute;top:8px;right:8px;background:var(--gold);color:#15120a;font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px">✓ APPROVED</div>':'')
+            +(isDec?'<div style="position:absolute;top:8px;right:8px;background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px">✗ DECLINED</div>':'')
+            +'</div>'
+            +'<div style="padding:8px 10px;font-size:10.5px;color:var(--mut);max-height:70px;overflow:auto;line-height:1.45">'+esc(p.caption).slice(0,140)+'</div>'
+            +'<div style="display:flex;padding:0 8px 10px;gap:6px">'
+            +'<button class="sec" style="flex:1;font-size:11px;padding:6px 4px;'+(isApp?'border-color:var(--gold);color:var(--gold)':'')+'" onclick="setStatus(\''+qid+'\',\''+p.filename+'\',\'approved\')">'+(isApp?'✓ Approved':'Approve')+'</button>'
+            +'<button class="sec" style="flex:1;font-size:11px;padding:6px 4px;'+(isDec?'border-color:var(--red);color:var(--red)':'')+'" onclick="setStatus(\''+qid+'\',\''+p.filename+'\',\'declined\')">'+(isDec?'✗ Declined':'Decline')+'</button>'
+            +'</div></div>';
+        }).join('')
+        +'</div></div>';
+    }
+
+    // Sent history
+    if(sent.length){
+      html+='<div class="card"><h2>Sent History</h2>';
+      for(const entry of sent){
+        const sentCount=entry.posters.filter(p=>p.status==='sent').length;
+        html+='<div class="item" style="display:flex;align-items:center;justify-content:space-between;gap:10px">'
+          +'<div><b style="font-size:13px">'+fmtStamp(entry.stamp)+'</b>'
+          +'<div class="muted" style="font-size:12px;margin-top:2px">'+sentCount+' posted · sent '+fmtStamp(entry.sentAt?.slice(0,16).replace('T','T').replace(/:/g,'-')||'')+'</div></div>'
+          +'<span class="pill" style="color:#5be07e;border-color:rgba(60,180,80,.3)">✓ Sent</span></div>';
+      }
+      html+='</div>';
+    }
+    $('#view').innerHTML=html;
+    // Set default start time to 1h from now for all entries
+    for(const entry of pending){
+      const el=document.getElementById('qs-start-'+entry.id);
+      if(el&&!el.value){const d=new Date(Date.now()+3600000);el.value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+    }
+  }
+
+  window.setStatus=function(qid,fname,status){
+    if(!local[qid])local[qid]={};
+    local[qid][fname]=status;
+    // Update server in background
+    fetch('/api/queue/review',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({client:CLIENT,queueId:qid,decisions:[{filename:fname,status}]})});
+    renderQueue();
+  };
+  window.qSelectAll=function(qid,status){
+    const entry=queue.find(e=>e.id===qid);
+    if(!local[qid])local[qid]={};
+    entry.posters.forEach(p=>{local[qid][p.filename]=status;});
+    fetch('/api/queue/review',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({client:CLIENT,queueId:qid,decisions:entry.posters.map(p=>({filename:p.filename,status}))})});
+    renderQueue();
+  };
+  window.qDelete=async function(qid){
+    if(!confirm('Remove this batch from the queue?'))return;
+    await fetch('/api/queue/'+qid+'?client='+CLIENT,{method:'DELETE'});
+    queue=queue.filter(e=>e.id!==qid);renderQueue();
+  };
+  window.qSend=async function(qid){
+    const startEl=document.getElementById('qs-start-'+qid);
+    const spaceEl=document.getElementById('qs-space-'+qid);
+    const btn=document.getElementById('qsend-'+qid);
+    const approved=(local[qid]?Object.entries(local[qid]).filter(([,s])=>s==='approved').length:0)
+      +(queue.find(e=>e.id===qid)?.posters.filter(p=>!local[qid]?.[p.filename]&&p.status==='approved').length||0);
+    if(!approved){toast('Approve at least one poster first',true);return;}
+    if(!confirm('Send '+approved+' approved poster(s) to Buffer? This will schedule them to post on Facebook.'))return;
+    btn.disabled=true;btn.textContent='Sending…';
+    try{
+      const r=await fetch('/api/queue/send',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({client:CLIENT,queueId:qid,scheduledStart:startEl?.value?new Date(startEl.value).toISOString():null,spacingMinutes:parseInt(spaceEl?.value||'60',10)})});
+      const d=await r.json();
+      if(!r.ok||d.error){toast(d.error||'Send failed',true);btn.disabled=false;btn.textContent='Retry';return;}
+      toast('\\u2713 '+d.sent+' poster'+(d.sent===1?'':'s')+' scheduled in Buffer'+(d.failed?' ('+d.failed+' failed)':''));
+      queue=await api('/api/queue?client='+CLIENT);renderQueue();
+    }catch(e){toast('Network error',true);btn.disabled=false;btn.textContent='Retry';}
+  };
+  renderQueue();
 }
 async function viewBatches(){
   const ALL=await api('/api/batches?client='+CLIENT);
