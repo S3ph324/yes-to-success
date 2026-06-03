@@ -1098,6 +1098,34 @@ white-space:pre-wrap;max-height:112px;overflow:auto}
 .ps-btn.ps-on-gold{border-color:var(--gold);color:var(--gold);background:rgba(232,182,74,.1)}
 .ps-btn.ps-on-green{border-color:#3cb454;color:#3cb454;background:rgba(60,180,84,.1)}
 .ps-btn.ps-on-red{border-color:var(--red);color:var(--red);background:rgba(224,86,75,.1)}
+/* ── UX improvements ── */
+.workflow-strip{display:flex;align-items:center;gap:0;margin:0 0 28px;background:var(--panel);
+border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.wf-step{flex:1;padding:13px 16px;display:flex;align-items:center;gap:10px;font-size:13px}
+.wf-step+.wf-step{border-left:1px solid var(--line)}
+.wf-num{width:24px;height:24px;border-radius:50%;background:var(--line2);color:var(--mut);
+font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.wf-step.wf-active .wf-num{background:var(--gold);color:#15120a}
+.wf-step.wf-active .wf-label{color:var(--txt)}
+.wf-label{font-size:12px;font-weight:600;color:var(--mut)}
+.wf-sub{font-size:11px;color:var(--mut);margin-top:1px;line-height:1.3}
+.callout{padding:14px 16px;border-radius:10px;margin-bottom:16px;font-size:13px;line-height:1.5}
+.callout-info{background:rgba(232,182,74,.08);border:1px solid rgba(232,182,74,.2);color:var(--txt)}
+.callout-tip{background:rgba(60,180,84,.07);border:1px solid rgba(60,180,84,.2);color:var(--txt)}
+.adv-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--mut);
+padding:11px 0;border:0;background:0;font:inherit;letter-spacing:.01em;transition:color .14s;width:100%}
+.adv-toggle:hover{color:var(--txt)}
+.adv-toggle::before{content:"▶";font-size:9px;transition:transform .2s;flex-shrink:0}
+.adv-toggle.open::before{transform:rotate(90deg)}
+.adv-body{display:none;padding-top:4px}
+.adv-body.open{display:block}
+.nav-badge{display:inline-flex;align-items:center;justify-content:center;
+background:var(--red);color:#fff;font-size:9px;font-weight:700;
+min-width:16px;height:16px;border-radius:999px;padding:0 4px;margin-left:5px;vertical-align:middle}
+nav button .nav-badge{position:relative;top:-1px}
+.section-label{font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+color:var(--mut);margin:20px 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.section-label:first-child{margin-top:0}
 .item{border:1px solid var(--line);border-radius:10px;padding:15px;margin-bottom:10px;
 transition:border-color .15s}.item:hover{border-color:var(--line2)}
 .pill{font-size:11px;color:var(--mut);border:1px solid var(--line2);padding:3px 10px;
@@ -1343,8 +1371,11 @@ async function boot(){
   if(!cs.find(c=>c.id===CLIENT))CLIENT=cs[0]?.id||'';
   $('#client').value=CLIENT;
   $('#client').onchange=e=>{CLIENT=e.target.value;localStorage.setItem('qps_client',CLIENT);render();};
-  const tabs=[['generate','Generate'],['brand','Brand Kits'],['topics','Topics'],['chars','Characters'],['batches','Batches'],['queue','Queue'],['broll','B-Roll']];
-  $('#nav').innerHTML=tabs.map(([k,l])=>'<button data-t="'+k+'">'+l+'</button>').join('');
+  const tabs=[['generate','⚡ Generate'],['batches','📂 Batches'],['queue','✅ Queue'],['broll','🎬 B-Roll'],['brand','🎨 Brand'],['topics','📝 Topics'],['chars','👤 Characters']];
+  // Show pending count badge on Queue tab
+  let qBadge='';
+  try{const q=await api('/api/queue?client='+CLIENT);const pending=q.filter(e=>!e.sentAt);if(pending.length)qBadge='<span class="nav-badge">'+pending.length+'</span>';}catch{}
+  $('#nav').innerHTML=tabs.map(([k,l])=>'<button data-t="'+k+'">'+l+(k==='queue'?qBadge:'')+'</button>').join('');
   document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{TAB=b.dataset.t;render();});
   render();
 }
@@ -1373,51 +1404,62 @@ async function viewGenerate(){
    +chars.map(c=>{const n=(c.photos||[]).length;
      return '<option value="'+c.id+'"'+(c.id===defChar?' selected':'')+'>'
       +c.name+' ('+n+' photo'+(n===1?'':'s')+')</option>';}).join('');
-  $('#view').innerHTML=
-   '<div class="card"><h2>Generate</h2>'
-   +'<div class="row"><div><label>Topic</label><input id="g_topic" placeholder="type a topic"></div>'
-   +'<div style="flex:0 0 110px"><label>Count</label><input id="g_count" type="number" min="1" max="200" value="8"></div></div>'
-   +'<div class="row"><div><label>Topic preset (brief)</label><select id="g_brief"><option value="">— brief default —</option>'
-   +briefs.map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')+'</select></div>'
-   +'<div><label>Brand kit</label><select id="g_brand"><option value="">— preset default —</option>'
-   +brands.map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')+'</select></div></div>'
-   +'<div class="row" style="align-items:flex-start"><div><label>Character</label>'
-   +'<select id="g_char">'+charOpts+'</select>'
-   +'<p class="muted" style="margin:8px 0 0">Who gets generated into every poster. "none" = scene only.</p></div>'
-   +'<div style="flex:0 0 160px"><label>Preview</label>'
-   +'<div id="g_cprev" style="width:160px;height:160px;border:1px solid var(--line);border-radius:10px;'
-   +'background:#101012 center/cover no-repeat;display:flex;align-items:center;justify-content:center;'
-   +'color:var(--mut);font-size:12px">none</div></div>'
-   +'<div style="flex:0 0 130px"><label>Logo</label>'
-   +'<div id="g_lprev" style="width:130px;height:130px;border:1px solid var(--line);border-radius:10px;'
-   +'background:#000 center/contain no-repeat;display:flex;align-items:center;justify-content:center;'
-   +'color:var(--mut);font-size:11px">none</div></div></div>'
-   +'<div class="row" style="align-items:flex-start;margin-top:6px">'
-   +'<div style="flex:0 0 220px"><label style="display:inline-flex;gap:8px;align-items:center;color:var(--txt);font-size:13px;cursor:pointer;margin:0">'
-   +'<input type="checkbox" id="g_logo_on" style="width:auto;margin:0"> Include logo on posters</label></div>'
-   +'<div style="flex:1;min-width:240px"><label>Extra reference photos (optional — used instead of the character\\\'s saved photos for this batch)</label>'
-   +'<input id="g_extras" type="file" accept="image/*" multiple></div>'
+  // ── Workflow strip
+  const wfHtml='<div class="workflow-strip">'
+   +'<div class="wf-step wf-active"><div class="wf-num">1</div><div><div class="wf-label">Generate</div><div class="wf-sub">Type a topic, hit Generate</div></div></div>'
+   +'<div class="wf-step"><div class="wf-num">2</div><div><div class="wf-label">Review in Queue</div><div class="wf-sub">Approve or decline each poster</div></div></div>'
+   +'<div class="wf-step"><div class="wf-num">3</div><div><div class="wf-label">Schedule to Buffer</div><div class="wf-sub">Pick a strategy → posts automatically</div></div></div>'
+   +'</div>';
+
+  $('#view').innerHTML=wfHtml
+   +'<div class="card">'
+   // ── Primary form ──
+   +'<div class="section-label">What do you want to post about?</div>'
+   +'<div class="row" style="gap:12px;margin-bottom:18px">'
+   +'<div style="flex:3"><input id="g_topic" placeholder="e.g. why regular eye check-ups matter" style="width:100%;font-size:15px;padding:14px 16px"></div>'
+   +'<div style="flex:0 0 100px"><label style="font-size:11px">Posters</label><input id="g_count" type="number" min="1" max="200" value="8" style="width:100%;text-align:center;font-size:15px;padding:14px 8px"></div>'
    +'</div>'
-   +'<div style="margin-top:14px;padding:16px 18px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:10px">'
-   +'<label style="margin:0 0 6px;display:block;color:var(--txt);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase">Poster Styles</label>'
-   +'<p class="muted" style="margin:0 0 14px;font-size:12px">Select one or more — distributed round-robin across the batch. Tips mixes in AI-tip posters alongside quote posters.</p>'
-   +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">'
-   +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);line-height:1.4;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.02)">'
-   +'<input type="checkbox" id="g_style_cinematic" checked style="width:auto;margin:3px 0 0;flex-shrink:0">'
-   +'<span><b>Cinematic</b><br><span class="muted" style="font-size:11px">Full photo bg, dark scrims, HOOK/PAYOFF overlay</span></span></label>'
-   +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);line-height:1.4;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.02)">'
+   // ── Advanced toggle ──
+   +'<button class="adv-toggle" id="adv-btn" onclick="document.getElementById(\'adv-btn\').classList.toggle(\'open\');document.getElementById(\'adv-body\').classList.toggle(\'open\')">'
+   +'⚙ Advanced settings <span class="muted" style="font-size:11px;margin-left:6px">(topic preset, brand kit, character, styles)</span></button>'
+   +'<div class="adv-body" id="adv-body">'
+   +'<div style="border-top:1px solid var(--line);padding-top:16px;margin-top:4px">'
+   +'<div class="row" style="margin-bottom:0">'
+   +'<div><label>Topic preset</label><select id="g_brief"><option value="">— none —</option>'
+   +briefs.map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')+'</select>'
+   +'<p class="muted" style="margin:5px 0 0;font-size:11px">Loads a saved topic with specific voice notes</p></div>'
+   +'<div><label>Brand kit</label><select id="g_brand"><option value="">— default —</option>'
+   +brands.map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')+'</select>'
+   +'<p class="muted" style="margin:5px 0 0;font-size:11px">Colors, logo, and CTA text</p></div></div>'
+   +'<div class="row" style="align-items:flex-start;margin-top:14px">'
+   +'<div><label>Character</label>'
+   +'<select id="g_char" style="width:100%">'+charOpts+'</select>'
+   +'<p class="muted" style="margin:5px 0 0;font-size:11px">Person generated into the poster background</p></div>'
+   +'<div style="flex:0 0 140px"><label>Preview</label>'
+   +'<div id="g_cprev" style="width:140px;height:140px;border:1px solid var(--line);border-radius:10px;background:#101012 center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:12px">none</div></div>'
+   +'<div style="flex:0 0 120px"><label>Logo</label>'
+   +'<div id="g_lprev" style="width:120px;height:120px;border:1px solid var(--line);border-radius:10px;background:#000 center/contain no-repeat;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:11px">none</div></div></div>'
+   +'<div class="row" style="margin-top:14px;align-items:center">'
+   +'<label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;color:var(--txt);white-space:nowrap">'
+   +'<input type="checkbox" id="g_logo_on" style="width:auto;margin:0"> Include logo</label>'
+   +'<div><label style="font-size:11px">Extra reference photos (overrides character for this batch)</label>'
+   +'<input id="g_extras" type="file" accept="image/*" multiple></div></div>'
+   +'<div style="margin-top:16px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
+   +'<div class="section-label" style="margin:0 0 12px">Poster style</div>'
+   +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px">'
+   +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);padding:10px 12px;border:1px solid var(--gold);border-radius:9px;background:rgba(232,182,74,.04)">'
+   +'<input type="checkbox" id="g_style_cinematic" checked style="width:auto;margin:3px 0 0;flex-shrink:0;accent-color:var(--gold)">'
+   +'<span><b>Cinematic</b> <span style="font-size:9px;background:var(--gold);color:#15120a;padding:1px 5px;border-radius:4px">BEST</span><br><span class="muted" style="font-size:11px">AI photo bg + text overlay</span></span></label>'
+   +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);padding:10px 12px;border:1px solid var(--line);border-radius:9px">'
    +'<input type="checkbox" id="g_style_flat" style="width:auto;margin:3px 0 0;flex-shrink:0">'
-   +'<span><b>Bold Flat</b><br><span class="muted" style="font-size:11px">Dark bg + gold stripe, type-forward, no photo</span></span></label>'
-   +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);line-height:1.4;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.02)">'
+   +'<span><b>Bold Flat</b><br><span class="muted" style="font-size:11px">Graphic design, no photo</span></span></label>'
+   +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);padding:10px 12px;border:1px solid var(--line);border-radius:9px">'
    +'<input type="checkbox" id="g_style_split" style="width:auto;margin:3px 0 0;flex-shrink:0">'
-   +'<span><b>Split Panel</b><br><span class="muted" style="font-size:11px">Photo top half, solid brand panel + text below</span></span></label>'
-   +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);line-height:1.4;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.02)">'
+   +'<span><b>Split Panel</b><br><span class="muted" style="font-size:11px">Photo top, text panel below</span></span></label>'
+   +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);padding:10px 12px;border:1px solid var(--line);border-radius:9px">'
    +'<input type="checkbox" id="g_tips" style="width:auto;margin:3px 0 0;flex-shrink:0">'
-   +'<span><b>Tips</b><br><span class="muted" style="font-size:11px">AI tip-style posters mixed into the batch</span></span></label>'
-   +'<label style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--mut);line-height:1.4;padding:10px 12px;border:1px dashed rgba(232,182,74,.2);border-radius:9px">'
-   +'<span style="font-size:16px;flex-shrink:0">📋</span>'
-   +'<span><b style="color:var(--txt)">Posts go to Queue after render</b><br><span style="font-size:11px">Review, approve, and schedule from the Queue tab before anything is posted to Buffer.</span></span></label>'
-   +'</div></div>'
+   +'<span><b>+ Tips</b><br><span class="muted" style="font-size:11px">Mix in tip-style posters</span></span></label>'
+   +'</div></div></div></div>'
    +'<p style="margin:14px 0;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><button class="go" id="g_go">Generate posters</button>'
    +'<span id="g_unlock" style="display:none"><button class="sec" id="g_unlock_btn" style="border-color:var(--red);color:var(--red)">⚠ Unlock stuck job</button>'
    +'<span class="muted" style="font-size:12px">Another job appears stuck. Click to force-clear the lock.</span></span></p>'
@@ -1671,13 +1713,24 @@ async function viewQueue(){
   function renderQueue(){
     const pending=queue.filter(e=>!e.sentAt);
     const sent=queue.filter(e=>e.sentAt);
-    let html='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px">'
-      +'<div><h2 style="margin:0">Queue <span class="pill">'+CLIENT+'</span></h2>'
-      +'<p class="muted" style="margin:6px 0 0;font-size:12px">Review posters before they post to Facebook via Buffer. Approve what you want, decline the rest, then schedule.</p></div>'
-      +'<button class="sec" onclick="viewQueue()">Refresh</button></div>';
+    const totalPending=pending.reduce((a,e)=>a+e.posters.filter(p=>(local[e.id]?.[p.filename]||p.status)==='pending').length,0);
+    const totalApproved=pending.reduce((a,e)=>a+e.posters.filter(p=>(local[e.id]?.[p.filename]||p.status)==='approved').length,0);
+    // Workflow strip — step 2 is active here
+    let html='<div class="workflow-strip">'
+      +'<div class="wf-step"><div class="wf-num">1</div><div><div class="wf-label">Generate</div><div class="wf-sub">Already done</div></div></div>'
+      +'<div class="wf-step wf-active"><div class="wf-num">2</div><div><div class="wf-label">Review in Queue</div><div class="wf-sub">Approve or decline each poster</div></div></div>'
+      +'<div class="wf-step"><div class="wf-num">3</div><div><div class="wf-label">Schedule to Buffer</div><div class="wf-sub">Set dates → posts automatically</div></div></div>'
+      +'</div>';
+    html+='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">'
+      +'<div>'
+      +(pending.length?'<div style="font-size:22px;font-weight:700;color:var(--txt);margin-bottom:3px">'+pending.reduce((a,e)=>a+e.posters.length,0)+' posters waiting</div>'
+        +'<div class="muted" style="font-size:13px">'+(totalApproved?'<span style="color:var(--gold)">✓ '+totalApproved+' approved</span> · ':'')+(totalPending?totalPending+' still need review':'all reviewed')+'</div>'
+        :'<div style="font-size:15px;font-weight:600;color:var(--txt)">Queue is empty</div>')
+      +'</div>'
+      +'<button class="sec" onclick="viewQueue()">↻ Refresh</button></div>';
 
     if(!pending.length&&!sent.length){
-      html+='<div class="card"><p class="muted" style="text-align:center;padding:24px 0">No batches in queue yet — generate some posters and they\\\'ll appear here for review.</p></div>';
+      html+='<div class="callout callout-info"><b>Nothing here yet.</b> Go to <b>⚡ Generate</b>, type a topic and hit Generate. Your posters will appear here automatically when done.</div>';
     }
 
     for(const entry of pending){
