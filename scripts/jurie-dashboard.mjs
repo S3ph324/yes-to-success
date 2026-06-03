@@ -1287,8 +1287,7 @@ async function viewGenerate(){
    +'<div id="g_pct" class="muted" style="margin-top:6px;font-size:12px">0%</div></div>'
    +'<pre id="g_log" style="display:none"></pre>'
    +'<div id="g_result" style="display:none;margin-top:22px"></div></div>'
-   +'<div class="card disabled"><h2>Auto-post to Facebook <span class="pill">coming soon</span></h2>'
-   +'<p class="muted">Disabled. Posters are posted manually for now.</p></div>';
+   ;
   function updPrev(){const id=$('#g_char').value,p=photoOf[id],el=$('#g_cprev');
     if(p){el.style.backgroundImage='url(/api/charphoto?p='+encodeURIComponent(p)+')';el.textContent='';}
     else{el.style.backgroundImage='';el.textContent=id?'(no photo)':'none';}}
