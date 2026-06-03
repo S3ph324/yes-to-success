@@ -1092,8 +1092,10 @@ figcaption{padding:12px 13px;font-size:11px;line-height:1.55;color:var(--mut);
 white-space:pre-wrap;max-height:112px;overflow:auto}
 .muted{color:var(--mut);font-size:13px}
 .ps-badge{position:absolute;top:8px;left:8px;font-size:10px;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:.04em;pointer-events:none;z-index:2}
-.ps-actions{display:flex;gap:4px;padding:6px 8px 8px;background:#0d0d0f}
-.ps-btn{flex:1;font-size:10px;font-weight:600;padding:5px 2px;border-radius:6px;cursor:pointer;border:1px solid var(--line2);background:transparent;color:var(--mut);transition:all .14s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ps-actions{display:flex;flex-direction:column;gap:4px;padding:6px 8px 8px;background:#0d0d0f}
+.ps-row{display:flex;gap:4px}
+.ps-btn{flex:1;font-size:11px;font-weight:600;padding:7px 4px;border-radius:6px;cursor:pointer;border:1px solid var(--line2);background:transparent;color:var(--mut);transition:all .14s;white-space:nowrap;text-align:center}
+.ps-btn-secondary{font-size:10px;padding:5px 4px;color:var(--mut);opacity:.7}
 .ps-btn:hover{border-color:var(--gold);color:var(--txt)}
 .ps-btn.ps-on-gold{border-color:var(--gold);color:var(--gold);background:rgba(232,182,74,.1)}
 .ps-btn.ps-on-green{border-color:#3cb454;color:#3cb454;background:rgba(60,180,84,.1)}
@@ -1150,7 +1152,6 @@ color:var(--mut);margin:20px 0 10px;padding-bottom:8px;border-bottom:1px solid v
   button.go{width:100%;padding:14px}
   .opts-grid{grid-template-columns:1fr 1fr}
   figure img{aspect-ratio:3/4}
-  .ps-actions{flex-wrap:wrap}
   .ps-btn{font-size:10px;padding:6px 4px}
   input[type=number]{width:100%!important}
   #g_count{width:100%!important}
@@ -2001,9 +2002,11 @@ async function viewBatches(){
           +'<button class="rm del-poster" data-stamp="'+B.stamp+'" data-file="'+encodeURIComponent(f)+'" title="Delete this poster">🗑</button>'
           +'<figcaption>'+(esc(caps[i])||'—')+'</figcaption>'
           +'<div class="ps-actions">'
-          +'<button class="ps-btn ps-approve'+(st==='approved'?' ps-on-gold':'')+'" data-stamp="'+B.stamp+'" data-fn="'+encodeURIComponent(f)+'" data-s="approved">'+( st==='approved'?'✓ Approved':'Approve')+'</button>'
-          +'<button class="ps-btn ps-posted'+(st==='posted'?' ps-on-green':'')+'" data-stamp="'+B.stamp+'" data-fn="'+encodeURIComponent(f)+'" data-s="posted">'+(st==='posted'?'✓ Posted':'Mark Posted')+'</button>'
-          +'<button class="ps-btn ps-decline'+(st==='declined'?' ps-on-red':'')+'" data-stamp="'+B.stamp+'" data-fn="'+encodeURIComponent(f)+'" data-s="declined">'+(st==='declined'?'✗ Declined':'Decline')+'</button>'
+          +'<div class="ps-row">'
+          +'<button class="ps-btn ps-approve'+(st==='approved'?' ps-on-gold':'')+'" data-stamp="'+B.stamp+'" data-fn="'+encodeURIComponent(f)+'" data-s="approved">'+(st==='approved'?'✓ Approved':'✓ Approve')+'</button>'
+          +'<button class="ps-btn ps-decline'+(st==='declined'?' ps-on-red':'')+'" data-stamp="'+B.stamp+'" data-fn="'+encodeURIComponent(f)+'" data-s="declined">'+(st==='declined'?'✗ Declined':'✗ Decline')+'</button>'
+          +'</div>'
+          +'<button class="ps-btn ps-btn-secondary ps-posted'+(st==='posted'?' ps-on-green':'')+'" style="width:100%" data-stamp="'+B.stamp+'" data-fn="'+encodeURIComponent(f)+'" data-s="posted">'+(st==='posted'?'✓ Already posted':'Mark as already posted')+'</button>'
           +'</div></figure>';}).join('')
        +'</div></div>';}).join('');
     $('#bx_list').innerHTML=ALL.length?(html||'<p class="muted">No posters match “'+esc(q)+'”.</p>')
