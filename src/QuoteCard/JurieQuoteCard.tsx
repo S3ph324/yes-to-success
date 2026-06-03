@@ -377,51 +377,86 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
   const hookBottom = Math.round(height * 0.34);
   const payoffBottom = Math.round(height * 0.13);
 
-  // ── FLAT style ────────────────────────────────────────────────────────────
+  // ── FLAT style — bold graphic design, no photo needed ────────────────────
   if (style === "flat") {
-    const stripeW = Math.round(width * 0.05);
-    const textLeft = Math.round(width * 0.09);
-    const flatHookBottom = Math.round(height * 0.34);
-    const flatPayoffBottom = Math.round(height * 0.13);
-    const flatLogoBoxStyle: React.CSSProperties = {
-      position: "absolute",
-      top: Math.round(height * 0.04),
-      left: textLeft,
-      right: padX,
-      display: "flex",
-      justifyContent: "flex-start",
-    };
-    const logoH = Math.round(height * Math.max(0.04, Math.min(0.30, logoSize || 0.10)));
+    const textLeft  = Math.round(width * 0.08);
+    const flatHookBottom    = Math.round(height * 0.34);
+    const flatPayoffBottom  = Math.round(height * 0.13);
+    const ctaBarH   = Math.round(height * 0.16);
+    const logoH2    = Math.round(height * Math.max(0.04, Math.min(0.30, logoSize || 0.10)));
     return (
-      <AbsoluteFill style={{ background: "#0A0A0A", overflow: "hidden" }}>
-        {/* Subtle radial brand glow behind text zone */}
+      <AbsoluteFill style={{ background: "#080810", overflow: "hidden" }}>
+
+        {/* ── Rich background: deep dark + subtle diagonal gradient ── */}
         <AbsoluteFill style={{
-          background: `radial-gradient(ellipse 80% 55% at 55% 62%, ${brandGold}1A 0%, transparent 68%)`,
+          background: `linear-gradient(145deg, #12121E 0%, #080810 50%, #100008 100%)`,
         }} />
-        {/* Left gold accent stripe */}
+
+        {/* Top-right bold diagonal accent — large geometric swoosh */}
         <div style={{
-          position: "absolute", left: 0, top: 0, bottom: 0, width: stripeW,
-          background: `linear-gradient(180deg, ${brandGoldLight} 0%, ${brandGold} 45%, ${brandGoldDeep} 100%)`,
+          position: "absolute",
+          top: -Math.round(height * 0.12),
+          right: -Math.round(width * 0.08),
+          width: Math.round(width * 0.72),
+          height: Math.round(height * 0.52),
+          borderRadius: "0 0 0 60%",
+          background: `linear-gradient(135deg, ${brandRed}28 0%, ${brandGold}14 60%, transparent 100%)`,
+          transform: "rotate(-8deg)",
         }} />
-        {/* Large decorative open-quote — very faint brand accent, background element */}
+
+        {/* Strong brand glow centred on text area */}
+        <AbsoluteFill style={{
+          background: `radial-gradient(ellipse 70% 45% at 50% 58%, ${brandGold}28 0%, transparent 65%)`,
+        }} />
+
+        {/* Bottom CTA band — solid branded strip */}
         <div style={{
-          position: "absolute", top: Math.round(height * 0.03),
-          left: textLeft, lineHeight: 1,
-          fontSize: Math.round(width * 0.38), fontFamily,
-          fontWeight: 900, color: `${brandGold}1C`,
-          pointerEvents: "none", userSelect: "none",
+          position: "absolute", left: 0, right: 0, bottom: 0,
+          height: ctaBarH,
+          background: `linear-gradient(135deg, ${brandRed} 0%, #6B0010 100%)`,
+        }} />
+        {/* Thin gold separator above CTA band */}
+        <div style={{
+          position: "absolute", left: 0, right: 0,
+          bottom: ctaBarH,
+          height: Math.round(height * 0.004),
+          background: `linear-gradient(90deg, transparent, ${brandGold}, transparent)`,
+        }} />
+
+        {/* Left gold accent stripe — bold, full height */}
+        <div style={{
+          position: "absolute", left: 0, top: 0, bottom: 0,
+          width: Math.round(width * 0.018),
+          background: `linear-gradient(180deg, ${brandGoldLight} 0%, ${brandGold} 50%, ${brandGoldDeep} 100%)`,
+        }} />
+
+        {/* Large decorative open-quote — visible but not distracting */}
+        <div style={{
+          position: "absolute",
+          top: Math.round(height * 0.02),
+          left: textLeft,
+          lineHeight: 1,
+          fontSize: Math.round(width * 0.32),
+          fontFamily,
+          fontWeight: 900,
+          color: `${brandGold}22`,
+          pointerEvents: "none",
+          userSelect: "none",
         }}>&#8220;</div>
-        {/* Logo */}
+
+        {/* Logo — top-left */}
         {logo && (
-          <div style={flatLogoBoxStyle}>
-            <Img src={logo} style={{ height: logoH, width: "auto", objectFit: "contain",
-              filter: "drop-shadow(0 4px 14px rgba(0,0,0,0.5))" }} />
+          <div style={{ position: "absolute", top: Math.round(height * 0.04), left: textLeft }}>
+            <Img src={logo} style={{ height: logoH2, width: "auto", objectFit: "contain",
+              filter: "drop-shadow(0 4px 14px rgba(0,0,0,0.6)) brightness(1.1)" }} />
           </div>
         )}
+
         {/* HOOK */}
-        <div style={{ position: "absolute", bottom: flatHookBottom,
-          left: textLeft, right: padX,
-          display: "flex", flexDirection: "column", gap: "0.04em" }}>
+        <div style={{
+          position: "absolute", bottom: flatHookBottom, left: textLeft, right: padX,
+          display: "flex", flexDirection: "column", gap: "0.04em",
+        }}>
           {(top || []).map((line, i) => (
             <Line key={i} line={line} fontSize={fontSize} fontFamily={fontFamily}
               brandGold={brandGold} brandGoldLight={brandGoldLight}
@@ -429,10 +464,12 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
               lead={i === 0 ? "“" : undefined} />
           ))}
         </div>
+
         {/* PAYOFF */}
-        <div style={{ position: "absolute", bottom: flatPayoffBottom,
-          left: textLeft, right: padX,
-          display: "flex", flexDirection: "column", gap: "0.04em" }}>
+        <div style={{
+          position: "absolute", bottom: flatPayoffBottom, left: textLeft, right: padX,
+          display: "flex", flexDirection: "column", gap: "0.04em",
+        }}>
           {(bottom || []).map((line, i) => (
             <Line key={i} line={line} fontSize={fontSize} fontFamily={fontFamily}
               brandGold={brandGold} brandGoldLight={brandGoldLight}
@@ -440,23 +477,26 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
               trail={i === (bottom || []).length - 1 ? "”" : undefined} />
           ))}
         </div>
-        {/* CTA */}
+
+        {/* CTA — sits on the red band, white text */}
         {useCta && (
-          <div style={{ position: "absolute", bottom: Math.round(height * 0.042),
-            left: 0, right: 0, textAlign: "center", fontFamily,
-            textTransform: "uppercase", lineHeight: 1.18 }}>
+          <div style={{
+            position: "absolute", bottom: 0, left: 0, right: 0,
+            height: ctaBarH,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            flexDirection: "column", fontFamily,
+            textTransform: "uppercase", lineHeight: 1.2,
+          }}>
             <div style={{ fontSize: ctaSize, letterSpacing: "0.12em" }}>
-              <span style={{ color: "#fff", textShadow: "0 2px 8px rgba(0,0,0,0.9)" }}>COMMENT </span>
-              <span style={{ backgroundImage: `linear-gradient(180deg, ${brandGoldLight} 0%, ${brandGold} 50%, ${brandGoldDeep} 100%)`,
+              <span style={{ color: "rgba(255,255,255,0.85)" }}>COMMENT </span>
+              <span style={{
+                backgroundImage: `linear-gradient(180deg, ${brandGoldLight} 0%, ${brandGold} 100%)`,
                 WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent",
-                filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.9))" }}>"{ctaComment}"</span>
+                fontWeight: 900,
+              }}>"{ctaComment}"</span>
             </div>
-            <div style={{ fontSize: Math.round(ctaSize * 0.78), color: "#fff",
-              letterSpacing: "0.22em", textShadow: "0 2px 8px rgba(0,0,0,0.9)" }}>TO</div>
-            <div style={{ fontSize: Math.round(ctaSize * 1.08), color: brandRed,
-              fontWeight: 800, letterSpacing: "0.10em", textShadow: "0 2px 8px rgba(0,0,0,0.9)" }}>
-              {ctaTail}
-            </div>
+            <div style={{ fontSize: Math.round(ctaSize * 0.72), color: "rgba(255,255,255,0.65)",
+              letterSpacing: "0.26em", marginTop: 2 }}>TO {ctaTail}</div>
           </div>
         )}
       </AbsoluteFill>

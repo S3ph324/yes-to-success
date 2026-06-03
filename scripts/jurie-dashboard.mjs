@@ -235,13 +235,15 @@ app.post("/api/queue/send", async (req, res) => {
   const timestamps = buildPostSchedule(strategy || "standard", sd, approved.length);
   const studioUrl = STUDIO_URL();
   let sent = 0, failed = 0;
+  const bufferPostIds = [];
 
   for (let i = 0; i < approved.length; i++) {
     const p = approved[i];
     const imageUrl = `${studioUrl}/posters/${client}/${encodeURIComponent(entry.stamp)}/${encodeURIComponent(p.filename)}`;
     try {
-      await bufferPost(channelId, imageUrl, p.caption, timestamps[i]);
+      const post = await bufferPost(channelId, imageUrl, p.caption, timestamps[i]);
       p.status = "sent";
+      if (post?.id) bufferPostIds.push(post.id);
       sent++;
     } catch (err) {
       console.warn(`Buffer send failed ${p.filename}:`, err.message);
@@ -252,8 +254,9 @@ app.post("/api/queue/send", async (req, res) => {
   entry.sentAt = new Date().toISOString();
   entry.strategy = strategy || "standard";
   entry.startDate = sd;
+  entry.bufferPostIds = bufferPostIds;
   await writeQueue(client, queue);
-  res.json({ ok: true, sent, failed, timestamps });
+  res.json({ ok: true, sent, failed, timestamps, bufferPostIds });
 });
 
 app.delete("/api/queue/:queueId", async (req, res) => {
@@ -262,6 +265,47 @@ app.delete("/api/queue/:queueId", async (req, res) => {
   const filtered = queue.filter(e => e.id !== req.params.queueId);
   await writeQueue(client, filtered);
   res.json({ ok: true });
+});
+
+// Cancel scheduled Buffer posts for a queue entry (delete them from Buffer).
+app.post("/api/queue/cancel", async (req, res) => {
+  const { client, queueId } = req.body || {};
+  const apiKey = process.env.BUFFER_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "BUFFER_API_KEY not configured" });
+  const queue = await readQueue(client);
+  const entry = queue.find(e => e.id === queueId);
+  if (!entry) return res.status(404).json({ error: "Queue entry not found" });
+  const postIds = entry.bufferPostIds || [];
+  if (!postIds.length) return res.status(400).json({ error: "No Buffer post IDs stored — cannot cancel" });
+
+  let cancelled = 0, failed = 0;
+  for (const postId of postIds) {
+    try {
+      const r = await fetch("https://api.buffer.com", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: `mutation DeletePost($i: DeletePostInput!) { deletePost(input: $i) { deletedPostId } }`,
+          variables: { i: { postId } },
+        }),
+      });
+      const json = await r.json();
+      if (json.errors?.length) throw new Error(json.errors[0].message);
+      cancelled++;
+    } catch (err) {
+      console.warn(`Cancel Buffer post ${postId}:`, err.message);
+      failed++;
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  // Reset poster statuses back to approved so user can re-send
+  for (const p of entry.posters) {
+    if (p.status === "sent") p.status = "approved";
+  }
+  entry.sentAt = null;
+  entry.bufferPostIds = [];
+  await writeQueue(client, queue);
+  res.json({ ok: true, cancelled, failed });
 });
 
 // ── Clients ───────────────────────────────────────────────────────────────
@@ -1362,10 +1406,10 @@ async function viewGenerate(){
    +'<input type="checkbox" id="g_style_cinematic" checked style="width:auto;margin:3px 0 0;flex-shrink:0">'
    +'<span><b>Cinematic</b><br><span class="muted" style="font-size:11px">Full photo bg, dark scrims, HOOK/PAYOFF overlay</span></span></label>'
    +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);line-height:1.4;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.02)">'
-   +'<input type="checkbox" id="g_style_flat" checked style="width:auto;margin:3px 0 0;flex-shrink:0">'
+   +'<input type="checkbox" id="g_style_flat" style="width:auto;margin:3px 0 0;flex-shrink:0">'
    +'<span><b>Bold Flat</b><br><span class="muted" style="font-size:11px">Dark bg + gold stripe, type-forward, no photo</span></span></label>'
    +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);line-height:1.4;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.02)">'
-   +'<input type="checkbox" id="g_style_split" checked style="width:auto;margin:3px 0 0;flex-shrink:0">'
+   +'<input type="checkbox" id="g_style_split" style="width:auto;margin:3px 0 0;flex-shrink:0">'
    +'<span><b>Split Panel</b><br><span class="muted" style="font-size:11px">Photo top half, solid brand panel + text below</span></span></label>'
    +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);line-height:1.4;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.02)">'
    +'<input type="checkbox" id="g_tips" style="width:auto;margin:3px 0 0;flex-shrink:0">'
@@ -1689,10 +1733,15 @@ async function viewQueue(){
       html+='<div class="card"><h2>Sent History</h2>';
       for(const entry of sent){
         const sentCount=entry.posters.filter(p=>p.status==='sent').length;
-        html+='<div class="item" style="display:flex;align-items:center;justify-content:space-between;gap:10px">'
+        const hasIds=(entry.bufferPostIds||[]).length>0;
+        html+='<div class="item" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">'
           +'<div><b style="font-size:13px">'+fmtStamp(entry.stamp)+'</b>'
-          +'<div class="muted" style="font-size:12px;margin-top:2px">'+sentCount+' posted · sent '+fmtStamp(entry.sentAt?.slice(0,16).replace('T','T').replace(/:/g,'-')||'')+'</div></div>'
-          +'<span class="pill" style="color:#5be07e;border-color:rgba(60,180,80,.3)">✓ Sent</span></div>';
+          +'<div class="muted" style="font-size:12px;margin-top:2px">'+sentCount+' scheduled · '+( entry.strategy||'standard')+' · starts '+entry.startDate+'</div></div>'
+          +'<div style="display:flex;gap:8px;align-items:center">'
+          +'<span class="pill" style="color:#5be07e;border-color:rgba(60,180,80,.3)">✓ Sent to Buffer</span>'
+          +'<a href="https://buffer.com/dashboard" target="_blank" class="sec" style="font-size:11px;text-decoration:none;padding:5px 10px">View in Buffer →</a>'
+          +(hasIds?'<button class="sec" style="font-size:11px;color:var(--red);border-color:rgba(224,86,75,.4);padding:5px 10px" onclick="qCancel(this)" data-qid="'+entry.id+'">Cancel Posts</button>':'')
+          +'</div></div>';
       }
       html+='</div>';
     }
@@ -1709,10 +1758,20 @@ async function viewQueue(){
   }
 
   // Data-attribute bridge functions — avoids quoting issues in onclick strings.
-  window.qSS  =el=>setStatus(el.dataset.qid,decodeURIComponent(el.dataset.fn||''),el.dataset.s);
-  window.qSelA=el=>qSelectAll(el.dataset.qid,el.dataset.s);
-  window.qDel =el=>qDelete(el.dataset.qid);
-  window.qSnd =el=>qSend(el.dataset.qid);
+  window.qSS    =el=>setStatus(el.dataset.qid,decodeURIComponent(el.dataset.fn||''),el.dataset.s);
+  window.qSelA  =el=>qSelectAll(el.dataset.qid,el.dataset.s);
+  window.qDel   =el=>qDelete(el.dataset.qid);
+  window.qSnd   =el=>qSend(el.dataset.qid);
+  window.qCancel=async function(el){
+    const qid=el.dataset.qid;
+    if(!confirm('Cancel these scheduled posts in Buffer? They will be removed from your Buffer queue and the posters will return to Approved status.'))return;
+    el.disabled=true;el.textContent='Cancelling…';
+    const r=await fetch('/api/queue/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client:CLIENT,queueId:qid})});
+    const d=await r.json();
+    if(!r.ok||d.error){toast(d.error||'Cancel failed',true);el.disabled=false;el.textContent='Cancel Posts';return;}
+    toast('\\u2713 '+d.cancelled+' post'+(d.cancelled===1?'':'s')+' cancelled in Buffer'+(d.failed?' ('+d.failed+' failed)':''));
+    queue=await api('/api/queue?client='+CLIENT);renderQueue();
+  };
 
   // Strategy time-slot definitions (Manila hours).
   const STRATS={light:[9,19],standard:[9,13,19],active:[9,11,13,17,20]};
@@ -1785,17 +1844,30 @@ async function viewQueue(){
       +(entry?.posters.filter(p=>!local[qid]?.[p.filename]&&p.status==='approved').length||0);
     if(!approved){toast('Approve at least one poster first',true);return;}
     if(!dateEl?.value){toast('Choose a start date first',true);dateEl?.focus();return;}
-    const stratLabel=(stratEl?.options[stratEl.selectedIndex]?.text||'Standard');
-    if(!confirm('Schedule '+approved+' poster(s) to Facebook via Buffer?\\n\\nStrategy: '+stratLabel+'\\nStart: '+dateEl.value+' (Manila time)'))return;
-    btn.disabled=true;btn.textContent='Sending…';
+    // 5-second countdown undo window
+    btn.disabled=true;
+    let cancelled=false;
+    const previewEl=document.getElementById('qs-preview-'+qid);
+    const origPreview=previewEl?.innerHTML||'';
+    let secs=5;
+    const cdEl=document.createElement('div');
+    cdEl.style.cssText='display:flex;align-items:center;gap:12px;padding:10px 12px;background:rgba(224,86,75,.12);border:1px solid rgba(224,86,75,.3);border-radius:7px;font-size:13px;color:var(--txt)';
+    cdEl.innerHTML='<span>Sending in <b id="cd-secs">5</b>s…</span><button class="sec" style="font-size:12px;padding:5px 12px;border-color:var(--red);color:var(--red)" id="cd-cancel">Cancel</button>';
+    previewEl&&previewEl.replaceWith(cdEl);
+    document.getElementById('cd-cancel').onclick=()=>{cancelled=true;cdEl.innerHTML='<span style="color:#5be07e">✓ Cancelled — nothing was sent.</span>';setTimeout(()=>{cdEl.replaceWith&&document.getElementById('qs-preview-'+qid)===null&&cdEl.insertAdjacentHTML('beforebegin','<div id="qs-preview-'+qid+'">'+origPreview+'</div>');cdEl.remove?.();},2000);btn.disabled=false;};
+    await new Promise(r=>{const iv=setInterval(()=>{secs--;const el=document.getElementById('cd-secs');if(el)el.textContent=secs;if(secs<=0){clearInterval(iv);r();}},1000);});
+    if(cancelled)return;
+    cdEl.innerHTML='<span class="spinner"></span> Scheduling in Buffer…';
     try{
       const r=await fetch('/api/queue/send',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({client:CLIENT,queueId:qid,strategy:stratEl?.value||'standard',startDate:dateEl.value})});
       const d=await r.json();
-      if(!r.ok||d.error){toast(d.error||'Send failed',true);btn.disabled=false;btn.textContent='Retry';return;}
-      toast('\\u2713 '+d.sent+' poster'+(d.sent===1?'':'s')+' scheduled in Buffer'+(d.failed?' ('+d.failed+' failed)':''));
-      queue=await api('/api/queue?client='+CLIENT);renderQueue();
-    }catch(e){toast('Network error',true);btn.disabled=false;btn.textContent='Retry';}
+      if(!r.ok||d.error){cdEl.innerHTML='<span style="color:#ff8a82">✗ '+( d.error||'Send failed')+'</span>';btn.disabled=false;return;}
+      // Show confirmation with schedule
+      const lines=(d.timestamps||[]).map((t,i)=>{const dt=new Date(new Date(t).getTime()+8*3600*1000);const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];const mons=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];const h=dt.getUTCHours(),ap=h>=12?'PM':'AM',h12=h%12||12;return '<span style="color:var(--gold)">Post '+(i+1)+':</span> '+days[dt.getUTCDay()]+', '+mons[dt.getUTCMonth()]+' '+dt.getUTCDate()+' at '+h12+':00 '+ap;}).join('<br>');
+      cdEl.innerHTML='<div style="width:100%"><div style="color:#5be07e;font-weight:600;margin-bottom:8px">✓ '+d.sent+' poster'+(d.sent===1?'':'s')+' scheduled in Buffer'+(d.failed?' ('+d.failed+' failed)':'')+'</div>'+(lines?'<div style="font-size:12px;line-height:1.9;margin-bottom:10px">'+lines+'</div>':'')+'<div style="display:flex;gap:8px"><a href="https://buffer.com/dashboard" target="_blank" class="sec" style="font-size:12px;text-decoration:none;padding:6px 12px">View in Buffer →</a></div></div>';
+      queue=await api('/api/queue?client='+CLIENT);
+    }catch(e){cdEl.innerHTML='<span style="color:#ff8a82">✗ Network error</span>';btn.disabled=false;}
   };
   renderQueue();
 }
