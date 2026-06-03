@@ -1201,7 +1201,7 @@ font-size:11.5px;line-height:1.62;letter-spacing:0;color:#a8a8af}
 h1,h2,h3{font-feature-settings:"kern","liga"}
 /* — UI polish v0.15 — */
 :root{--gold-hi:#FFE27A;--panel-hi:#16161a;--line-bright:rgba(255,255,255,.22);--txt-dim:#b9b9bf}
-body{background:radial-gradient(1100px 700px at 8% -12%,rgba(232,182,74,.05),transparent 58%),var(--bg)}
+body{background:radial-gradient(ellipse 55% 35% at 0% 0%,rgba(232,182,74,.07) 0%,rgba(232,182,74,.02) 50%,transparent 100%),var(--bg)}
 header{padding:20px 32px}
 header b{font-size:13px;letter-spacing:.26em;display:flex;align-items:center;gap:11px}
 header b::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--gold);
