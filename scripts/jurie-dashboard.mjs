@@ -549,8 +549,6 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
     brandPresetId,
     characterId,
     useLogo,
-    tipsEnabled,
-    posterStyles,
     bufferAutopost,
   } = req.body || {};
   const c = await getClient(client);
@@ -569,7 +567,6 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
     `▶ [${c.label}] ${n} poster(s) about "${t}"` +
       (extraRefPaths.length ? ` · ${extraRefPaths.length} extra ref(s)` : "") +
       (useLogo === "1" ? " · with logo" : " · no logo") +
-      (posterStyles ? ` · styles: ${posterStyles}` : "") +
       "…",
   );
   const env = { ...process.env };
@@ -578,8 +575,6 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
   if (brandPresetId) env.DASHBOARD_BRAND_PRESET_ID = brandPresetId;
   if (characterId !== undefined) env.DASHBOARD_CHARACTER_ID = characterId;
   if (useLogo !== "1") env.DASHBOARD_NO_LOGO = "1";
-  if (tipsEnabled === "1") env.DASHBOARD_TIPS = "1";
-  if (posterStyles) env.DASHBOARD_POSTER_STYLES = String(posterStyles);
   if (bufferAutopost === "1") env.BUFFER_AUTOPOST = "1";
   if (extraRefPaths.length)
     env.DASHBOARD_EXTRA_REFS = JSON.stringify(extraRefPaths);
@@ -1505,22 +1500,7 @@ async function viewGenerate(){
    +'<input type="checkbox" id="g_logo_on" style="width:auto;margin:0"> Include logo</label>'
    +'<div><label style="font-size:11px">Extra reference photos (overrides character for this batch)</label>'
    +'<input id="g_extras" type="file" accept="image/*" multiple></div></div>'
-   +'<div style="margin-top:16px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
-   +'<div class="section-label" style="margin:0 0 12px">Poster style</div>'
-   +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px">'
-   +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);padding:10px 12px;border:1px solid var(--gold);border-radius:9px;background:rgba(232,182,74,.04)">'
-   +'<input type="checkbox" id="g_style_cinematic" checked style="width:auto;margin:3px 0 0;flex-shrink:0;accent-color:var(--gold)">'
-   +'<span><b>Cinematic</b> <span style="font-size:9px;background:var(--gold);color:#15120a;padding:1px 5px;border-radius:4px">BEST</span><br><span class="muted" style="font-size:11px">AI photo bg + text overlay</span></span></label>'
-   +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);padding:10px 12px;border:1px solid var(--line);border-radius:9px">'
-   +'<input type="checkbox" id="g_style_flat" style="width:auto;margin:3px 0 0;flex-shrink:0">'
-   +'<span><b>Bold Flat</b><br><span class="muted" style="font-size:11px">Graphic design, no photo</span></span></label>'
-   +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);padding:10px 12px;border:1px solid var(--line);border-radius:9px">'
-   +'<input type="checkbox" id="g_style_split" style="width:auto;margin:3px 0 0;flex-shrink:0">'
-   +'<span><b>Split Panel</b><br><span class="muted" style="font-size:11px">Photo top, text panel below</span></span></label>'
-   +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);padding:10px 12px;border:1px solid var(--line);border-radius:9px">'
-   +'<input type="checkbox" id="g_tips" style="width:auto;margin:3px 0 0;flex-shrink:0">'
-   +'<span><b>+ Tips</b><br><span class="muted" style="font-size:11px">Mix in tip-style posters</span></span></label>'
-   +'</div></div></div></div>'
+   +'</div></div>'
    +'<p style="margin:14px 0;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><button class="go" id="g_go">Generate posters</button>'
    +'<span id="g_unlock" style="display:none"><button class="sec" id="g_unlock_btn" style="border-color:var(--red);color:var(--red)">⚠ Unlock stuck job</button>'
    +'<span class="muted" style="font-size:12px">Another job appears stuck. Click to force-clear the lock.</span></span></p>'
@@ -1578,9 +1558,6 @@ async function viewGenerate(){
     fd.append('brandPresetId',$('#g_brand').value);
     fd.append('characterId',$('#g_char').value);
     fd.append('useLogo',$('#g_logo_on').checked?'1':'0');
-    fd.append('tipsEnabled',$('#g_tips').checked?'1':'0');
-    const styles=['cinematic','flat','split'].filter(s=>$('#g_style_'+s)?.checked);
-    fd.append('posterStyles',styles.length?styles.join(','):'cinematic');
     const ef=$('#g_extras').files||[];
     for(const f of ef)fd.append('extraRef',f);
     $('#g_go').disabled=true;phase='';

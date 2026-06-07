@@ -55,13 +55,10 @@ try {
 // Per-run override from the dashboard "Include logo" checkbox.
 const NO_LOGO = process.env.DASHBOARD_NO_LOGO === "1";
 
-// Poster style(s) to render — comma-separated from dashboard checkboxes.
-// Distributed round-robin across quotes: "cinematic,flat" on 8 quotes → 4 each.
-const POSTER_STYLES = (process.env.DASHBOARD_POSTER_STYLES || "cinematic")
-  .split(",")
-  .map((s) => s.trim())
-  .filter((s) => ["cinematic", "flat", "split"].includes(s));
-if (!POSTER_STYLES.length) POSTER_STYLES.push("cinematic");
+// Poster style — locked to "cinematic" (the proven style) for now.
+// The flat/split variants are disabled pending further polish; this keeps
+// the dashboard option removed from view AND immune to any stale env var.
+const POSTER_STYLES = ["cinematic"];
 
 const brand = {
   brandGold: preset?.brandAccent || "#F5C13B",
