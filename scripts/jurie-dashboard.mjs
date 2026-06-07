@@ -460,6 +460,73 @@ app.post(
   },
 );
 
+// ── Eyeglasses assets (eyeglasses.json, Tranzzie-only for now) ────────────
+// Mirrors the Characters pattern above: a config-driven asset list with
+// reference photos, used by the eyeglasses-showcase pipeline in place of a
+// character. Starts empty — created from the Eyeglasses tab.
+app.get("/api/eyeglasses", async (req, res) => {
+  const all = await readCfg("eyeglasses.json", []);
+  res.json(
+    req.query.client
+      ? all.filter((g) => g.client === req.query.client)
+      : all,
+  );
+});
+app.post("/api/eyeglasses", async (req, res) => {
+  const g = req.body;
+  if (!g?.id || !g?.client)
+    return res.status(400).json({ error: "id and client required" });
+  const all = await readCfg("eyeglasses.json", []);
+  const i = all.findIndex((x) => x.id === g.id);
+  if (i === -1) all.push({ photos: [], enabled: true, ...g });
+  else all[i] = { ...all[i], ...g };
+  await writeCfg("eyeglasses.json", all);
+  res.json(g);
+});
+
+const glassPhotoStore = multer.diskStorage({
+  destination: async (req, _f, cb) => {
+    const client = req.query.client || "misc";
+    const d = path.join(publicDir, "eyeglasses", client);
+    await fs.mkdir(d, { recursive: true });
+    cb(null, d);
+  },
+  filename: (_r, file, cb) =>
+    cb(null, `${Date.now()}-${file.originalname.replace(/[^\w.\-]/g, "_")}`),
+});
+const uploadGlassPhoto = multer({ storage: glassPhotoStore });
+app.post(
+  "/api/eyeglasses/photo",
+  uploadGlassPhoto.array("photo", 8),
+  async (req, res) => {
+    const { client, glassesId } = req.query;
+    const files = req.files || [];
+    if (!files.length) return res.status(400).json({ error: "no files" });
+    const paths = files.map((f) =>
+      path.posix.join("eyeglasses", client, f.filename),
+    );
+    const all = await readCfg("eyeglasses.json", []);
+    const g = all.find((x) => x.id === glassesId);
+    if (g) {
+      g.photos = g.photos || [];
+      g.photos.push(...paths);
+      await writeCfg("eyeglasses.json", all);
+    }
+    res.json({ ok: true, paths });
+  },
+);
+
+// Serve an eyeglasses reference photo for previews (Generate tab + Eyeglasses tab).
+app.get("/api/glassesphoto", (req, res) => {
+  const rel = String(req.query.p || "");
+  if (!rel.startsWith("eyeglasses/") || rel.includes(".."))
+    return res.status(400).end();
+  const fp = path.join(publicDir, rel);
+  if (!fp.startsWith(path.join(publicDir, "eyeglasses")))
+    return res.status(400).end();
+  res.sendFile(fp);
+});
+
 const logoStore = multer.diskStorage({
   destination: async (_r, _f, cb) => {
     const d = path.join(publicDir, "brand");
@@ -550,6 +617,10 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
     characterId,
     useLogo,
     bufferAutopost,
+    posterType,
+    eyeglassesId,
+    eyeglassesStyle,
+    aspectDist,
   } = req.body || {};
   const c = await getClient(client);
   if (!c) return res.status(400).json({ error: "Unknown client" });
@@ -562,9 +633,17 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
 
   const extraRefPaths = (req.files || []).map((f) => f.path);
 
+  // Eyeglasses showcase batches are Tranzzie-only and run a separate
+  // orchestrator (different content-gen voice + reference-asset source) that
+  // still funnels into the same render-batch-jurie.mjs at the end.
+  const isEyeglasses = client === "tranzzie" && posterType === "eyeglasses";
+  const glassesId = String(eyeglassesId || "");
+  const glassesStyle = String(eyeglassesStyle || "showcase");
+
   job = { running: true, client, log: [], code: null };
   log(
-    `▶ [${c.label}] ${n} poster(s) about "${t}"` +
+    `▶ [${c.label}] ${n} ${isEyeglasses ? "eyeglasses showcase " : ""}poster(s) about "${t}"` +
+      (isEyeglasses ? ` · frame ${glassesId || "(none selected)"}` : "") +
       (extraRefPaths.length ? ` · ${extraRefPaths.length} extra ref(s)` : "") +
       (useLogo === "1" ? " · with logo" : " · no logo") +
       "…",
@@ -573,15 +652,23 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
   if (EXPORT_BASE) env.JURIE_EXPORT_DIR = path.join(EXPORT_BASE, client);
   if (briefId) env.DASHBOARD_BRIEF_ID = briefId;
   if (brandPresetId) env.DASHBOARD_BRAND_PRESET_ID = brandPresetId;
-  if (characterId !== undefined) env.DASHBOARD_CHARACTER_ID = characterId;
+  if (isEyeglasses) {
+    env.DASHBOARD_EYEGLASSES_ID = glassesId;
+    env.DASHBOARD_EYEGLASSES_STYLE = glassesStyle;
+  } else if (characterId !== undefined) {
+    env.DASHBOARD_CHARACTER_ID = characterId;
+  }
   if (useLogo !== "1") env.DASHBOARD_NO_LOGO = "1";
   if (bufferAutopost === "1") env.BUFFER_AUTOPOST = "1";
   if (extraRefPaths.length)
     env.DASHBOARD_EXTRA_REFS = JSON.stringify(extraRefPaths);
+  if (aspectDist) env.DASHBOARD_ASPECT_DIST = String(aspectDist);
   env.JURIE_NO_OPEN = "1";
   const child = spawn(
     "node",
-    ["scripts/batch-jurie.mjs", "--client", client, String(n), t],
+    isEyeglasses
+      ? ["scripts/batch-eyeglasses-tranzzie.mjs", String(n), t]
+      : ["scripts/batch-jurie.mjs", "--client", client, String(n), t],
     { cwd: projectRoot, env },
   );
   job.child = child;
@@ -1421,18 +1508,25 @@ function fmtStamp(s){
   return _MON[mo]+' '+dy+', '+yr+' \xb7 '+h+':'+(mn<10?'0':'')+mn+' '+ap;}
 function goBatches(){TAB='batches';render();}
 function toggleAdv(){const b=document.getElementById('adv-btn'),d=document.getElementById('adv-body');if(b)b.classList.toggle('open');if(d)d.classList.toggle('open');}
-async function boot(){
-  const cs=await api('/api/clients');
-  $('#client').innerHTML=cs.map(c=>'<option value="'+c.id+'">'+c.label+'</option>').join('');
-  if(!cs.find(c=>c.id===CLIENT))CLIENT=cs[0]?.id||'';
-  $('#client').value=CLIENT;
-  $('#client').onchange=e=>{CLIENT=e.target.value;localStorage.setItem('qps_client',CLIENT);render();};
+async function buildNav(){
   const tabs=[['generate','⚡ Generate'],['batches','📂 Batches'],['queue','✅ Queue'],['broll','🎬 B-Roll'],['brand','🎨 Brand'],['topics','📝 Topics'],['chars','👤 Characters']];
+  if(CLIENT==='tranzzie')tabs.push(['glasses','\\ud83d\\udd76\\ufe0f Eyeglasses']);
   // Show pending count badge on Queue tab
   let qBadge='';
   try{const q=await api('/api/queue?client='+CLIENT);const pending=q.filter(e=>!e.sentAt);if(pending.length)qBadge='<span class="nav-badge">'+pending.length+'</span>';}catch{}
   $('#nav').innerHTML=tabs.map(([k,l])=>'<button data-t="'+k+'">'+l+(k==='queue'?qBadge:'')+'</button>').join('');
   document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{TAB=b.dataset.t;render();});
+  // If the previously-active tab doesn't exist for this client (e.g. left
+  // "glasses" while switching away from tranzzie), fall back to Generate.
+  if(!tabs.find(([k])=>k===TAB))TAB='generate';
+}
+async function boot(){
+  const cs=await api('/api/clients');
+  $('#client').innerHTML=cs.map(c=>'<option value="'+c.id+'">'+c.label+'</option>').join('');
+  if(!cs.find(c=>c.id===CLIENT))CLIENT=cs[0]?.id||'';
+  $('#client').value=CLIENT;
+  $('#client').onchange=async e=>{CLIENT=e.target.value;localStorage.setItem('qps_client',CLIENT);await buildNav();render();};
+  await buildNav();
   render();
 }
 function setNav(){document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===TAB));}
@@ -1442,17 +1536,19 @@ async function render(){
   if(TAB==='brand')return viewBrand();
   if(TAB==='topics')return viewTopics();
   if(TAB==='chars')return viewChars();
+  if(TAB==='glasses')return viewGlasses();
   if(TAB==='batches')return viewBatches();
   if(TAB==='queue')return viewQueue();
   if(TAB==='broll')return viewBroll();
 }
 let es;
 async function viewGenerate(){
-  const [briefs,brands,chars,cls]=await Promise.all([
+  const [briefs,brands,chars,cls,glasses]=await Promise.all([
     api('/api/briefs?client='+CLIENT),
     api('/api/brand?client='+CLIENT),
     api('/api/characters?client='+CLIENT),
     api('/api/clients'),
+    api('/api/eyeglasses?client='+CLIENT),
   ]);
   const defChar=(cls.find(c=>c.id===CLIENT)||{}).characterId||'';
   const photoOf={};chars.forEach(c=>{photoOf[c.id]=(c.photos&&c.photos[0])||'';});
@@ -1460,6 +1556,13 @@ async function viewGenerate(){
    +chars.map(c=>{const n=(c.photos||[]).length;
      return '<option value="'+c.id+'"'+(c.id===defChar?' selected':'')+'>'
       +c.name+' ('+n+' photo'+(n===1?'':'s')+')</option>';}).join('');
+  // Eyeglasses showcase mode is Tranzzie-only for now.
+  const showEyeglasses=CLIENT==='tranzzie';
+  const glassPhotoOf={};glasses.forEach(g=>{glassPhotoOf[g.id]=(g.photos&&g.photos[0])||'';});
+  const glassOpts=glasses.length
+   ?glasses.map(g=>{const n=(g.photos||[]).length;
+      return '<option value="'+g.id+'">'+g.name+' ('+n+' photo'+(n===1?'':'s')+')</option>';}).join('')
+   :'<option value="">— add a frame in the 🕶️ Eyeglasses tab —</option>';
   // ── Workflow strip
   const wfHtml='<div class="workflow-strip">'
    +'<div class="wf-step wf-active"><div class="wf-num">1</div><div><div class="wf-label">Generate</div><div class="wf-sub">Type a topic, hit Generate</div></div></div>'
@@ -1469,6 +1572,17 @@ async function viewGenerate(){
 
   $('#view').innerHTML=wfHtml
    +'<div class="card">'
+   +(showEyeglasses
+     ?('<div class="section-label">Poster type</div>'
+       +'<div class="row" style="gap:10px;margin-bottom:18px">'
+       +'<label class="ptype-card" data-pt="main" style="flex:1;display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:12px 14px;border:1px solid var(--gold);border-radius:10px;background:rgba(232,182,74,.04);transition:border-color .15s,background .15s">'
+       +'<input type="radio" name="g_ptype" value="main" checked style="width:auto;margin:3px 0 0;accent-color:var(--gold)">'
+       +'<span><b>Main style</b><br><span class="muted" style="font-size:11px">Quote posters \\u2014 topic, branding, character</span></span></label>'
+       +'<label class="ptype-card" data-pt="eyeglasses" style="flex:1;display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:12px 14px;border:1px solid var(--line);border-radius:10px;transition:border-color .15s,background .15s">'
+       +'<input type="radio" name="g_ptype" value="eyeglasses" style="width:auto;margin:3px 0 0">'
+       +'<span><b>\\ud83d\\udd76\\ufe0f Eyeglasses showcase</b><br><span class="muted" style="font-size:11px">Product-first posters built around a frame</span></span></label>'
+       +'</div>')
+     :'')
    // ── Primary form ──
    +'<div class="section-label">What do you want to post about?</div>'
    +'<div class="row" style="gap:12px;margin-bottom:18px">'
@@ -1477,7 +1591,7 @@ async function viewGenerate(){
    +'</div>'
    // ── Advanced toggle ──
    +'<button class="adv-toggle" id="adv-btn" onclick="toggleAdv()">'
-   +'⚙ Advanced settings <span class="muted" style="font-size:11px;margin-left:6px">(topic preset, brand kit, character, styles)</span></button>'
+   +'⚙ Advanced settings <span class="muted" style="font-size:11px;margin-left:6px">(topic preset, brand kit, subject, formats)</span></button>'
    +'<div class="adv-body" id="adv-body">'
    +'<div style="border-top:1px solid var(--line);padding-top:16px;margin-top:4px">'
    +'<div class="row" style="margin-bottom:0">'
@@ -1487,19 +1601,41 @@ async function viewGenerate(){
    +'<div><label>Brand kit</label><select id="g_brand"><option value="">— default —</option>'
    +brands.map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')+'</select>'
    +'<p class="muted" style="margin:5px 0 0;font-size:11px">Colors, logo, and CTA text</p></div></div>'
-   +'<div class="row" style="align-items:flex-start;margin-top:14px">'
-   +'<div><label>Character</label>'
-   +'<select id="g_char" style="width:100%">'+charOpts+'</select>'
-   +'<p class="muted" style="margin:5px 0 0;font-size:11px">Person generated into the poster background</p></div>'
-   +'<div style="flex:0 0 140px"><label>Preview</label>'
-   +'<div id="g_cprev" style="width:140px;height:140px;border:1px solid var(--line);border-radius:10px;background:#101012 center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:12px">none</div></div>'
-   +'<div style="flex:0 0 120px"><label>Logo</label>'
-   +'<div id="g_lprev" style="width:120px;height:120px;border:1px solid var(--line);border-radius:10px;background:#000 center/contain no-repeat;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:11px">none</div></div></div>'
+   +'<div id="g_subjrow"></div>'
    +'<div class="row" style="margin-top:14px;align-items:center">'
    +'<label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;color:var(--txt);white-space:nowrap">'
    +'<input type="checkbox" id="g_logo_on" style="width:auto;margin:0"> Include logo</label>'
-   +'<div><label style="font-size:11px">Extra reference photos (overrides character for this batch)</label>'
+   +'<div><label style="font-size:11px" id="g_extras_label">Extra reference photos (overrides character for this batch)</label>'
    +'<input id="g_extras" type="file" accept="image/*" multiple></div></div>'
+   +'<div id="g_estyle_box" style="display:none;margin-top:16px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
+   +'<div class="section-label" style="margin:0 0 12px">Eyeglasses poster type</div>'
+   +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px">'
+   +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);padding:10px 12px;border:1px solid var(--gold);border-radius:9px;background:rgba(232,182,74,.04)">'
+   +'<input type="radio" name="g_estyle" value="showcase" checked style="width:auto;margin:3px 0 0;accent-color:var(--gold)">'
+   +'<span><b>Product showcase</b> <span style="font-size:9px;background:var(--gold);color:#15120a;padding:1px 5px;border-radius:4px">READY</span><br><span class="muted" style="font-size:11px">Frame as the hero \\u2014 styled photo + tagline</span></span></label>'
+   +'<label style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--mut);padding:10px 12px;border:1px solid var(--line);border-radius:9px;opacity:.5;cursor:not-allowed">'
+   +'<input type="radio" name="g_estyle" value="infographic" disabled style="width:auto;margin:3px 0 0">'
+   +'<span><b>Infographic</b> <span style="font-size:9px;background:var(--line2);color:var(--mut);padding:1px 5px;border-radius:4px">SOON</span><br><span style="font-size:11px">Feature / benefit breakdown layout</span></span></label>'
+   +'<label style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--mut);padding:10px 12px;border:1px solid var(--line);border-radius:9px;opacity:.5;cursor:not-allowed">'
+   +'<input type="radio" name="g_estyle" value="quote" disabled style="width:auto;margin:3px 0 0">'
+   +'<span><b>Quote poster</b> <span style="font-size:9px;background:var(--line2);color:var(--mut);padding:1px 5px;border-radius:4px">SOON</span><br><span style="font-size:11px">Testimonial-style with the frame in shot</span></span></label>'
+   +'</div></div>'
+   +'<div style="margin-top:16px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
+   +'<div class="section-label" style="margin:0 0 6px">Aspect ratio mix</div>'
+   +'<p class="muted" style="margin:0 0 12px;font-size:11px">Optional \\u2014 split the batch across formats instead of all 4:5. Check the ones you want and set a share each; the rest renders 4:5.</p>'
+   +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
+   +['1:1','4:5','9:16'].map(r=>{
+      const lbl=r==='1:1'?'Square':r==='4:5'?'Portrait':'Story / Reel';
+      const on=r==='4:5';
+      return '<label class="ar-card" data-ar="'+r+'" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--txt);padding:9px 12px;border:1px solid '+(on?'var(--gold)':'var(--line)')+';border-radius:9px;flex:1;min-width:160px;background:'+(on?'rgba(232,182,74,.04)':'transparent')+'">'
+        +'<input type="checkbox" class="ar-chk" data-ar="'+r+'"'+(on?' checked':'')+' style="width:auto;margin:0'+(on?';accent-color:var(--gold)':'')+'">'
+        +'<span style="flex:1"><b>'+r+'</b> <span class="muted" style="font-size:11px">'+lbl+'</span></span>'
+        +'<input type="number" class="ar-pct" data-ar="'+r+'" min="0" max="100" value="'+(on?100:0)+'"'+(on?'':' disabled')+' style="width:54px;text-align:center;padding:5px 4px;font-size:12px;border-radius:6px">'
+        +'<span class="muted" style="font-size:12px">%</span></label>';
+     }).join('')
+   +'</div>'
+   +'<p class="muted" id="ar_prev" style="margin:10px 0 0;font-size:11px"></p>'
+   +'</div>'
    +'</div></div>'
    +'<p style="margin:14px 0;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><button class="go" id="g_go">Generate posters</button>'
    +'<span id="g_unlock" style="display:none"><button class="sec" id="g_unlock_btn" style="border-color:var(--red);color:var(--red)">⚠ Unlock stuck job</button>'
@@ -1511,17 +1647,104 @@ async function viewGenerate(){
    +'<pre id="g_log" style="display:none"></pre>'
    +'<div id="g_result" style="display:none;margin-top:22px"></div></div>'
    ;
-  function updPrev(){const id=$('#g_char').value,p=photoOf[id],el=$('#g_cprev');
-    if(p){el.style.backgroundImage='url(/api/charphoto?p='+encodeURIComponent(p)+')';el.textContent='';}
-    else{el.style.backgroundImage='';el.textContent=id?'(no photo)':'none';}}
-  $('#g_char').onchange=updPrev;updPrev();
   const logoOf={};brands.forEach(b=>{logoOf[b.id]=b.logoSrc||'';});
   const defBrand=brands[0]?brands[0].id:'';
   function updLogo(){const id=$('#g_brand').value||defBrand,p=logoOf[id],el=$('#g_lprev');
+    if(!el)return;
     if(p){el.style.backgroundImage='url(/api/brandlogo?p='+encodeURIComponent(p)+')';el.textContent='';}
     else{el.style.backgroundImage='';el.textContent='no logo';}}
-  $('#g_brand').onchange=updLogo;updLogo();
+  $('#g_brand').onchange=updLogo;
   $('#g_brief').onchange=e=>{const b=briefs.find(x=>x.id===e.target.value);if(b&&b.topics&&b.topics[0])$('#g_topic').value=b.topics[0];};
+  function curPosterType(){
+    const r=document.querySelector('input[name="g_ptype"]:checked');
+    return r?r.value:'main';
+  }
+  // Repaints the subject row (Character vs Eyeglasses select), the eyeglasses
+  // sub-style box, and the extra-refs label — everything that swaps based on
+  // which poster type is selected. Logo preview is shared and repainted too
+  // since #g_lprev gets recreated along with the row.
+  function paintSubject(){
+    const pt=curPosterType();
+    const row=$('#g_subjrow');if(!row)return;
+    if(pt==='eyeglasses'){
+      row.innerHTML='<div class="row" style="align-items:flex-start;margin-top:14px">'
+        +'<div><label>Eyeglasses</label>'
+        +'<select id="g_subject" style="width:100%">'+glassOpts+'</select>'
+        +'<p class="muted" style="margin:5px 0 0;font-size:11px">'
+        +(glasses.length?'The frame this batch will showcase':'Add a frame in the \\ud83d\\udd76\\ufe0f Eyeglasses tab, then come back')
+        +'</p></div>'
+        +'<div style="flex:0 0 140px"><label>Preview</label>'
+        +'<div id="g_cprev" style="width:140px;height:140px;border:1px solid var(--line);border-radius:10px;background:#101012 center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:12px">none</div></div>'
+        +'<div style="flex:0 0 120px"><label>Logo</label>'
+        +'<div id="g_lprev" style="width:120px;height:120px;border:1px solid var(--line);border-radius:10px;background:#000 center/contain no-repeat;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:11px">none</div></div></div>';
+    }else{
+      row.innerHTML='<div class="row" style="align-items:flex-start;margin-top:14px">'
+        +'<div><label>Character</label>'
+        +'<select id="g_subject" style="width:100%">'+charOpts+'</select>'
+        +'<p class="muted" style="margin:5px 0 0;font-size:11px">Person generated into the poster background</p></div>'
+        +'<div style="flex:0 0 140px"><label>Preview</label>'
+        +'<div id="g_cprev" style="width:140px;height:140px;border:1px solid var(--line);border-radius:10px;background:#101012 center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:12px">none</div></div>'
+        +'<div style="flex:0 0 120px"><label>Logo</label>'
+        +'<div id="g_lprev" style="width:120px;height:120px;border:1px solid var(--line);border-radius:10px;background:#000 center/contain no-repeat;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:11px">none</div></div></div>';
+    }
+    const map=pt==='eyeglasses'?glassPhotoOf:photoOf;
+    const photoApi=pt==='eyeglasses'?'/api/glassesphoto':'/api/charphoto';
+    const sel=$('#g_subject');
+    function updSubjPrev(){const id=sel.value,p=map[id],el=$('#g_cprev');
+      if(p){el.style.backgroundImage='url('+photoApi+'?p='+encodeURIComponent(p)+')';el.textContent='';}
+      else{el.style.backgroundImage='';el.textContent=id?'(no photo)':'none';}}
+    sel.onchange=updSubjPrev;updSubjPrev();
+    updLogo();
+    const ebox=$('#g_estyle_box');if(ebox)ebox.style.display=pt==='eyeglasses'?'block':'none';
+    const exLbl=$('#g_extras_label');
+    if(exLbl)exLbl.textContent=pt==='eyeglasses'
+      ?'Extra reference photos (overrides the eyeglasses asset for this batch)'
+      :'Extra reference photos (overrides character for this batch)';
+  }
+  function syncPtypeCards(){
+    document.querySelectorAll('.ptype-card').forEach(el=>{
+      const r=el.querySelector('input');
+      el.style.borderColor=r.checked?'var(--gold)':'var(--line)';
+      el.style.background=r.checked?'rgba(232,182,74,.04)':'transparent';
+    });
+  }
+  document.querySelectorAll('input[name="g_ptype"]').forEach(r=>{
+    r.onchange=()=>{syncPtypeCards();paintSubject();};
+  });
+  syncPtypeCards();
+  paintSubject();
+  // ── Aspect-ratio mix wiring ──
+  function updArPrev(){
+    const el=$('#ar_prev');if(!el)return;
+    const n=Math.max(1,+($('#g_count')?.value)||8);
+    const picks=[];
+    document.querySelectorAll('.ar-chk').forEach(chk=>{
+      if(chk.checked){
+        const pct=+chk.closest('.ar-card').querySelector('.ar-pct').value||0;
+        if(pct>0)picks.push([chk.dataset.ar,pct]);
+      }
+    });
+    if(!picks.length){el.textContent='All '+n+' poster(s) will render 4:5 (default).';return;}
+    const total=picks.reduce((a,[,p])=>a+p,0);
+    const parts=picks.map(([ar,p])=>ar+' \\xd7 ~'+Math.round(n*p/Math.max(total,1)));
+    el.textContent='\\u2248 '+parts.join('   \\xb7   ')
+      +(total!==100?'   (shares auto-normalize to 100%)':'');
+  }
+  document.querySelectorAll('.ar-chk').forEach(chk=>{
+    chk.onchange=()=>{
+      const card=chk.closest('.ar-card'),pct=card.querySelector('.ar-pct');
+      pct.disabled=!chk.checked;
+      card.style.borderColor=chk.checked?'var(--gold)':'var(--line)';
+      card.style.background=chk.checked?'rgba(232,182,74,.04)':'transparent';
+      pct.style.accentColor='';
+      if(chk.checked&&+pct.value<=0)pct.value=25;
+      if(!chk.checked)pct.value=0;
+      updArPrev();
+    };
+  });
+  document.querySelectorAll('.ar-pct').forEach(inp=>{inp.oninput=updArPrev;});
+  $('#g_count')&&$('#g_count').addEventListener('input',updArPrev);
+  updArPrev();
   let phase='';
   function setProg(p,err){const b=$('#g_bar'),t=$('#g_pct');if(!b)return;
     p=Math.max(0,Math.min(100,Math.round(p)));b.style.width=p+'%';
@@ -1556,8 +1779,27 @@ async function viewGenerate(){
     fd.append('count',String(+$('#g_count').value||8));
     fd.append('briefId',$('#g_brief').value);
     fd.append('brandPresetId',$('#g_brand').value);
-    fd.append('characterId',$('#g_char').value);
+    const posterType=showEyeglasses?curPosterType():'main';
+    fd.append('posterType',posterType);
+    if(posterType==='eyeglasses'){
+      fd.append('eyeglassesId',$('#g_subject')?$('#g_subject').value:'');
+      const er=document.querySelector('input[name="g_estyle"]:checked');
+      fd.append('eyeglassesStyle',er?er.value:'showcase');
+      fd.append('characterId','');
+    }else{
+      fd.append('characterId',$('#g_subject')?$('#g_subject').value:'');
+    }
     fd.append('useLogo',$('#g_logo_on').checked?'1':'0');
+    // Aspect-ratio mix → JSON like {"1:1":25,"4:5":50,"9:16":25}; only sent
+    // when the user has actually checked at least one ratio with a % > 0.
+    const arDist={};
+    document.querySelectorAll('.ar-chk').forEach(chk=>{
+      if(chk.checked){
+        const pct=+chk.closest('.ar-card').querySelector('.ar-pct').value||0;
+        if(pct>0)arDist[chk.dataset.ar]=pct;
+      }
+    });
+    if(Object.keys(arDist).length)fd.append('aspectDist',JSON.stringify(arDist));
     const ef=$('#g_extras').files||[];
     for(const f of ef)fd.append('extraRef',f);
     $('#g_go').disabled=true;phase='';
@@ -1738,6 +1980,46 @@ async function viewChars(){
         {method:'POST',body:fd});
     }
     toast('Character saved');viewChars();
+  };
+}
+async function viewGlasses(){
+  const g=await api('/api/eyeglasses?client='+CLIENT);
+  $('#view').innerHTML='<div class="card"><h2>\\ud83d\\udd76\\ufe0f Eyeglasses — '+CLIENT+'</h2>'
+   +'<p class="muted" style="margin:-4px 0 16px">Frames used as the main subject for Tranzzie eyeglasses-showcase posters. Add reference photos so Gemini can render the actual product instead of a generic pair.</p>'
+   +(g.length?g.map(x=>{
+     const first=(x.photos||[])[0];
+     const thumb=first
+       ?'<img class="thumb" src="/api/glassesphoto?p='+encodeURIComponent(first)+'">'
+       :'<div class="thumb ph">no photo</div>';
+     return '<div class="item" style="display:flex;gap:14px;align-items:center">'
+       +thumb
+       +'<div style="flex:1;min-width:0">'
+       +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>'+x.name+'</b>'
+       +'<span class="pill">'+x.id+'</span></div>'
+       +'<div class="muted" style="margin-top:5px">'+(x.photos||[]).length+' photo'
+       +((x.photos||[]).length===1?'':'s')+(x.enabled?'':' · disabled')+'</div>'
+       +'</div></div>';
+   }).join('')
+   :'<p class="muted" style="text-align:center;padding:24px 0">No frames yet — add one below, then pick it on the Generate tab.</p>')
+   +'<h2 style="margin-top:18px">Create / update a frame</h2>'
+   +'<div class="row"><div><label>ID</label><input id="g_eid" placeholder="glasses_'+CLIENT+'"></div>'
+   +'<div><label>Name</label><input id="g_ename" placeholder="e.g. Aviator Classic"></div></div>'
+   +'<label>Reference photos (the actual product — multiple angles help)</label>'
+   +'<input id="g_efiles" type="file" accept="image/*" multiple>'
+   +'<p style="margin-top:14px"><button class="go" id="g_esave">Save frame</button></p></div>';
+  $('#g_esave').onclick=async()=>{
+    const id=$('#g_eid').value.trim();
+    if(!id)return toast('Frame ID required',true);
+    const body={id,client:CLIENT,name:$('#g_ename').value.trim()||id,enabled:true};
+    await fetch('/api/eyeglasses',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body)});
+    const files=$('#g_efiles').files;
+    if(files&&files.length){
+      const fd=new FormData();for(const f of files)fd.append('photo',f);
+      await fetch('/api/eyeglasses/photo?client='+CLIENT+'&glassesId='+encodeURIComponent(id),
+        {method:'POST',body:fd});
+    }
+    toast('Frame saved');viewGlasses();
   };
 }
 async function viewQueue(){

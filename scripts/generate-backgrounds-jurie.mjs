@@ -37,13 +37,36 @@ const quotesPath = path.isAbsolute(quotesArg)
   : path.join(process.cwd(), quotesArg);
 const quotes = JSON.parse(await fs.readFile(quotesPath, "utf-8"));
 
+// Eyeglasses-showcase mode (Tranzzie only): the dashboard sets
+// DASHBOARD_EYEGLASSES_ID when posterType === "eyeglasses". In that mode the
+// reference subject is a PRODUCT (a specific frame) instead of a person —
+// swap the character lookup for an eyeglasses-asset lookup and the guidance
+// prompt for a product-accurate one further down.
+const eyeglassesMode = !!process.env.DASHBOARD_EYEGLASSES_ID;
+const wantGlassesId = process.env.DASHBOARD_EYEGLASSES_ID || "";
+let eyeglasses = null;
+if (eyeglassesMode && wantGlassesId) {
+  try {
+    const all = JSON.parse(
+      await fs.readFile(
+        path.join(projectRoot, "config", "eyeglasses.json"),
+        "utf-8",
+      ),
+    );
+    eyeglasses = all.find((g) => g.id === wantGlassesId) || null;
+  } catch {
+    /* none */
+  }
+}
+
 // Resolve the character. The dashboard can override the client default
-// via DASHBOARD_CHARACTER_ID ("" = scene-only, no character).
+// via DASHBOARD_CHARACTER_ID ("" = scene-only, no character). Skipped
+// entirely in eyeglasses mode — the product is the subject, not a person.
 const envChar = process.env.DASHBOARD_CHARACTER_ID;
 const wantCharId =
   envChar !== undefined && envChar !== null ? envChar : client.characterId;
 let character = null;
-if (wantCharId && wantCharId !== "none") {
+if (!eyeglassesMode && wantCharId && wantCharId !== "none") {
   try {
     const chars = JSON.parse(
       await fs.readFile(
@@ -76,10 +99,13 @@ try {
   /* malformed env — ignore */
 }
 const refParts = [];
+const subjectPhotos = eyeglassesMode
+  ? eyeglasses?.photos || []
+  : character?.photos || [];
 const refSources =
   extraRefs.length > 0
     ? extraRefs.slice(0, 3).map((p) => ({ abs: true, p }))
-    : (character?.photos || []).slice(0, 3).map((p) => ({ abs: false, p }));
+    : subjectPhotos.slice(0, 3).map((p) => ({ abs: false, p }));
 for (const { abs, p } of refSources) {
   const full = abs ? p : path.join(projectRoot, "public", p);
   try {
@@ -123,23 +149,41 @@ const targets = quotes
 console.log(
   `Generating ${targets.length} ${client.label} background(s) via ${REF_MODEL}` +
     (hasRef
-      ? ` (${refParts.length} ref photo${refParts.length > 1 ? "s" : ""})`
-      : " (no character — scene only)") +
+      ? ` (${refParts.length} ref photo${refParts.length > 1 ? "s" : ""}` +
+        (eyeglassesMode ? `, frame: ${eyeglasses?.name || wantGlassesId}` : "") +
+        `)`
+      : eyeglassesMode
+        ? ` (no reference photos for this frame yet — generic eyeglasses scene)`
+        : " (no character — scene only)") +
     ` in ${location}…`,
 );
 
 for (const { q, i } of targets) {
   const fname = `bg-${String(i + 1).padStart(2, "0")}.png`;
   const outPath = path.join(bgDir, fname);
-  const guidance = hasRef
-    ? `Use the SAME person shown in these reference photos as the subject — ` +
-      `keep their face, hair, and identity perfectly consistent and clearly ` +
-      `recognizable. Place them in this scene: ${q.bgPrompt}. ` +
-      `The scene must clearly visually express this message so a viewer ` +
-      `instantly gets it: "${q.quote}". ${STYLE}`
-    : `Create a photograph of this scene: ${q.bgPrompt}. ` +
-      `It must clearly visually express this message so a viewer instantly ` +
-      `gets it: "${q.quote}". ${STYLE}`;
+  const guidance = eyeglassesMode
+    ? hasRef
+      ? `Feature the EXACT pair of eyeglasses shown in these reference photos ` +
+        `as the hero product — match its frame shape, color, lens tint, and ` +
+        `details perfectly; do not redesign or substitute a different pair. ` +
+        `Place it in this scene: ${q.bgPrompt}. The product must be clearly ` +
+        `visible, in sharp focus, and instantly recognizable as the same ` +
+        `pair shown in the references. The scene must clearly visually ` +
+        `express this message so a viewer instantly gets it: "${q.quote}". ${STYLE}`
+      : `Create a product-showcase photograph featuring a stylish pair of ` +
+        `eyeglasses as the hero subject, in this scene: ${q.bgPrompt}. ` +
+        `The eyeglasses must be clearly visible, in sharp focus, and the ` +
+        `main focal point of the frame. The scene must clearly visually ` +
+        `express this message so a viewer instantly gets it: "${q.quote}". ${STYLE}`
+    : hasRef
+      ? `Use the SAME person shown in these reference photos as the subject — ` +
+        `keep their face, hair, and identity perfectly consistent and clearly ` +
+        `recognizable. Place them in this scene: ${q.bgPrompt}. ` +
+        `The scene must clearly visually express this message so a viewer ` +
+        `instantly gets it: "${q.quote}". ${STYLE}`
+      : `Create a photograph of this scene: ${q.bgPrompt}. ` +
+        `It must clearly visually express this message so a viewer instantly ` +
+        `gets it: "${q.quote}". ${STYLE}`;
   const t0 = Date.now();
   let buf = null;
   let lastErr = "";

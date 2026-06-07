@@ -1,6 +1,6 @@
 {
   "name": "remotion-app",
-  "version": "0.25.1",
+  "version": "0.26.0",
   "description": "My Remotion video",
   "repository": {},
   "license": "UNLICENSED",
@@ -43,6 +43,7 @@
     "jurie:render": "node scripts/render-batch-jurie.mjs",
     "jurie:batch": "node scripts/batch-jurie.mjs --client jurie",
     "tranzzie:batch": "node scripts/batch-jurie.mjs --client tranzzie",
+    "tranzzie:glasses:batch": "node scripts/batch-eyeglasses-tranzzie.mjs",
     "client:batch": "node scripts/batch-jurie.mjs",
     "jurie:dashboard": "node scripts/jurie-dashboard.mjs",
     "broll:analyze": "node scripts/broll-analyze.mjs",
