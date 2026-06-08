@@ -84,6 +84,12 @@ const mimeFor = (p) => {
   const ext = path.extname(p).toLowerCase().slice(1);
   if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
   if (ext === "webp") return "image/webp";
+  // iPhone photos default to HEIC/HEIF — Gemini 2.5 Flash supports both
+  // natively, but mislabeling the bytes as image/png makes the model unable
+  // to parse the reference at all (it silently falls back to a generic
+  // subject — exactly the "didn't follow the reference" symptom).
+  if (ext === "heic") return "image/heic";
+  if (ext === "heif") return "image/heif";
   return "image/png";
 };
 

@@ -31,6 +31,8 @@ const mimeFor = (filename) => {
   if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
   if (ext === ".webp") return "image/webp";
   if (ext === ".png")  return "image/png";
+  if (ext === ".heic") return "image/heic";
+  if (ext === ".heif") return "image/heif";
   return "image/jpeg";
 };
 
