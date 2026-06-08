@@ -17,7 +17,30 @@ import { readFileSync } from "node:fs";
 import multer from "multer";
 import path from "node:path";
 import url from "node:url";
+import heicConvert from "heic-convert";
 import { registerTryonRoutes } from "./tryon-routes.mjs";
+
+// iPhone photos default to HEIC/HEIF, which (a) browsers other than Safari
+// cannot render in <img> — previews show as broken/black squares — and
+// (b) some downstream consumers mis-handle. Convert any HEIC/HEIF upload to
+// JPEG right after multer saves it, in place, so everything downstream
+// (dashboard previews, Gemini references, gallery thumbnails) just sees a
+// normal universally-supported JPEG. Pure-JS/WASM (libheif-js) — no native
+// build step, safe in the Linux container.
+async function convertHeicInPlace(absPath) {
+  if (!/\.hei[cf]$/i.test(absPath)) return absPath;
+  try {
+    const input = await fs.readFile(absPath);
+    const out = await heicConvert({ buffer: input, format: "JPEG", quality: 0.9 });
+    const jpgPath = absPath.replace(/\.hei[cf]$/i, ".jpg");
+    await fs.writeFile(jpgPath, Buffer.from(out));
+    await fs.unlink(absPath).catch(() => {});
+    return jpgPath;
+  } catch (err) {
+    console.warn(`  HEIC convert failed for ${path.basename(absPath)}: ${err?.message || err}`);
+    return absPath; // fall back to the original — better than losing the upload
+  }
+}
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, "..");
@@ -164,6 +187,43 @@ const readCfg = async (name, fb) => {
 };
 const writeCfg = (name, data) =>
   fs.writeFile(path.join(cfgDir, name), JSON.stringify(data, null, 2));
+
+// One-time migration: any eyeglasses reference photos uploaded BEFORE the
+// HEIC→JPEG conversion was wired into the upload route are still sitting on
+// disk as raw .heic/.heif — which previews as a broken/black square in every
+// browser but Safari. Walk the existing config once at boot, convert any
+// stragglers in place, and rewrite their paths in eyeglasses.json.
+async function migrateHeicEyeglassPhotos() {
+  let all;
+  try {
+    all = await readCfg("eyeglasses.json", []);
+  } catch {
+    return;
+  }
+  if (!Array.isArray(all) || !all.length) return;
+  let changed = false;
+  for (const g of all) {
+    if (!Array.isArray(g.photos)) continue;
+    for (let i = 0; i < g.photos.length; i++) {
+      const rel = g.photos[i];
+      if (!/\.hei[cf]$/i.test(rel)) continue;
+      const abs = path.join(publicDir, rel);
+      try {
+        await fs.access(abs);
+      } catch {
+        continue; // file already gone — leave the record alone
+      }
+      const convertedAbs = await convertHeicInPlace(abs);
+      if (convertedAbs !== abs) {
+        g.photos[i] = rel.replace(/\.hei[cf]$/i, ".jpg");
+        changed = true;
+        console.log(`  migrated HEIC reference photo → ${g.photos[i]}`);
+      }
+    }
+  }
+  if (changed) await writeCfg("eyeglasses.json", all);
+}
+await migrateHeicEyeglassPhotos();
 
 const getClients = () => readCfg("clients.json", []);
 const getClient = async (id) =>
@@ -615,8 +675,16 @@ app.post(
     const { client, glassesId } = req.query;
     const files = req.files || [];
     if (!files.length) return res.status(400).json({ error: "no files" });
-    const paths = files.map((f) =>
-      path.posix.join("eyeglasses", client, f.filename),
+    // Convert any HEIC/HEIF uploads (iPhone default) to JPEG in place so
+    // dashboard previews render in every browser, not just Safari.
+    const finalNames = await Promise.all(
+      files.map(async (f) => {
+        const converted = await convertHeicInPlace(f.path);
+        return path.basename(converted);
+      }),
+    );
+    const paths = finalNames.map((name) =>
+      path.posix.join("eyeglasses", client, name),
     );
     const all = await readCfg("eyeglasses.json", []);
     const g = all.find((x) => x.id === glassesId);

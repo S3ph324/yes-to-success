@@ -1,6 +1,6 @@
 {
   "name": "remotion-app",
-  "version": "0.26.7",
+  "version": "0.26.8",
   "description": "My Remotion video",
   "repository": {},
   "license": "UNLICENSED",
@@ -14,6 +14,7 @@
     "@remotion/zod-types": "4.0.459",
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "heic-convert": "^2.1.0",
     "multer": "^2.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
