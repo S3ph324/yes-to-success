@@ -2463,27 +2463,45 @@ async function viewGlasses(){
     const dataUrlToBlob=async(u)=>(await fetch(u)).blob();
 
     function compositeCollage(items){
-      // items: [{label,dataUrl}, ...] → single side-by-side strip data URL
-      return new Promise((resolve)=>{
+      // items: [{label,dataUrl}, ...] → single side-by-side strip data URL.
+      // Guards against a load that never fires onload/onerror (shouldn't
+      // happen with data: URLs, but a frozen "Compiling collage…" is the
+      // worst possible failure mode, so we cap it with a timeout too).
+      return new Promise((resolve,reject)=>{
         const imgs=items.map(it=>{const i=new Image();i.src=it.dataUrl;return i;});
-        let loaded=0;
-        imgs.forEach((img)=>{ img.onload=()=>{
-          if(++loaded<imgs.length)return;
-          const W=imgs[0].width||600, H=imgs[0].height||600, N=imgs.length;
-          const c=document.createElement('canvas'); c.width=W*N; c.height=H;
-          const ctx=c.getContext('2d');
-          imgs.forEach((im,idx)=>{
-            ctx.drawImage(im,idx*W,0,W,H);
-            if(idx>0){ctx.strokeStyle='rgba(255,255,255,0.5)';ctx.lineWidth=2;
-              ctx.beginPath();ctx.moveTo(idx*W,0);ctx.lineTo(idx*W,H);ctx.stroke();}
-            const lh=Math.round(H*0.07);
-            ctx.fillStyle='rgba(0,0,0,0.62)';ctx.fillRect(idx*W,H-lh,W,lh);
-            const fs=Math.round(lh*0.42);
-            ctx.fillStyle='#F4B400';ctx.textAlign='center';ctx.font='600 '+fs+'px system-ui,sans-serif';
-            ctx.fillText(items[idx].label||'',idx*W+W/2,H-Math.round(lh*0.3));
-          });
-          resolve(c.toDataURL('image/png'));
-        };});
+        let done=false;
+        const settledTimer=setTimeout(()=>{
+          if(done)return; done=true;
+          reject(new Error('Image load timed out — the browser could not decode one of the generated images.'));
+        },20000);
+        let loaded=0, failed=false;
+        const finish=(fn)=>{ if(done)return; done=true; clearTimeout(settledTimer); fn(); };
+        imgs.forEach((img,idx)=>{
+          img.onerror=()=>{
+            if(failed)return; failed=true;
+            finish(()=>reject(new Error('Could not display "'+(items[idx].label||'an image')+'" — the format may be unsupported by this browser.')));
+          };
+          img.onload=()=>{
+            if(failed||done)return;
+            if(++loaded<imgs.length)return;
+            finish(()=>{
+              const W=imgs[0].width||600, H=imgs[0].height||600, N=imgs.length;
+              const c=document.createElement('canvas'); c.width=W*N; c.height=H;
+              const ctx=c.getContext('2d');
+              imgs.forEach((im,i2)=>{
+                ctx.drawImage(im,i2*W,0,W,H);
+                if(i2>0){ctx.strokeStyle='rgba(255,255,255,0.5)';ctx.lineWidth=2;
+                  ctx.beginPath();ctx.moveTo(i2*W,0);ctx.lineTo(i2*W,H);ctx.stroke();}
+                const lh=Math.round(H*0.07);
+                ctx.fillStyle='rgba(0,0,0,0.62)';ctx.fillRect(i2*W,H-lh,W,lh);
+                const fs=Math.round(lh*0.42);
+                ctx.fillStyle='#F4B400';ctx.textAlign='center';ctx.font='600 '+fs+'px system-ui,sans-serif';
+                ctx.fillText(items[i2].label||'',i2*W+W/2,H-Math.round(lh*0.3));
+              });
+              resolve(c.toDataURL('image/png'));
+            });
+          };
+        });
       });
     }
 
@@ -2539,6 +2557,21 @@ async function viewGlasses(){
             toast('Could not save the set — try again',true);
             btn.disabled=false; btn.textContent='\\u2713 Approve & save as frame';
           }
+        };
+      }).catch((err)=>{
+        lastSet=null;
+        resultsEl.innerHTML='<p style="color:var(--red);font-size:13px;margin:0 0 12px">'
+          +'\\u26a0\\ufe0f '+(err && err.message ? err.message : 'Could not compile the review collage.')+'</p>'
+          +'<p style="display:flex;gap:10px;flex-wrap:wrap">'
+          +'<button class="sec" id="ea_retry">\\u21bb Try again</button>'
+          +'<button class="sec" id="ea_cancel2" style="color:var(--red);border-color:rgba(224,86,75,.35)">Cancel</button>'
+          +'</p>';
+        $('#ea_retry').onclick=()=>doGenerate(true);
+        $('#ea_cancel2').onclick=()=>{
+          token=null; description=''; mime=null; lastSet=null;
+          resultsEl.style.display='none'; resultsEl.innerHTML='';
+          setStatus(''); fileInput.value='';
+          toast('Discarded');
         };
       });
     }

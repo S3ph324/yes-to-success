@@ -19,6 +19,7 @@ import { GoogleGenAI } from "@google/genai";
 import multer from "multer";
 import fs from "node:fs/promises";
 import path from "node:path";
+import heicConvert from "heic-convert";
 import { applyGcpEnv } from "./lib/client.mjs";
 
 applyGcpEnv();
@@ -204,11 +205,35 @@ Respond ONLY with valid JSON — no markdown, no explanation outside JSON:
             })),
         ),
       );
+      // Browsers other than Safari can't decode HEIC/HEIF in <img>/Image() —
+      // sending the raw HEIC bytes back as the "original" preview makes the
+      // client-side collage compositor hang forever waiting for an onload
+      // that will never fire (symptom: stuck on "Compiling collage…").
+      // Convert to JPEG for display purposes only — the AI generation above
+      // already used the original HEIC bytes (Gemini supports them natively).
+      let originalMime = stored.mime;
+      let originalB64 = stored.base64;
+      if (/^image\/hei[cf]$/i.test(stored.mime)) {
+        try {
+          const out = await heicConvert({
+            buffer: Buffer.from(stored.base64, "base64"),
+            format: "JPEG",
+            quality: 0.9,
+          });
+          originalMime = "image/jpeg";
+          originalB64 = Buffer.from(out).toString("base64");
+        } catch (err) {
+          console.warn(`  HEIC preview convert failed: ${err?.message || err}`);
+          // fall through with the original HEIC bytes — the client-side
+          // onerror safety net will surface a clear error instead of hanging
+        }
+      }
+
       res.json({
         ok: true,
         original: {
           label: "Original",
-          dataUrl: `data:${stored.mime};base64,${stored.base64}`,
+          dataUrl: `data:${originalMime};base64,${originalB64}`,
         },
         angles: generated,
       });
