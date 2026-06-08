@@ -1491,12 +1491,43 @@ box-shadow:0 24px 50px -20px rgba(0,0,0,.72),0 0 0 1px rgba(255,255,255,.04)}
 </main>
 <script>
 const $=s=>document.querySelector(s);
+// -- GET-response cache: makes tab switching feel instant ----------------
+// Every view re-fetches its config endpoints (briefs/brands/characters/
+// eyeglasses/batches/queue/...) on EVERY switch -- that is up to 5 parallel
+// round trips plus a full innerHTML rebuild each time, which is what made
+// switching tabs feel slow and laggy. Cache parsed JSON for a short window
+// (in-flight promises are shared too, so viewGenerate's 5 parallel calls
+// collapse into 1 reused promise on a warm cache), and wipe the whole
+// cache the instant ANY mutation (non-GET request) lands successfully --
+// that covers every save/generate/approve/delete/cancel site for free,
+// without threading manual invalidation through ~15 call sites.
+const _apiCache=new Map();
+const API_TTL=20000;
+if(!window.__qpsFetchWrapped){
+  window.__qpsFetchWrapped=true;
+  const _rawFetch=window.fetch.bind(window);
+  window.fetch=(u,o)=>{
+    const method=((o&&o.method)||'GET').toUpperCase();
+    const p=_rawFetch(u,o);
+    if(method!=='GET')p.then(r=>{if(r&&r.ok)_apiCache.clear();},()=>{});
+    return p;
+  };
+}
 function toast(msg,bad){const t=$('#toast');if(!t)return;t.textContent=msg;
   t.className='show'+(bad?' bad':'');clearTimeout(t._h);
   t._h=setTimeout(()=>{t.className='';},2800);}
 let CLIENT=localStorage.getItem('qps_client')||'';
 let TAB='generate';
-const api=(u,o)=>fetch(u,o).then(r=>r.json());
+const api=(u,o)=>{
+  const method=((o&&o.method)||'GET').toUpperCase();
+  if(method!=='GET')return fetch(u,o).then(r=>r.json());
+  const hit=_apiCache.get(u);
+  if(hit&&(Date.now()-hit.t)<API_TTL)return hit.p;
+  const p=fetch(u,o).then(r=>r.json());
+  _apiCache.set(u,{t:Date.now(),p});
+  p.catch(()=>_apiCache.delete(u));
+  return p;
+};
 // Convert folder stamp "2026-05-17T09-38" → "May 17, 2026 · 9:38 AM"
 // Manual formatter — no toLocaleString so it's identical everywhere.
 const _MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
