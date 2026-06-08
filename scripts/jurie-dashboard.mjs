@@ -384,6 +384,20 @@ app.post("/api/brand", async (req, res) => {
   await writeCfg("brand-presets.json", all);
   res.json(p);
 });
+app.delete("/api/brand/:id", async (req, res) => {
+  const { id } = req.params;
+  const { client } = req.query;
+  const all = await readCfg("brand-presets.json", []);
+  const i = all.findIndex((x) => x.id === id && x.client === client);
+  if (i === -1) return res.status(404).json({ error: "Brand kit not found" });
+  const [removed] = all.splice(i, 1);
+  await writeCfg("brand-presets.json", all);
+  if (removed.logoSrc) {
+    const fp = path.join(publicDir, removed.logoSrc);
+    if (fp.startsWith(path.join(publicDir, "brand"))) await fs.unlink(fp).catch(() => {});
+  }
+  res.json({ ok: true });
+});
 
 // ── Topics / Briefs (briefs.json, filtered to the client) ─────────────────
 app.get("/api/briefs", async (req, res) => {
@@ -426,6 +440,20 @@ app.post("/api/characters", async (req, res) => {
   else all[i] = { ...all[i], ...c };
   await writeCfg("characters.json", all);
   res.json(c);
+});
+app.delete("/api/characters/:id", async (req, res) => {
+  const { id } = req.params;
+  const { client } = req.query;
+  const all = await readCfg("characters.json", []);
+  const i = all.findIndex((x) => x.id === id && x.client === client);
+  if (i === -1) return res.status(404).json({ error: "Character not found" });
+  const [removed] = all.splice(i, 1);
+  await writeCfg("characters.json", all);
+  for (const p of removed.photos || []) {
+    const fp = path.join(publicDir, p);
+    if (fp.startsWith(path.join(publicDir, "characters"))) await fs.unlink(fp).catch(() => {});
+  }
+  res.json({ ok: true });
 });
 
 const photoStore = multer.diskStorage({
@@ -482,6 +510,20 @@ app.post("/api/eyeglasses", async (req, res) => {
   else all[i] = { ...all[i], ...g };
   await writeCfg("eyeglasses.json", all);
   res.json(g);
+});
+app.delete("/api/eyeglasses/:id", async (req, res) => {
+  const { id } = req.params;
+  const { client } = req.query;
+  const all = await readCfg("eyeglasses.json", []);
+  const i = all.findIndex((x) => x.id === id && x.client === client);
+  if (i === -1) return res.status(404).json({ error: "Frame not found" });
+  const [removed] = all.splice(i, 1);
+  await writeCfg("eyeglasses.json", all);
+  for (const p of removed.photos || []) {
+    const fp = path.join(publicDir, p);
+    if (fp.startsWith(path.join(publicDir, "eyeglasses"))) await fs.unlink(fp).catch(() => {});
+  }
+  res.json({ ok: true });
 });
 
 const glassPhotoStore = multer.diskStorage({
@@ -1961,22 +2003,36 @@ async function showLatestBatch(){
 async function viewBrand(){
   const b=await api('/api/brand?client='+CLIENT);
   $('#view').innerHTML='<div class="card"><h2>Brand Kits — '+CLIENT+'</h2>'
-   +b.map(p=>{
+   +(b.length?b.map((p,i)=>{
      const logo=p.logoSrc
        ?'<img class="thumb" style="object-fit:contain;background:#000" src="/api/brandlogo?p='+encodeURIComponent(p.logoSrc)+'">'
        :'<div class="thumb ph">no logo</div>';
      const sw=(c)=>'<span style="background:'+(c||'#000')+'" title="'+(c||'')+'"></span>';
-     return '<div class="item" style="display:flex;gap:14px;align-items:center">'
+     const detail='<div class="muted" style="font-size:12px;line-height:2">'
+       +'<b>ID:</b> '+p.id+'<br>'
+       +'<b>Accent (gold):</b> '+(p.brandAccent||'—')+' &nbsp;·&nbsp; <b>Accent deep:</b> '+(p.brandAccentDeep||'—')+' &nbsp;·&nbsp; <b>Primary (red):</b> '+(p.brandPrimary||'—')+'<br>'
+       +'<b>CTA:</b> "'+(p.ctaComment||'—')+'" → '+(p.ctaTail||'—')+'<br>'
+       +'<b>Logo position:</b> '+(p.logoPosition?p.logoPosition.replace("-"," "):'—')+' &nbsp;·&nbsp; <b>Logo size:</b> '+(typeof p.logoSize==="number"?Math.round(p.logoSize*100)+'% of poster height':'—')
+       +(p.logoSrc?'<br><b>Logo file:</b> '+p.logoSrc:'')
+       +'</div>';
+     return '<div class="item asset-row" data-idx="'+i+'" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:0">'
+       +'<div style="display:flex;gap:14px;align-items:center">'
        +logo
        +'<div style="flex:1;min-width:0">'
        +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>'+p.name+'</b>'
-       +'<span class="pill">'+p.id+'</span></div>'
+       +'<span class="pill">'+p.id+'</span>'
+       +'<span class="muted asset-hint" style="font-size:11px">tap to expand ▾</span></div>'
        +'<div class="swatchrow">'+sw(p.brandAccent)+sw(p.brandAccentDeep)+sw(p.brandPrimary)+'</div>'
        +'<div class="muted" style="margin-top:5px">CTA "'+(p.ctaComment||'')+'" → '+(p.ctaTail||'')
        +(p.logoPosition?' · logo '+p.logoPosition.replace("-"," "):'')
        +(typeof p.logoSize==="number"?' · '+Math.round(p.logoSize*100)+"%":'')
-       +'</div></div></div>';
+       +'</div></div>'
+       +'<button class="sec asset-del" data-idx="'+i+'" style="color:var(--red);border-color:rgba(224,86,75,.35);flex-shrink:0" title="Delete this brand kit">Delete</button>'
+       +'</div>'
+       +'<div class="asset-detail" data-idx="'+i+'" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">'+detail+'</div>'
+       +'</div>';
    }).join('')
+   :'<p class="muted" style="text-align:center;padding:24px 0">No brand kits yet — create one below.</p>')
    +'<h2 style="margin-top:18px">Create / update a brand kit</h2>'
    +'<div class="row"><div><label>ID</label><input id="b_id" placeholder="preset_'+CLIENT+'_2"></div>'
    +'<div><label>Name</label><input id="b_name"></div></div>'
@@ -2007,6 +2063,28 @@ async function viewBrand(){
    +'<input type="range" id="b_lsize" min="6" max="22" step="1" value="10" style="width:100%"></div>'
    +'</div>'
    +'<p style="margin-top:14px"><button class="go" id="b_save">Save brand kit</button></p></div>';
+  // Wire up click-to-expand detail panels and delete buttons on each row.
+  $('#view').querySelectorAll('.asset-row').forEach((row)=>{
+    const item=b[Number(row.dataset.idx)];
+    if(!item)return;
+    row.onclick=(e)=>{
+      if(e.target.closest('.asset-del'))return;
+      const d=row.querySelector('.asset-detail');
+      const hint=row.querySelector('.asset-hint');
+      if(!d)return;
+      const open=d.style.display!=='none';
+      d.style.display=open?'none':'block';
+      if(hint)hint.textContent=open?'tap to expand ▾':'tap to collapse ▴';
+    };
+    const del=row.querySelector('.asset-del');
+    if(del)del.onclick=async(e)=>{
+      e.stopPropagation();
+      if(!confirm('Delete brand kit "'+(item.name||item.id)+'"? This cannot be undone.'))return;
+      const r=await fetch('/api/brand/'+encodeURIComponent(item.id)+'?client='+CLIENT,{method:'DELETE'});
+      if(r&&r.ok){toast('Brand kit deleted');viewBrand();}
+      else toast('Could not delete brand kit',true);
+    };
+  });
   // Keep each color picker in sync with its hex text input (two-way).
   [['b_gold','b_gold_c'],['b_goldd','b_goldd_c'],['b_red','b_red_c']].forEach(([hexId,pickId])=>{
     const h=$('#'+hexId),p=$('#'+pickId);
@@ -2052,19 +2130,36 @@ async function viewTopics(){
 async function viewChars(){
   const c=await api('/api/characters?client='+CLIENT);
   $('#view').innerHTML='<div class="card"><h2>Characters — '+CLIENT+'</h2>'
-   +(c.length?c.map(x=>{
-     const first=(x.photos||[])[0];
+   +(c.length?c.map((x,i)=>{
+     const photos=x.photos||[];
+     const first=photos[0];
      const thumb=first
        ?'<img class="thumb" src="/api/charphoto?p='+encodeURIComponent(first)+'">'
        :'<div class="thumb ph">no photo</div>';
-     return '<div class="item" style="display:flex;gap:14px;align-items:center">'
+     const gallery=photos.length
+       ?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'
+         +photos.map((ph)=>'<img class="thumb" style="width:84px;height:84px" src="/api/charphoto?p='+encodeURIComponent(ph)+'">').join('')
+         +'</div>'
+       :'';
+     const detail='<div class="muted" style="font-size:12px;line-height:2">'
+       +'<b>ID:</b> '+x.id+'<br>'
+       +'<b>Status:</b> '+(x.enabled?'enabled':'disabled')+'<br>'
+       +'<b>Photos:</b> '+photos.length
+       +'</div>'+gallery;
+     return '<div class="item asset-row" data-idx="'+i+'" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:0">'
+       +'<div style="display:flex;gap:14px;align-items:center">'
        +thumb
        +'<div style="flex:1;min-width:0">'
        +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>'+x.name+'</b>'
-       +'<span class="pill">'+x.id+'</span></div>'
-       +'<div class="muted" style="margin-top:5px">'+(x.photos||[]).length+' photo'
-       +((x.photos||[]).length===1?'':'s')+(x.enabled?'':' · disabled')+'</div>'
-       +'</div></div>';
+       +'<span class="pill">'+x.id+'</span>'
+       +'<span class="muted asset-hint" style="font-size:11px">tap to expand ▾</span></div>'
+       +'<div class="muted" style="margin-top:5px">'+photos.length+' photo'
+       +(photos.length===1?'':'s')+(x.enabled?'':' · disabled')+'</div>'
+       +'</div>'
+       +'<button class="sec asset-del" data-idx="'+i+'" style="color:var(--red);border-color:rgba(224,86,75,.35);flex-shrink:0" title="Delete this character">Delete</button>'
+       +'</div>'
+       +'<div class="asset-detail" data-idx="'+i+'" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">'+detail+'</div>'
+       +'</div>';
    }).join('')
    :'<p class="muted" style="text-align:center;padding:24px 0">No character yet. Optional — Tranzzie can run scene-only.</p>')
    +'<h2 style="margin-top:18px">Create / update a character</h2>'
@@ -2073,6 +2168,27 @@ async function viewChars(){
    +'<label>Photos (optional — pick one or many to add)</label>'
    +'<input id="c_files" type="file" accept="image/*" multiple>'
    +'<p style="margin-top:14px"><button class="go" id="c_save">Save character</button></p></div>';
+  $('#view').querySelectorAll('.asset-row').forEach((row)=>{
+    const item=c[Number(row.dataset.idx)];
+    if(!item)return;
+    row.onclick=(e)=>{
+      if(e.target.closest('.asset-del'))return;
+      const d=row.querySelector('.asset-detail');
+      const hint=row.querySelector('.asset-hint');
+      if(!d)return;
+      const open=d.style.display!=='none';
+      d.style.display=open?'none':'block';
+      if(hint)hint.textContent=open?'tap to expand ▾':'tap to collapse ▴';
+    };
+    const del=row.querySelector('.asset-del');
+    if(del)del.onclick=async(e)=>{
+      e.stopPropagation();
+      if(!confirm('Delete character "'+(item.name||item.id)+'"? This cannot be undone.'))return;
+      const r=await fetch('/api/characters/'+encodeURIComponent(item.id)+'?client='+CLIENT,{method:'DELETE'});
+      if(r&&r.ok){toast('Character deleted');viewChars();}
+      else toast('Could not delete character',true);
+    };
+  });
   $('#c_save').onclick=async()=>{
     const id=$('#c_id').value.trim();
     if(!id)return toast('Character ID required',true);
@@ -2092,19 +2208,37 @@ async function viewGlasses(){
   const g=await api('/api/eyeglasses?client='+CLIENT);
   $('#view').innerHTML='<div class="card"><h2>\\ud83d\\udd76\\ufe0f Eyeglasses — '+CLIENT+'</h2>'
    +'<p class="muted" style="margin:-4px 0 16px">Frames used as the main subject for Tranzzie eyeglasses-showcase posters. Add reference photos so Gemini can render the actual product instead of a generic pair.</p>'
-   +(g.length?g.map(x=>{
-     const first=(x.photos||[])[0];
+   +(g.length?g.map((x,i)=>{
+     const photos=x.photos||[];
+     const first=photos[0];
      const thumb=first
        ?'<img class="thumb" src="/api/glassesphoto?p='+encodeURIComponent(first)+'">'
        :'<div class="thumb ph">no photo</div>';
-     return '<div class="item" style="display:flex;gap:14px;align-items:center">'
+     const gallery=photos.length
+       ?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'
+         +photos.map((ph)=>'<img class="thumb" style="width:84px;height:84px" src="/api/glassesphoto?p='+encodeURIComponent(ph)+'">').join('')
+         +'</div>'
+       :'';
+     const detail='<div class="muted" style="font-size:12px;line-height:2">'
+       +'<b>ID:</b> '+x.id+'<br>'
+       +'<b>Status:</b> '+(x.enabled?'enabled':'disabled')+'<br>'
+       +'<b>Reference photos:</b> '+photos.length
+       +(x.notes?'<br><b>Notes:</b> '+x.notes:'')
+       +'</div>'+gallery;
+     return '<div class="item asset-row" data-idx="'+i+'" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:0">'
+       +'<div style="display:flex;gap:14px;align-items:center">'
        +thumb
        +'<div style="flex:1;min-width:0">'
        +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>'+x.name+'</b>'
-       +'<span class="pill">'+x.id+'</span></div>'
-       +'<div class="muted" style="margin-top:5px">'+(x.photos||[]).length+' photo'
-       +((x.photos||[]).length===1?'':'s')+(x.enabled?'':' · disabled')+'</div>'
-       +'</div></div>';
+       +'<span class="pill">'+x.id+'</span>'
+       +'<span class="muted asset-hint" style="font-size:11px">tap to expand ▾</span></div>'
+       +'<div class="muted" style="margin-top:5px">'+photos.length+' photo'
+       +(photos.length===1?'':'s')+(x.enabled?'':' · disabled')+'</div>'
+       +'</div>'
+       +'<button class="sec asset-del" data-idx="'+i+'" style="color:var(--red);border-color:rgba(224,86,75,.35);flex-shrink:0" title="Delete this frame">Delete</button>'
+       +'</div>'
+       +'<div class="asset-detail" data-idx="'+i+'" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">'+detail+'</div>'
+       +'</div>';
    }).join('')
    :'<p class="muted" style="text-align:center;padding:24px 0">No frames yet — add one below, then pick it on the Generate tab.</p>')
    +'<h2 style="margin-top:18px">Create / update a frame</h2>'
@@ -2113,6 +2247,27 @@ async function viewGlasses(){
    +'<label>Reference photos (the actual product — multiple angles help)</label>'
    +'<input id="g_efiles" type="file" accept="image/*" multiple>'
    +'<p style="margin-top:14px"><button class="go" id="g_esave">Save frame</button></p></div>';
+  $('#view').querySelectorAll('.asset-row').forEach((row)=>{
+    const item=g[Number(row.dataset.idx)];
+    if(!item)return;
+    row.onclick=(e)=>{
+      if(e.target.closest('.asset-del'))return;
+      const d=row.querySelector('.asset-detail');
+      const hint=row.querySelector('.asset-hint');
+      if(!d)return;
+      const open=d.style.display!=='none';
+      d.style.display=open?'none':'block';
+      if(hint)hint.textContent=open?'tap to expand ▾':'tap to collapse ▴';
+    };
+    const del=row.querySelector('.asset-del');
+    if(del)del.onclick=async(e)=>{
+      e.stopPropagation();
+      if(!confirm('Delete frame "'+(item.name||item.id)+'"? This cannot be undone.'))return;
+      const r=await fetch('/api/eyeglasses/'+encodeURIComponent(item.id)+'?client='+CLIENT,{method:'DELETE'});
+      if(r&&r.ok){toast('Frame deleted');viewGlasses();}
+      else toast('Could not delete frame',true);
+    };
+  });
   $('#g_esave').onclick=async()=>{
     const id=$('#g_eid').value.trim();
     if(!id)return toast('Frame ID required',true);
