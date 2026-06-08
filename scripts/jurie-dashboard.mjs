@@ -1563,6 +1563,10 @@ async function viewGenerate(){
    ?glasses.map(g=>{const n=(g.photos||[]).length;
       return '<option value="'+g.id+'">'+g.name+' ('+n+' photo'+(n===1?'':'s')+')</option>';}).join('')
    :'<option value="">— add a frame in the 🕶️ Eyeglasses tab —</option>';
+  // Aspect-ratio mix: shared ratio list + a distinct accent color per ratio
+  // (drives the slider accent, card border, and the stacked-bar segments).
+  const AR_RATIOS=['1:1','4:5','9:16'];
+  const AR_COLORS={'1:1':'#5BA3D0','4:5':'#E8B64A','9:16':'#E0564B'};
   // ── Workflow strip
   const wfHtml='<div class="workflow-strip">'
    +'<div class="wf-step wf-active"><div class="wf-num">1</div><div><div class="wf-label">Generate</div><div class="wf-sub">Type a topic, hit Generate</div></div></div>'
@@ -1622,19 +1626,22 @@ async function viewGenerate(){
    +'</div></div>'
    +'<div style="margin-top:16px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
    +'<div class="section-label" style="margin:0 0 6px">Aspect ratio mix</div>'
-   +'<p class="muted" style="margin:0 0 12px;font-size:11px">Optional \\u2014 split the batch across formats instead of all 4:5. Check the ones you want and set a share each; the rest renders 4:5.</p>'
-   +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
-   +['1:1','4:5','9:16'].map(r=>{
+   +'<p class="muted" style="margin:0 0 12px;font-size:11px">Optional \\u2014 split the batch across formats instead of all 4:5. Check the ones you want, then drag a slider \\u2014 the others rebalance automatically so the mix always totals 100%.</p>'
+   +'<div id="ar_bar" style="display:flex;height:14px;border-radius:7px;overflow:hidden;margin-bottom:14px;background:#1a1a1d"></div>'
+   +'<div style="display:flex;flex-direction:column;gap:10px">'
+   +AR_RATIOS.map(r=>{
       const lbl=r==='1:1'?'Square':r==='4:5'?'Portrait':'Story / Reel';
       const on=r==='4:5';
-      return '<label class="ar-card" data-ar="'+r+'" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--txt);padding:9px 12px;border:1px solid '+(on?'var(--gold)':'var(--line)')+';border-radius:9px;flex:1;min-width:160px;background:'+(on?'rgba(232,182,74,.04)':'transparent')+'">'
-        +'<input type="checkbox" class="ar-chk" data-ar="'+r+'"'+(on?' checked':'')+' style="width:auto;margin:0'+(on?';accent-color:var(--gold)':'')+'">'
-        +'<span style="flex:1"><b>'+r+'</b> <span class="muted" style="font-size:11px">'+lbl+'</span></span>'
-        +'<input type="number" class="ar-pct" data-ar="'+r+'" min="0" max="100" value="'+(on?100:0)+'"'+(on?'':' disabled')+' style="width:54px;text-align:center;padding:5px 4px;font-size:12px;border-radius:6px">'
-        +'<span class="muted" style="font-size:12px">%</span></label>';
+      const col=AR_COLORS[r];
+      return '<label class="ar-card" data-ar="'+r+'" style="display:flex;align-items:center;gap:12px;cursor:pointer;font-size:13px;color:var(--txt);padding:10px 12px;border:1px solid '+(on?col:'var(--line)')+';border-radius:9px;background:'+(on?col+'14':'transparent')+'">'
+        +'<input type="checkbox" class="ar-chk" data-ar="'+r+'"'+(on?' checked':'')+' style="width:auto;margin:0;accent-color:'+col+'">'
+        +'<span style="min-width:128px"><b>'+r+'</b> <span class="muted" style="font-size:11px">'+lbl+'</span></span>'
+        +'<input type="range" class="ar-slider" data-ar="'+r+'" min="0" max="100" step="5" value="'+(on?100:0)+'"'+(on?'':' disabled')+' style="flex:1;accent-color:'+col+'">'
+        +'<span class="ar-pctval" data-ar="'+r+'" style="min-width:42px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600">'+(on?100:0)+'%</span>'
+        +'</label>';
      }).join('')
    +'</div>'
-   +'<p class="muted" id="ar_prev" style="margin:10px 0 0;font-size:11px"></p>'
+   +'<p class="muted" id="ar_prev" style="margin:12px 0 0;font-size:11px"></p>'
    +'</div>'
    +'</div></div>'
    +'<p style="margin:14px 0;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><button class="go" id="g_go">Generate posters</button>'
@@ -1714,37 +1721,105 @@ async function viewGenerate(){
   syncPtypeCards();
   paintSubject();
   // ── Aspect-ratio mix wiring ──
+  // Sliders always sum to exactly 100%: dragging one redistributes the
+  // remainder across the other CHECKED ratios proportionally to their
+  // current shares (largest-remainder rounding so the total never drifts).
+  // Checking/unchecking a ratio rebalances the same way. The dragged slider
+  // snaps to AR_STEP; the others can land on any whole percent so the mix
+  // always totals 100 \\u2014 only the slider you're moving needs "nice" steps.
+  const AR_STEP=5;
+  const arCard=r=>document.querySelector('.ar-card[data-ar="'+r+'"]');
+  const arCards=()=>AR_RATIOS.map(arCard);
+  const arActive=()=>arCards().filter(c=>c.querySelector('.ar-chk').checked);
+  const arSnap=v=>Math.max(0,Math.min(100,Math.round(v/AR_STEP)*AR_STEP));
+  // Largest-remainder distribution of an integer total across relative weights.
+  function arDistribute(total,weights){
+    const n=weights.length;
+    if(!n)return[];
+    if(total<=0)return weights.map(()=>0);
+    const sumW=weights.reduce((a,b)=>a+b,0);
+    const raw=weights.map(w=>sumW>0?total*w/sumW:total/n);
+    const floor=raw.map(Math.floor);
+    let used=floor.reduce((a,b)=>a+b,0);
+    const order=raw.map((r,i)=>({i,frac:r-floor[i]})).sort((a,b)=>b.frac-a.frac);
+    let k=0;
+    while(used<total&&k<order.length){floor[order[k].i]+=1;used+=1;k++;}
+    return floor;
+  }
+  function arPaint(){
+    let bar='';
+    AR_RATIOS.forEach(r=>{
+      const c=arCard(r),on=c.querySelector('.ar-chk').checked;
+      const v=+c.querySelector('.ar-slider').value||0;
+      const lbl=c.querySelector('.ar-pctval');if(lbl)lbl.textContent=v+'%';
+      c.style.borderColor=on?AR_COLORS[r]:'var(--line)';
+      c.style.background=on?AR_COLORS[r]+'14':'transparent';
+      if(on&&v>0)bar+='<div style="flex:'+v+' 0 0;background:'+AR_COLORS[r]+'" title="'+r+' \\xb7 '+v+'%"></div>';
+    });
+    const barEl=$('#ar_bar');
+    if(barEl)barEl.innerHTML=bar||'<div style="flex:1 0 0;background:var(--line)"></div>';
+    updArPrev();
+  }
   function updArPrev(){
     const el=$('#ar_prev');if(!el)return;
     const n=Math.max(1,+($('#g_count')?.value)||8);
     const picks=[];
-    document.querySelectorAll('.ar-chk').forEach(chk=>{
-      if(chk.checked){
-        const pct=+chk.closest('.ar-card').querySelector('.ar-pct').value||0;
-        if(pct>0)picks.push([chk.dataset.ar,pct]);
+    arCards().forEach(c=>{
+      if(c.querySelector('.ar-chk').checked){
+        const v=+c.querySelector('.ar-slider').value||0;
+        if(v>0)picks.push([c.dataset.ar,v]);
       }
     });
     if(!picks.length){el.textContent='All '+n+' poster(s) will render 4:5 (default).';return;}
-    const total=picks.reduce((a,[,p])=>a+p,0);
-    const parts=picks.map(([ar,p])=>ar+' \\xd7 ~'+Math.round(n*p/Math.max(total,1)));
-    el.textContent='\\u2248 '+parts.join('   \\xb7   ')
-      +(total!==100?'   (shares auto-normalize to 100%)':'');
+    const parts=picks.map(([ar,p])=>ar+' \\xd7 ~'+Math.round(n*p/100));
+    el.textContent='\\u2248 '+parts.join('   \\xb7   ');
   }
-  document.querySelectorAll('.ar-chk').forEach(chk=>{
-    chk.onchange=()=>{
-      const card=chk.closest('.ar-card'),pct=card.querySelector('.ar-pct');
-      pct.disabled=!chk.checked;
-      card.style.borderColor=chk.checked?'var(--gold)':'var(--line)';
-      card.style.background=chk.checked?'rgba(232,182,74,.04)':'transparent';
-      pct.style.accentColor='';
-      if(chk.checked&&+pct.value<=0)pct.value=25;
-      if(!chk.checked)pct.value=0;
-      updArPrev();
-    };
+  // Sets "ratio" to "rawVal" (snapped) and rebalances the other active ratios
+  // to fill the remainder, proportional to their current shares.
+  function arSetValue(ratio,rawVal){
+    const card=arCard(ratio);
+    const active=arActive();
+    if(!active.find(c=>c.dataset.ar===ratio))return;
+    const others=active.filter(c=>c.dataset.ar!==ratio);
+    let val;
+    if(!others.length){
+      val=100; // sole active ratio always owns the full mix
+    }else{
+      val=arSnap(rawVal);
+      const remaining=100-val;
+      const weights=others.map(c=>+c.querySelector('.ar-slider').value||0);
+      const dist=arDistribute(remaining,weights);
+      others.forEach((c,i)=>{c.querySelector('.ar-slider').value=dist[i];});
+    }
+    card.querySelector('.ar-slider').value=val;
+    arPaint();
+  }
+  // Checking a ratio gives it an even share of the now-active set (shrinking
+  // the rest to fit); unchecking zeroes it and redistributes its share.
+  function arToggle(ratio,checked){
+    const card=arCard(ratio),sl=card.querySelector('.ar-slider');
+    sl.disabled=!checked;
+    if(checked){
+      const evenShare=Math.round(100/arActive().length);
+      arSetValue(ratio,evenShare);
+    }else{
+      sl.value=0;
+      const active=arActive();
+      if(active.length){
+        const weights=active.map(c=>+c.querySelector('.ar-slider').value||0);
+        const dist=arDistribute(100,weights);
+        active.forEach((c,i)=>{c.querySelector('.ar-slider').value=dist[i];});
+      }
+      arPaint();
+    }
+  }
+  AR_RATIOS.forEach(r=>{
+    const c=arCard(r);
+    c.querySelector('.ar-chk').onchange=e=>arToggle(r,e.target.checked);
+    c.querySelector('.ar-slider').oninput=e=>arSetValue(r,+e.target.value);
   });
-  document.querySelectorAll('.ar-pct').forEach(inp=>{inp.oninput=updArPrev;});
   $('#g_count')&&$('#g_count').addEventListener('input',updArPrev);
-  updArPrev();
+  arPaint();
   let phase='';
   function setProg(p,err){const b=$('#g_bar'),t=$('#g_pct');if(!b)return;
     p=Math.max(0,Math.min(100,Math.round(p)));b.style.width=p+'%';
@@ -1795,7 +1870,7 @@ async function viewGenerate(){
     const arDist={};
     document.querySelectorAll('.ar-chk').forEach(chk=>{
       if(chk.checked){
-        const pct=+chk.closest('.ar-card').querySelector('.ar-pct').value||0;
+        const pct=+chk.closest('.ar-card').querySelector('.ar-slider').value||0;
         if(pct>0)arDist[chk.dataset.ar]=pct;
       }
     });
