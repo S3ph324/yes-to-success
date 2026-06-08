@@ -347,6 +347,11 @@ app.get("/api/clients", async (_q, res) =>
 );
 
 // Serve a character reference photo for the Generate preview.
+// Uploaded photo/logo/poster filenames all carry a Date.now() prefix from
+// multer (see photoStore/glassPhotoStore/logoStore below), so a given URL's
+// bytes never change — safe to let the browser cache them aggressively
+// instead of revalidating on every tab switch (the slow part users feel).
+const ASSET_CACHE = { maxAge: "7d", immutable: true };
 app.get("/api/charphoto", (req, res) => {
   const rel = String(req.query.p || "");
   if (!rel.startsWith("characters/") || rel.includes(".."))
@@ -354,7 +359,7 @@ app.get("/api/charphoto", (req, res) => {
   const fp = path.join(publicDir, rel);
   if (!fp.startsWith(path.join(publicDir, "characters")))
     return res.status(400).end();
-  res.sendFile(fp);
+  res.sendFile(fp, ASSET_CACHE);
 });
 
 // Serve a brand-kit logo for preview.
@@ -365,7 +370,7 @@ app.get("/api/brandlogo", (req, res) => {
   const fp = path.join(publicDir, rel);
   if (!fp.startsWith(path.join(publicDir, "brand")))
     return res.status(400).end();
-  res.sendFile(fp);
+  res.sendFile(fp, ASSET_CACHE);
 });
 
 // ── Brand Kits (brand-presets.json, filtered to the client) ───────────────
@@ -566,7 +571,7 @@ app.get("/api/glassesphoto", (req, res) => {
   const fp = path.join(publicDir, rel);
   if (!fp.startsWith(path.join(publicDir, "eyeglasses")))
     return res.status(400).end();
-  res.sendFile(fp);
+  res.sendFile(fp, ASSET_CACHE);
 });
 
 const logoStore = multer.diskStorage({
@@ -792,23 +797,30 @@ app.get("/api/batches", async (req, res) => {
   } catch {
     return res.json([]);
   }
-  const out = [];
-  for (const stamp of stamps) {
-    const dir = path.join(baseDir, stamp);
-    let files = [];
-    try {
-      files = (await fs.readdir(dir)).filter((f) => f.endsWith(".png")).sort();
-    } catch {
-      continue;
-    }
-    let captions = "";
-    try {
-      captions = await fs.readFile(path.join(dir, "captions.txt"), "utf-8");
-    } catch {
-      /* none */
-    }
-    out.push({ stamp, count: files.length, files, captions });
-  }
+  // Read every batch dir in parallel instead of one-at-a-time — with 18+
+  // batches this was the main slow part of opening the Batches tab (each
+  // readdir+readFile round-trip to the volume serialized after the last).
+  // Promise.all preserves the stamps[] order (newest-first).
+  const out = (
+    await Promise.all(
+      stamps.map(async (stamp) => {
+        const dir = path.join(baseDir, stamp);
+        let files = [];
+        try {
+          files = (await fs.readdir(dir)).filter((f) => f.endsWith(".png")).sort();
+        } catch {
+          return null;
+        }
+        let captions = "";
+        try {
+          captions = await fs.readFile(path.join(dir, "captions.txt"), "utf-8");
+        } catch {
+          /* none */
+        }
+        return { stamp, count: files.length, files, captions };
+      }),
+    )
+  ).filter(Boolean);
   // Attach per-poster queue statuses so the Batches tab can show approve/posted badges.
   try {
     const queue = await readQueue(c.id);
@@ -882,7 +894,7 @@ app.get("/posters/:client/:stamp/:file", async (req, res) => {
     return res.status(400).end();
   if (req.query.dl)
     res.set("Content-Disposition", `attachment; filename="${file}"`);
-  res.sendFile(fp);
+  res.sendFile(fp, ASSET_CACHE);
 });
 // DELETE a single poster PNG from a batch
 app.delete("/api/poster", async (req, res) => {
@@ -1093,7 +1105,7 @@ app.get("/broll-asset/:stamp/:file", (req, res) => {
     return res.status(400).end();
   if (req.query.dl)
     res.set("Content-Disposition", `attachment; filename="${file}"`);
-  res.sendFile(fp);
+  res.sendFile(fp, ASSET_CACHE);
 });
 
 app.post("/api/broll/pick", async (req, res) => {
@@ -2005,7 +2017,7 @@ async function viewBrand(){
   $('#view').innerHTML='<div class="card"><h2>Brand Kits — '+CLIENT+'</h2>'
    +(b.length?b.map((p,i)=>{
      const logo=p.logoSrc
-       ?'<img class="thumb" style="object-fit:contain;background:#000" src="/api/brandlogo?p='+encodeURIComponent(p.logoSrc)+'">'
+       ?'<img class="thumb" loading="lazy" style="object-fit:contain;background:#000" src="/api/brandlogo?p='+encodeURIComponent(p.logoSrc)+'">'
        :'<div class="thumb ph">no logo</div>';
      const sw=(c)=>'<span style="background:'+(c||'#000')+'" title="'+(c||'')+'"></span>';
      const detail='<div class="muted" style="font-size:12px;line-height:2">'
@@ -2134,11 +2146,11 @@ async function viewChars(){
      const photos=x.photos||[];
      const first=photos[0];
      const thumb=first
-       ?'<img class="thumb" src="/api/charphoto?p='+encodeURIComponent(first)+'">'
+       ?'<img class="thumb" loading="lazy" src="/api/charphoto?p='+encodeURIComponent(first)+'">'
        :'<div class="thumb ph">no photo</div>';
      const gallery=photos.length
        ?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'
-         +photos.map((ph)=>'<img class="thumb" style="width:84px;height:84px" src="/api/charphoto?p='+encodeURIComponent(ph)+'">').join('')
+         +photos.map((ph)=>'<img class="thumb" loading="lazy" style="width:84px;height:84px" src="/api/charphoto?p='+encodeURIComponent(ph)+'">').join('')
          +'</div>'
        :'';
      const detail='<div class="muted" style="font-size:12px;line-height:2">'
@@ -2212,11 +2224,11 @@ async function viewGlasses(){
      const photos=x.photos||[];
      const first=photos[0];
      const thumb=first
-       ?'<img class="thumb" src="/api/glassesphoto?p='+encodeURIComponent(first)+'">'
+       ?'<img class="thumb" loading="lazy" src="/api/glassesphoto?p='+encodeURIComponent(first)+'">'
        :'<div class="thumb ph">no photo</div>';
      const gallery=photos.length
        ?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'
-         +photos.map((ph)=>'<img class="thumb" style="width:84px;height:84px" src="/api/glassesphoto?p='+encodeURIComponent(ph)+'">').join('')
+         +photos.map((ph)=>'<img class="thumb" loading="lazy" style="width:84px;height:84px" src="/api/glassesphoto?p='+encodeURIComponent(ph)+'">').join('')
          +'</div>'
        :'';
      const detail='<div class="muted" style="font-size:12px;line-height:2">'
