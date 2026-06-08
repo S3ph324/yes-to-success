@@ -19,6 +19,7 @@ import path from "node:path";
 import url from "node:url";
 import heicConvert from "heic-convert";
 import { registerTryonRoutes } from "./tryon-routes.mjs";
+import { registerEyeglassAngleRoutes } from "./eyeglasses-angles-routes.mjs";
 
 // iPhone photos default to HEIC/HEIF, which (a) browsers other than Safari
 // cannot render in <img> — previews show as broken/black squares — and
@@ -1324,6 +1325,9 @@ app.get("/", (_q, res) => res.type("html").send(PAGE));
 // ── Try-On sub-site (/tryon) ──────────────────────────────────────────────
 registerTryonRoutes(app, { EXPORT_BASE, guard });
 
+// ── Eyeglasses reference-set generator (Eyeglasses tab) ───────────────────
+registerEyeglassAngleRoutes(app, { guard });
+
 app.listen(PORT, () =>
   console.log(`\n  Quote Poster Studio → http://localhost:${PORT}\n  Try-On         → http://localhost:${PORT}/tryon\n`),
 );
@@ -1667,6 +1671,13 @@ padding:7px 11px;border-radius:8px}
 /* Toast */
 #toast{background:rgba(16,16,18,.92);border:1px solid var(--line-bright);
 box-shadow:0 24px 50px -20px rgba(0,0,0,.72),0 0 0 1px rgba(255,255,255,.04)}
+/* Eyeglasses angle-generator drop zone */
+.ea-drop{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;
+text-align:center;padding:34px 20px;border:1.5px dashed var(--line2);border-radius:12px;cursor:pointer;
+transition:border-color .15s,background .15s;background:rgba(255,255,255,.015)}
+.ea-drop:hover,.ea-drop.over{border-color:var(--gold);background:rgba(232,182,74,.05)}
+.ea-drop b{font-size:14px;margin-bottom:2px}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style></head><body>
 <header><b>QUOTE&nbsp;POSTER&nbsp;<i>STUDIO</i></b>
 <span class="pill" title="deployed version">v${VERSION}</span><span class="sp"></span>
@@ -2352,7 +2363,22 @@ async function viewChars(){
 }
 async function viewGlasses(){
   const g=await api('/api/eyeglasses?client='+CLIENT);
-  $('#view').innerHTML='<div class="card"><h2>\\ud83d\\udd76\\ufe0f Eyeglasses — '+CLIENT+'</h2>'
+  const genCard='<div class="card" id="ea-card">'
+   +'<h2>\\u2728 Generate a reference set from one photo</h2>'
+   +'<p class="muted" style="margin:-4px 0 16px">Upload ONE clear shot of a frame — Gemini generates a ¾ angle and side-profile view of that <i>same</i> pair, compiles all three into a collage for you to review, and only saves them as a frame\\'s reference photos once you approve.</p>'
+   +'<div id="ea-upload-wrap">'
+   +'<label class="ea-drop" id="ea-drop">'
+   +'<input type="file" id="ea-file" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer">'
+   +'<div style="font-size:30px;opacity:.5;margin-bottom:6px">\\ud83d\\udd76\\ufe0f</div>'
+   +'<b>Click to upload or drag &amp; drop</b>'
+   +'<div class="muted" style="font-size:12px;margin-top:3px">One clear product photo — JPG, PNG, HEIC. Plain background works best.</div>'
+   +'</label>'
+   +'</div>'
+   +'<div id="ea-status" class="muted" style="font-size:13px;margin-top:12px;display:none"></div>'
+   +'<div id="ea-results" style="margin-top:16px;display:none"></div>'
+   +'</div>';
+  $('#view').innerHTML=genCard
+   +'<div class="card"><h2>\\ud83d\\udd76\\ufe0f Eyeglasses — '+CLIENT+'</h2>'
    +'<p class="muted" style="margin:-4px 0 16px">Frames used as the main subject for Tranzzie eyeglasses-showcase posters. Add reference photos so Gemini can render the actual product instead of a generic pair.</p>'
    +(g.length?g.map((x,i)=>{
      const photos=x.photos||[];
@@ -2428,6 +2454,137 @@ async function viewGlasses(){
     }
     toast('Frame saved');viewGlasses();
   };
+
+  // ── Generate-a-reference-set widget ───────────────────────────────────────
+  (function initAngleGenerator(){
+    const drop=$('#ea-drop'), fileInput=$('#ea-file'), statusEl=$('#ea-status'), resultsEl=$('#ea-results');
+    let token=null, description='', mime=null, lastSet=null; // lastSet = {original,angles} for regenerate/approve
+    const setStatus=(html)=>{ if(!statusEl)return; statusEl.innerHTML=html||''; statusEl.style.display=html?'block':'none'; };
+    const dataUrlToBlob=async(u)=>(await fetch(u)).blob();
+
+    function compositeCollage(items){
+      // items: [{label,dataUrl}, ...] → single side-by-side strip data URL
+      return new Promise((resolve)=>{
+        const imgs=items.map(it=>{const i=new Image();i.src=it.dataUrl;return i;});
+        let loaded=0;
+        imgs.forEach((img)=>{ img.onload=()=>{
+          if(++loaded<imgs.length)return;
+          const W=imgs[0].width||600, H=imgs[0].height||600, N=imgs.length;
+          const c=document.createElement('canvas'); c.width=W*N; c.height=H;
+          const ctx=c.getContext('2d');
+          imgs.forEach((im,idx)=>{
+            ctx.drawImage(im,idx*W,0,W,H);
+            if(idx>0){ctx.strokeStyle='rgba(255,255,255,0.5)';ctx.lineWidth=2;
+              ctx.beginPath();ctx.moveTo(idx*W,0);ctx.lineTo(idx*W,H);ctx.stroke();}
+            const lh=Math.round(H*0.07);
+            ctx.fillStyle='rgba(0,0,0,0.62)';ctx.fillRect(idx*W,H-lh,W,lh);
+            const fs=Math.round(lh*0.42);
+            ctx.fillStyle='#F4B400';ctx.textAlign='center';ctx.font='600 '+fs+'px system-ui,sans-serif';
+            ctx.fillText(items[idx].label||'',idx*W+W/2,H-Math.round(lh*0.3));
+          });
+          resolve(c.toDataURL('image/png'));
+        };});
+      });
+    }
+
+    function renderReview(set){
+      lastSet=set;
+      const items=[set.original,...set.angles];
+      resultsEl.style.display='block';
+      resultsEl.innerHTML='<div class="muted" style="font-size:12px;margin-bottom:10px">Compiling collage…</div>';
+      compositeCollage(items).then((collageUrl)=>{
+        resultsEl.innerHTML=
+          '<div style="border:1px solid var(--line2,rgba(255,255,255,.14));border-radius:10px;overflow:hidden;margin-bottom:14px">'
+          +'<img src="'+collageUrl+'" style="width:100%;display:block">'
+          +'</div>'
+          +'<p class="muted" style="font-size:12px;margin:-6px 0 14px">Review the set above — does the ¾ and side view still look like the <i>same</i> pair? If anything drifted, hit Regenerate.</p>'
+          +'<div class="row"><div><label>Frame ID</label><input id="ea_id" placeholder="glasses_'+CLIENT+'"></div>'
+          +'<div><label>Frame name</label><input id="ea_name" placeholder="e.g. Aviator Classic"></div></div>'
+          +'<p class="muted" style="font-size:11.5px;margin:4px 0 14px">If the ID matches an existing frame, these photos are <i>added</i> to it. Otherwise a new frame is created.</p>'
+          +'<p style="display:flex;gap:10px;flex-wrap:wrap">'
+          +'<button class="go" id="ea_approve">\\u2713 Approve &amp; save as frame</button>'
+          +'<button class="sec" id="ea_regen">\\u21bb Regenerate</button>'
+          +'<button class="sec" id="ea_cancel" style="color:var(--red);border-color:rgba(224,86,75,.35)">Cancel</button>'
+          +'</p>';
+        $('#ea_regen').onclick=()=>doGenerate(true);
+        $('#ea_cancel').onclick=()=>{
+          lastSet=null; token=null; description=''; mime=null;
+          resultsEl.style.display='none'; resultsEl.innerHTML='';
+          setStatus(''); fileInput.value='';
+          toast('Discarded');
+        };
+        $('#ea_approve').onclick=async()=>{
+          const id=$('#ea_id').value.trim();
+          if(!id)return toast('Frame ID required',true);
+          const name=$('#ea_name').value.trim()||id;
+          const btn=$('#ea_approve'); btn.disabled=true; btn.textContent='Saving…';
+          try{
+            await fetch('/api/eyeglasses',{method:'POST',headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({id,client:CLIENT,name,enabled:true})});
+            const fd=new FormData();
+            let n=0;
+            for(const it of items){
+              const blob=await dataUrlToBlob(it.dataUrl);
+              fd.append('photo',blob,'angle-'+(n++)+'-'+(it.label||'shot').toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.png');
+            }
+            const r=await fetch('/api/eyeglasses/photo?client='+CLIENT+'&glassesId='+encodeURIComponent(id),
+              {method:'POST',body:fd});
+            if(!r.ok)throw new Error('upload failed');
+            toast('Reference set saved to "'+name+'"');
+            lastSet=null; token=null; description=''; mime=null;
+            resultsEl.style.display='none'; resultsEl.innerHTML='';
+            setStatus(''); fileInput.value='';
+            viewGlasses();
+          }catch(e){
+            toast('Could not save the set — try again',true);
+            btn.disabled=false; btn.textContent='\\u2713 Approve & save as frame';
+          }
+        };
+      });
+    }
+
+    async function doGenerate(isRegen){
+      if(!token)return;
+      resultsEl.style.display='none'; resultsEl.innerHTML='';
+      setStatus('<span class="spinner" style="display:inline-block;width:13px;height:13px;border:2px solid rgba(244,180,0,.3);border-top-color:var(--gold);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:7px"></span>'
+        +(isRegen?'Regenerating angle views…':'Generating ¾ and side-profile views of your frame…')+' this takes ~30-60s.');
+      try{
+        const r=await fetch('/api/eyeglasses/angles/generate',{method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({token,description})});
+        const d=await r.json();
+        if(!r.ok||d.error){setStatus('');toast(d.error||'Generation failed',true);return;}
+        setStatus('');
+        renderReview(d);
+      }catch(e){ setStatus(''); toast('Network error — try again',true); }
+    }
+
+    async function handleFile(file){
+      if(!file)return;
+      token=null; description=''; mime=null; lastSet=null;
+      resultsEl.style.display='none'; resultsEl.innerHTML='';
+      setStatus('<span class="spinner" style="display:inline-block;width:13px;height:13px;border:2px solid rgba(244,180,0,.3);border-top-color:var(--gold);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:7px"></span> Checking photo…');
+      const fd=new FormData(); fd.append('photo',file);
+      try{
+        const r=await fetch('/api/eyeglasses/angles/validate',{method:'POST',body:fd});
+        const d=await r.json();
+        if(!r.ok||d.error){setStatus('');toast(d.error||'Could not analyze photo',true);return;}
+        if(!d.valid){setStatus('');toast(d.reason||'Please upload a clearer shot of the frame.',true);return;}
+        token=d.token; description=d.description||''; mime=d.mime;
+        setStatus('<b style="color:var(--gold)">\\u2713 '+(description||'Clear frame detected')+'</b><br><span style="font-size:12px">Generating angle views now…</span>');
+        doGenerate(false);
+      }catch(e){ setStatus(''); toast('Network error — try again',true); }
+    }
+
+    fileInput.onchange=(e)=>handleFile(e.target.files[0]);
+    drop.addEventListener('dragover',(e)=>{e.preventDefault();drop.classList.add('over');});
+    drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
+    drop.addEventListener('drop',(e)=>{
+      e.preventDefault(); drop.classList.remove('over');
+      const f=e.dataTransfer.files&&e.dataTransfer.files[0];
+      if(f&&/^image\\//.test(f.type))handleFile(f);
+    });
+  })();
 }
 async function viewQueue(){
   const esc=s=>(s||'').replace(/[<>&"]/g,'');
