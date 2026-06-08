@@ -161,6 +161,10 @@ console.log(
 for (const { q, i } of targets) {
   const fname = `bg-${String(i + 1).padStart(2, "0")}.png`;
   const outPath = path.join(bgDir, fname);
+  // Eyeglasses-showcase entries carry a `tagline` (the vibe/feeling — e.g.
+  // "Your everyday pair, elevated.") which steers the SCENE mood better than
+  // `quote` (a clean product-name line meant for on-poster type, not imagery).
+  const sceneVibe = eyeglassesMode ? q.tagline || q.quote : q.quote;
   const guidance = eyeglassesMode
     ? hasRef
       ? `Feature the EXACT pair of eyeglasses shown in these reference photos ` +
@@ -169,12 +173,12 @@ for (const { q, i } of targets) {
         `Place it in this scene: ${q.bgPrompt}. The product must be clearly ` +
         `visible, in sharp focus, and instantly recognizable as the same ` +
         `pair shown in the references. The scene must clearly visually ` +
-        `express this message so a viewer instantly gets it: "${q.quote}". ${STYLE}`
+        `evoke this feeling: "${sceneVibe}". ${STYLE}`
       : `Create a product-showcase photograph featuring a stylish pair of ` +
         `eyeglasses as the hero subject, in this scene: ${q.bgPrompt}. ` +
         `The eyeglasses must be clearly visible, in sharp focus, and the ` +
         `main focal point of the frame. The scene must clearly visually ` +
-        `express this message so a viewer instantly gets it: "${q.quote}". ${STYLE}`
+        `evoke this feeling: "${sceneVibe}". ${STYLE}`
     : hasRef
       ? `Use the SAME person shown in these reference photos as the subject — ` +
         `keep their face, hair, and identity perfectly consistent and clearly ` +

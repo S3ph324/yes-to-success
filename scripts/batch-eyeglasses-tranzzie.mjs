@@ -4,10 +4,12 @@
 // posters in Tranzzie's export folder (manual posting).
 //
 // Mirrors batch-jurie.mjs but swaps step 1 for the eyeglasses content
-// generator and relies on generate-backgrounds-jurie.mjs's eyeglasses-mode
-// branch (triggered by DASHBOARD_EYEGLASSES_ID) for step 2. Step 3 reuses
-// render-batch-jurie.mjs unchanged — same output JSON shape in, same
-// JurieQuoteCard renderer.
+// generator (clean product-showcase copy — productLine/tagline/ctaTag, NOT
+// the hook→payoff quote shape) and relies on generate-backgrounds-jurie.mjs's
+// eyeglasses-mode branch (triggered by DASHBOARD_EYEGLASSES_ID) for step 2.
+// Step 3 reuses render-batch-jurie.mjs, which detects the `eyeglassesId` tag
+// on each entry and routes it to ProductShowcaseCard — a clean product-photo
+// poster — instead of the JurieQuoteCard quote-graphic treatment.
 //
 // Usage:
 //   node scripts/batch-eyeglasses-tranzzie.mjs [count] [topic/angle...]

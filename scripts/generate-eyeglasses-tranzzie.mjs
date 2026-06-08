@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 // Eyeglasses-showcase content generator — Tranzzie only.
-// Produces the SAME output JSON shape as generate-quotes-jurie.mjs
-// (topLines/bottomLines/quote/caption/keyword/ctaComment/bgPrompt/aspectRatio/
-// variant/kind/useCta/useFlatBg) so it flows unchanged through the existing
-// render-batch-jurie.mjs → JurieQuoteCard pipeline. Only the VOICE differs:
-// product-showcase copy that puts a specific pair of eyeglasses front and
-// center, instead of the Taglish hook→payoff quote format.
+//
+// Produces a CLEAN PRODUCT-SHOWCASE shape — productLine/tagline/ctaTag/
+// caption/bgPrompt/aspectRatio/variant("showcase")/kind("product")/
+// useFlatBg/eyeglassesId/eyeglassesStyle/quote(=productLine for slugs) —
+// deliberately DIFFERENT from generate-quotes-jurie.mjs's hook→payoff
+// topLines/bottomLines shape. render-batch-jurie.mjs detects `eyeglassesId`
+// and renders these through ProductShowcaseCard: a clean product-photography
+// poster (no big quote-card text overlay, no per-word color emphasis — the
+// photo is the hero, copy stays small and editorial, like a premium
+// e-commerce ad). Only the VOICE/copy differs from other clients; the
+// rendering treatment is intentionally a different composition entirely.
 //
 // Usage:
 //   node scripts/generate-eyeglasses-tranzzie.mjs [count] [topic...]
@@ -76,36 +81,40 @@ const briefBlock = TOPIC
 
 const styleNote =
   showcaseStyle === "showcase"
-    ? `\nFORMAT — PRODUCT SHOWCASE (the only style wired up right now):\n` +
-      `- topLines: a punchy product-forward HOOK about the eyeglasses (style, vibe, "you'll want these"), ends with an ellipsis "…" OR a strong product statement.\n` +
-      `- bottomLines: the PAYOFF — what makes "${frameLabel}" worth it (the feature, the feeling, the flex), landing on the product/benefit.\n` +
-      `- Sounds like a product drop / OOTD caption, not a motivational quote. Confident, stylish, a little hype — but never salesy-desperate.\n`
-    : `\nFORMAT — PRODUCT SHOWCASE (fallback; other eyeglasses formats are not enabled yet):\n` +
-      `- Same topLines/bottomLines hook→payoff shape, spotlighting "${frameLabel}".\n`;
+    ? `\nFORMAT — CLEAN PRODUCT SHOWCASE (the only style wired up right now):\n` +
+      `This is a PRODUCT-PHOTOGRAPHY poster, NOT a quote graphic. The photo IS\n` +
+      `the hero — copy stays small, clean, and editorial, like a premium\n` +
+      `e-commerce / OOTD caption layered tastefully over a product shot.\n` +
+      `- productLine: ONE short, polished line naming or describing\n` +
+      `  "${frameLabel}" (a product-style name + finish, or one crisp clause\n` +
+      `  about the look/fit/vibe). NO hook→payoff structure, no rhetorical\n` +
+      `  question, no ellipsis cliffhanger — say the thing, don't tease it.\n` +
+      `- tagline: an OPTIONAL short supporting clause (one phrase, ≤8 words)\n` +
+      `  that adds a feeling or benefit — understated, confident, never hypey.\n` +
+      `  Use "" when the productLine already stands on its own (vary this).\n` +
+      `- ctaTag: a SHORT 1-3 word action chip in ALL CAPS, e.g. "SHOP NOW",\n` +
+      `  "VIEW THE DROP", "SEE THE FIT". Use "" on some posters to vary it —\n` +
+      `  not every poster needs a chip.\n`
+    : `\nFORMAT — CLEAN PRODUCT SHOWCASE (fallback; other formats not enabled yet):\n` +
+      `- Same productLine/tagline/ctaTag shape, spotlighting "${frameLabel}".\n`;
 
 const systemInstruction = `${voiceProfile}${subjectBlock}${briefBlock}
-You are generating product-showcase poster entries for ${client.label}'s
+You are generating CLEAN PRODUCT-SHOWCASE poster entries for ${client.label}'s
 Facebook page, all featuring the same pair of eyeglasses: "${frameLabel}".
 Produce exactly ${COUNT} entries.${styleNote}
 
+CRITICAL — this is NOT a Taglish hook→payoff quote poster (that's a different
+poster type entirely, used elsewhere). Do not write a rhetorical setup +
+emotional payoff, and do not invent colored word-emphasis — none of that
+renders here. Write the way a premium eyewear brand captions a product photo:
+brief, confident, a little stylish. The image does the talking.
+
 GRAMMAR & COHERENCE — most important; reject anything that fails:
 - Every line must be a natural, grammatically correct Taglish or English
-  phrase a real Filipino brand would actually post. Read it back: if it
-  sounds broken, off, or like random words strung together, REWRITE it.
-- topLines and bottomLines must connect logically — the payoff lands the
-  hook's setup. No non-sequiturs, no word-salad.
-- Vary openers — no two entries start the same way. No duplicates.
-
-EMPHASIS — choose deliberately, not randomly:
-- Exactly ONE "rb" (red bar) per poster: the most charged/attention-grabbing
-  word, and it MUST be in the topLines (hook) — never in bottomLines.
-- Exactly ONE "g" (gold) phrase: the product/benefit highlight, in the
-  bottomLines (payoff), 1–2 words max — ideally evokes the product or the
-  feeling of wearing it.
-- Optional: at most ONE "r" (red) word for a secondary accent.
-- Everything else is "w" (white).
-- NEVER color particles/connectors (sa, ng, ang, na, ay, mo, ka, pa, ba,
-  o, at, kung, mga, si, ni, kay, ito, iyan) — those stay "w".
+  phrase a real Filipino eyewear brand would actually post. Read it back: if
+  it sounds broken, off, or like a forced slogan, REWRITE it.
+- Vary structure and openers across the batch — no two entries should read
+  alike, no duplicates, no template-filling feel.
 
 bgPrompt — describe a PRODUCT-PHOTOGRAPHY scene that puts "${frameLabel}" in
 frame as the unmistakable hero, written for an AI image generator that will
@@ -125,28 +134,17 @@ reads as a varied campaign, not the same shot four times:
   (sand, linen, warm stone, brushed fabric) with soft directional shadow and
   generous negative space around it.
 Whichever you pick, the frame must stay sharp, well-lit, and instantly
-recognizable — the scene serves the product, never competes with it.
+recognizable — the scene serves the product, never competes with it. Leave
+clean negative space in the lower third of the frame for a small caption
+overlay (the renderer adds that — do not describe any text in the bgPrompt).
 
 Output ONLY a valid JSON array. No commentary, no markdown fences.`;
 
 const userPrompt = TOPIC
-  ? `Generate ${COUNT} fresh ${client.label} product-showcase posters for "${frameLabel}", all about: "${TOPIC}". Mix Taglish and English naturally. Vary the angle of each one.`
-  : `Generate ${COUNT} fresh ${client.label} product-showcase posters for "${frameLabel}", varying the angle (style, comfort, vibe, everyday flex). Mix Taglish and English naturally.`;
+  ? `Generate ${COUNT} fresh ${client.label} clean product-showcase posters for "${frameLabel}", all about: "${TOPIC}". Mix Taglish and English naturally. Vary the structure, length, and chip usage across the set.`
+  : `Generate ${COUNT} fresh ${client.label} clean product-showcase posters for "${frameLabel}", varying the angle (style, comfort, vibe, everyday flex) and copy structure. Mix Taglish and English naturally.`;
 
 const ai = new GoogleGenAI({ vertexai: true, project, location });
-
-const tokenObj = {
-  type: Type.OBJECT,
-  properties: {
-    t: { type: Type.STRING },
-    s: { type: Type.STRING, enum: ["w", "g", "r", "rb"] },
-  },
-  required: ["t", "s"],
-};
-const linesArr = {
-  type: Type.ARRAY,
-  items: { type: Type.ARRAY, items: tokenObj },
-};
 
 console.log(
   `Generating ${COUNT} ${client.label} eyeglasses-showcase posters via Vertex AI (${MODEL}) in ${location}` +
@@ -167,25 +165,17 @@ const resp = await ai.models.generateContent({
       items: {
         type: Type.OBJECT,
         properties: {
-          quote: { type: Type.STRING },
+          productLine: { type: Type.STRING },
+          tagline: { type: Type.STRING },
+          ctaTag: { type: Type.STRING },
           caption: { type: Type.STRING },
-          topLines: linesArr,
-          bottomLines: linesArr,
-          keyword: { type: Type.STRING },
-          ctaComment: { type: Type.STRING },
           aspectRatio: { type: Type.STRING, enum: ["4:5"] },
-          variant: { type: Type.STRING, enum: ["jurie"] },
-          kind: { type: Type.STRING, enum: ["hook"] },
+          variant: { type: Type.STRING, enum: ["showcase"] },
+          kind: { type: Type.STRING, enum: ["product"] },
           bgPrompt: { type: Type.STRING },
           theme: { type: Type.STRING },
         },
-        required: [
-          "quote",
-          "caption",
-          "topLines",
-          "bottomLines",
-          "bgPrompt",
-        ],
+        required: ["productLine", "caption", "bgPrompt"],
       },
     },
     temperature: 0.65,
@@ -204,78 +194,41 @@ if (!Array.isArray(posters) || posters.length === 0) {
   process.exit(1);
 }
 
-// Same deterministic normalization pass as generate-quotes-jurie.mjs, so the
-// downstream renderer sees an identical shape regardless of which content
-// generator produced the batch.
-const PARTICLES = new Set([
-  "sa", "ng", "ang", "na", "ay", "mo", "ka", "pa", "ba", "o", "at", "kung",
-  "mga", "si", "ni", "kay", "ito", "iyan", "yan", "nang", "din", "rin", "po",
-]);
-const bare = (w) =>
-  String(w || "").toLowerCase().replace(/[^a-zñ0-9]/gi, "");
-const hasTok = (L) =>
-  Array.isArray(L) && L.some((ln) => Array.isArray(ln) && ln.length);
-
+// Normalization pass — much lighter than the quote-card generators' since
+// there's no per-word color emphasis or hook/payoff structure to enforce.
+// The output flows into ProductShowcaseCard (clean product photo + a single
+// caption line + optional tagline/CTA chip), NOT JurieQuoteCard.
 const clean = [];
 for (const q of posters) {
   if (
     !q ||
-    typeof q.quote !== "string" ||
-    q.quote.trim().split(/\s+/).length < 3 ||
-    !hasTok(q.topLines) ||
-    !hasTok(q.bottomLines)
+    typeof q.productLine !== "string" ||
+    !q.productLine.trim() ||
+    typeof q.bgPrompt !== "string" ||
+    !q.bgPrompt.trim() ||
+    typeof q.caption !== "string" ||
+    !q.caption.trim()
   )
     continue;
-  q.variant = "jurie";
+  q.variant = "showcase";
   q.aspectRatio = "4:5";
-  q.kind = "hook";
-  q.ctaComment = (q.ctaComment || "").toUpperCase();
-  q.ctaTail = q.ctaTail || "";
-  // Showcase posters carry a CTA more often than regular quotes (it's a
-  // product post — driving to "shop now"/"learn more" makes sense), and
-  // skip the AI flat-bg roll less often (the product needs a real scene).
-  q.useCta = Math.random() < 0.7;
-  q.useFlatBg = Math.random() < 0.1;
+  q.kind = "product";
+  q.productLine = q.productLine.trim();
+  q.tagline = (q.tagline || "").trim();
+  q.ctaTag = (q.ctaTag || "").toUpperCase().trim();
+  q.caption = q.caption.trim();
+  // Keep a `quote` fallback — the renderer's slugify() and any generic
+  // gallery/listing code key off `quote` for filenames/labels.
+  q.quote = q.productLine;
+  // Showcase posters skip the AI flat-bg roll rarely — the product needs a
+  // real, on-brand scene, not a plain gradient.
+  q.useFlatBg = Math.random() < 0.08;
   q.eyeglassesId = eyeglassesId;
   q.eyeglassesStyle = showcaseStyle;
-  q.topLines = (q.topLines || []).map((l) => l.filter((t) => t && t.t));
-  q.bottomLines = (q.bottomLines || []).map((l) => l.filter((t) => t && t.t));
-  const decolor = (lines) =>
-    lines.forEach((ln) =>
-      ln.forEach((tk) => {
-        if (tk.s && tk.s !== "w" && PARTICLES.has(bare(tk.t))) tk.s = "w";
-      }),
-    );
-  decolor(q.topLines);
-  decolor(q.bottomLines);
-  let rbKept = false;
-  const capRb = (lines, allow) =>
-    lines.forEach((ln) =>
-      ln.forEach((tk) => {
-        if (tk.s === "rb") {
-          if (allow && !rbKept) rbKept = true;
-          else tk.s = "w";
-        }
-      }),
-    );
-  capRb(q.topLines, true);
-  capRb(q.bottomLines, false);
-  let gold = 0;
-  const capG = (lines) =>
-    lines.forEach((ln) =>
-      ln.forEach((tk) => {
-        if (tk.s === "g") {
-          if (gold < 2) gold++;
-          else tk.s = "w";
-        }
-      }),
-    );
-  capG(q.bottomLines);
-  capG(q.topLines);
   clean.push(q);
 }
 if (!clean.length) {
-  console.error("All generated entries failed coherence/emphasis checks.");
+  console.error("All generated entries failed validation (missing productLine/caption/bgPrompt).");
   process.exit(1);
 }
 posters = clean;

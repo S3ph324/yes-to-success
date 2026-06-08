@@ -21,8 +21,78 @@ import { registerTryonRoutes } from "./tryon-routes.mjs";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, "..");
-const cfgDir = path.join(projectRoot, "config");
-const publicDir = path.join(projectRoot, "public");
+
+const HOSTED = process.env.HOSTED === "1";
+// When hosting, batch outputs go here (a writable Railway volume) instead of
+// the local Mac client folders. Per-client = EXPORT_BASE/<clientId>; b-roll =
+// EXPORT_BASE/broll.
+const EXPORT_BASE = process.env.EXPORT_BASE || "";
+
+// ── Persistent data directory ──────────────────────────────────────────────
+// Dockerfile.studio does `COPY . .`, so on every redeploy EVERYTHING under
+// /app gets reset to the git-committed snapshot — except whatever Railway
+// volume is mounted (at EXPORT_BASE). config/*.json (brand kits, characters,
+// eyeglasses frames, topic briefs, the Buffer approval/scheduling queue) and
+// uploaded photos/logos under public/ were being read & written at in-image
+// paths (projectRoot/config, projectRoot/public), so anything created or
+// changed at runtime silently reverted to the checked-in defaults on the next
+// ship. Redirect both to a subdirectory of the persistent volume instead —
+// seeded once from the repo defaults — so runtime writes survive redeploys.
+// (Falls back to the repo paths when EXPORT_BASE is unset, i.e. local dev.)
+const PERSIST_BASE = EXPORT_BASE
+  ? path.join(EXPORT_BASE, "_studio-data")
+  : projectRoot;
+const cfgDir = path.join(PERSIST_BASE, "config");
+const publicDir = path.join(PERSIST_BASE, "public");
+
+// One-time migration: copy git-committed defaults into the persistent
+// location so existing presets/characters/brand-kits keep working after the
+// very first boot on the new layout. Never overwrites anything that already
+// exists there — later runtime writes (new eyeglasses frames, edited briefs,
+// queue updates, etc.) must win over the repo snapshot on subsequent boots.
+async function seedPersistentData() {
+  if (!EXPORT_BASE) return; // local dev — already reading/writing repo paths directly
+  await fs.mkdir(cfgDir, { recursive: true });
+  await fs.mkdir(publicDir, { recursive: true });
+  const cfgNames = [
+    "clients.json",
+    "brand-presets.json",
+    "characters.json",
+    "eyeglasses.json",
+    "briefs.json",
+  ];
+  for (const name of cfgNames) {
+    const dest = path.join(cfgDir, name);
+    try {
+      await fs.access(dest);
+      continue; // already migrated / runtime-written — keep it
+    } catch {
+      /* not present yet — seed from repo default below */
+    }
+    try {
+      await fs.copyFile(path.join(projectRoot, "config", name), dest);
+    } catch {
+      /* repo has no default for this file — fine, readCfg() falls back */
+    }
+  }
+  for (const sub of ["characters", "eyeglasses", "brand"]) {
+    const dest = path.join(publicDir, sub);
+    try {
+      await fs.access(dest);
+      continue;
+    } catch {
+      /* not present yet — seed from repo default below */
+    }
+    try {
+      await fs.cp(path.join(projectRoot, "public", sub), dest, {
+        recursive: true,
+      });
+    } catch {
+      /* nothing checked in for this subdir — fine */
+    }
+  }
+}
+await seedPersistentData();
 
 // Shown in the header as a deploy signal — bump package.json on each change.
 let VERSION = "?";
@@ -38,10 +108,6 @@ const PORT = parseInt(
   process.env.PORT || process.env.JURIE_DASHBOARD_PORT || "4317",
   10,
 );
-const HOSTED = process.env.HOSTED === "1";
-// When hosting, outputs go here (writable volume) instead of the local Mac
-// client folders. Per-client = EXPORT_BASE/<clientId>; b-roll = EXPORT_BASE/broll.
-const EXPORT_BASE = process.env.EXPORT_BASE || "";
 
 const app = express();
 app.set("trust proxy", true);

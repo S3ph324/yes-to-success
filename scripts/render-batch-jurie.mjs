@@ -173,31 +173,58 @@ for (const q of quotes) {
   const styleSuffix = POSTER_STYLES.length > 1 ? `_${posterStyle}` : "";
   const fname = `${client.id}-${String(i).padStart(2, "0")}-${slug}${styleSuffix}.png`;
   const outPath = path.join(exportDir, fname); // render directly to export — no intermediate copy
-  const inputProps = {
-    topLines: q.topLines || [],
-    bottomLines: q.bottomLines || [],
-    quote: q.quote || "",
-    keyword: (q.keyword || "").toUpperCase(),
-    ctaComment: (q.ctaComment || brand.ctaComment).toUpperCase(),
-    ctaTail: q.ctaTail || brand.ctaTail,
-    useCta: q.useCta !== false,
-    bgSrc: q.bgPath || "",
-    aspectRatio,
-    brandGold: brand.brandGold,
-    brandGoldLight: brand.brandGoldLight,
-    brandGoldDeep: brand.brandGoldDeep,
-    brandRed: brand.brandRed,
-    logoSrc: brand.logoSrc,
-    logoPosition: brand.logoPosition,
-    logoSize: brand.logoSize,
-    headlineFont: "",
-    posterStyle,
-  };
+
+  // Eyeglasses-showcase entries (generate-eyeglasses-tranzzie.mjs, tagged via
+  // `eyeglassesId`) are a DIFFERENT poster family — clean product photography,
+  // not a Taglish hook→payoff quote graphic. Route them to ProductShowcaseCard
+  // instead of JurieQuoteCard so they never get the big colored-text overlay
+  // treatment (that's the whole point of the separate composition).
+  const isShowcase = Boolean(q.eyeglassesId);
+  const compositionId = isShowcase ? "ProductShowcaseCard" : "JurieQuoteCard";
+  const inputProps = isShowcase
+    ? {
+        productLine: q.productLine || q.quote || "",
+        tagline: q.tagline || "",
+        ctaTag: q.ctaTag || "",
+        bgSrc: q.bgPath || "",
+        aspectRatio,
+        brandGold: brand.brandGold,
+        brandRed: brand.brandRed,
+        logoSrc: brand.logoSrc,
+        // Showcase posters keep the logo as a small corner watermark
+        // regardless of the brand kit's quote-card logo placement — a
+        // top-center hero lockup would compete with the product photo.
+        logoPosition:
+          brand.logoPosition && brand.logoPosition.includes("right")
+            ? brand.logoPosition
+            : "top-right",
+        logoSize: Math.min(brand.logoSize, 0.1),
+      }
+    : {
+        topLines: q.topLines || [],
+        bottomLines: q.bottomLines || [],
+        quote: q.quote || "",
+        keyword: (q.keyword || "").toUpperCase(),
+        ctaComment: (q.ctaComment || brand.ctaComment).toUpperCase(),
+        ctaTail: q.ctaTail || brand.ctaTail,
+        useCta: q.useCta !== false,
+        bgSrc: q.bgPath || "",
+        aspectRatio,
+        brandGold: brand.brandGold,
+        brandGoldLight: brand.brandGoldLight,
+        brandGoldDeep: brand.brandGoldDeep,
+        brandRed: brand.brandRed,
+        logoSrc: brand.logoSrc,
+        logoPosition: brand.logoPosition,
+        logoSize: brand.logoSize,
+        headlineFont: "",
+        posterStyle,
+      };
   try {
     const tStart = Date.now();
     const composition = await selectComposition({
       serveUrl: bundleLocation,
-      id: "JurieQuoteCard",
+      id: compositionId,
       inputProps,
     });
     await renderStill({

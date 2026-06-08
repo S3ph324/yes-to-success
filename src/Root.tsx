@@ -22,6 +22,11 @@ import {
   jurieQuoteCardSchema,
   calcMetaJurieQuoteCard,
 } from "./QuoteCard/JurieQuoteCard";
+import {
+  ProductShowcaseCard,
+  productShowcaseCardSchema,
+  calcMetaProductShowcaseCard,
+} from "./QuoteCard/ProductShowcaseCard";
 import { AppIcon, appIconSchema } from "./AppIcon/AppIcon";
 
 export const RemotionRoot: React.FC = () => {
@@ -132,6 +137,29 @@ export const RemotionRoot: React.FC = () => {
           brandGoldDeep: "#C7902A",
           brandRed: "#E11522",
           headlineFont: "",
+        }}
+      />
+
+      <Composition
+        id="ProductShowcaseCard"
+        component={ProductShowcaseCard}
+        durationInFrames={90}
+        fps={30}
+        width={1080}
+        height={1350}
+        schema={productShowcaseCardSchema}
+        calculateMetadata={calcMetaProductShowcaseCard}
+        defaultProps={{
+          productLine: "Aria Round — Tortoise",
+          tagline: "Your everyday pair, elevated.",
+          ctaTag: "SHOP NOW",
+          bgSrc: "",
+          aspectRatio: "4:5" as const,
+          brandGold: "#F5C13B",
+          brandRed: "#E11522",
+          logoSrc: "",
+          logoPosition: "top-right" as const,
+          logoSize: 0.085,
         }}
       />
 
