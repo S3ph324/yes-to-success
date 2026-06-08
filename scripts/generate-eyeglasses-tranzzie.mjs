@@ -107,10 +107,25 @@ EMPHASIS — choose deliberately, not randomly:
 - NEVER color particles/connectors (sa, ng, ang, na, ay, mo, ka, pa, ba,
   o, at, kung, mga, si, ni, kay, ito, iyan) — those stay "w".
 
-bgPrompt — describe a scene/background that puts "${frameLabel}" in frame as
-the hero product (e.g. styled flat-lay, on-face close-up, lifestyle moment) —
-written for an AI image generator that will receive the product's reference
-photos alongside this prompt.
+bgPrompt — describe a PRODUCT-PHOTOGRAPHY scene that puts "${frameLabel}" in
+frame as the unmistakable hero, written for an AI image generator that will
+receive the product's reference photos alongside this prompt. Pull from these
+real eyewear-ad archetypes — rotate through them across the batch so the set
+reads as a varied campaign, not the same shot four times:
+- Color-blocked still life: the frame staged on/against a bold solid-color set
+  (mustard, terracotta, burgundy, cream) with dramatic raking light and a long
+  graphic shadow — sculptural, punchy, almost editorial.
+- Minimalist styled set: the frame angled atop a small arrangement of clean
+  geometric props (a pedestal, a sphere, a tilted slab, a stepped block) on a
+  quiet two-tone backdrop — premium, considered, gallery-like.
+- On-face / lifestyle moment: a person wearing the frame or holding it up to
+  camera, cropped tight (shoulders-up or hand-and-frame), natural light,
+  confident styled-fashion energy — never a flat posed headshot.
+- Textured-surface flat-lay: the frame resting on an evocative natural surface
+  (sand, linen, warm stone, brushed fabric) with soft directional shadow and
+  generous negative space around it.
+Whichever you pick, the frame must stay sharp, well-lit, and instantly
+recognizable — the scene serves the product, never competes with it.
 
 Output ONLY a valid JSON array. No commentary, no markdown fences.`;
 
