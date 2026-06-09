@@ -42,8 +42,91 @@ const quotes = JSON.parse(await fs.readFile(quotesPath, "utf-8"));
 // reference subject is a PRODUCT (a specific frame) instead of a person —
 // swap the character lookup for an eyeglasses-asset lookup and the guidance
 // prompt for a product-accurate one further down.
-const eyeglassesMode = !!process.env.DASHBOARD_EYEGLASSES_ID;
-const wantGlassesId = process.env.DASHBOARD_EYEGLASSES_ID || "";
+const eyeglassesMode  = !!process.env.DASHBOARD_EYEGLASSES_ID;
+const wantGlassesId   = process.env.DASHBOARD_EYEGLASSES_ID || "";
+const ePosterStyle    = process.env.DASHBOARD_EYEGLASSES_STYLE       || "showcase";
+const ePlacement      = process.env.DASHBOARD_EYEGLASSES_PLACEMENT   || "auto";
+const eStyleKey       = process.env.DASHBOARD_EYEGLASSES_STYLE_KEY   || "";
+const eModelStyle     = process.env.DASHBOARD_EYEGLASSES_MODEL_STYLE || "outdoor_lifestyle";
+
+// ── Placement directives ──────────────────────────────────────────────────────
+const PLACEMENT_DIRECTIVE = {
+  standing:
+    "The eyeglasses must be positioned upright and standing tall, front-facing " +
+    "so both lenses and the full frame outline are clearly visible. " +
+    "The temples rest on the surface below the frame.",
+  flat:
+    "The eyeglasses must be lying flat — a flat-lay composition photographed " +
+    "from above or a low angle, with the full frame and lens surface clearly visible.",
+  floating:
+    "The eyeglasses must appear to float mid-air with no surface contact — " +
+    "suspended in space, creating a dramatic levitation effect.",
+  auto: "",   // Gemini chooses the best placement for the scene
+};
+
+// ── Visual style-key directives ───────────────────────────────────────────────
+const STYLE_KEY_DIRECTIVE = {
+  // — standing —
+  minimalist_white:
+    "Pure white or near-white seamless backdrop. " +
+    "Razor-sharp drop shadows beneath the frame, even frontal studio lighting.",
+  dark_luxury:
+    "Deep black or charcoal seamless background. " +
+    "Dramatic single side-key light that rakes across the frame revealing texture.",
+  soft_gradient:
+    "Background is a soft pastel or warm-toned gradient wash — no hard edges. " +
+    "Gentle diffused lighting, airy and clean.",
+  editorial_flat:
+    "Clean overhead editorial shot on a subtle surface texture (matte paper or linen). " +
+    "Natural side light, slight depth.",
+  // — flat —
+  overhead_marble:
+    "Flat-lay on a marble or polished stone surface. " +
+    "Top-down camera angle, natural light from the side, cool premium feel.",
+  fabric_texture:
+    "Flat-lay on a linen, velvet, or soft woven fabric. " +
+    "Soft diffused light, warm and tactile — texture visible but not distracting.",
+  dark_matte:
+    "Flat-lay on a matte black or very dark surface. " +
+    "Subtle product reflection below the frame, moody low-key lighting.",
+  styled_props:
+    "Flat-lay with a few minimal brand-style props around the frame " +
+    "(e.g. sprig of greenery, small fabric swatch, geometric shape). " +
+    "Props are secondary — the frame is the clear hero.",
+  // — floating —
+  clean_float:
+    "Frame floats against a pure white or off-white seamless void. " +
+    "Soft even studio light, no background elements — pure product hero.",
+  neon_glow:
+    "Dark dramatic scene. A colored neon rim light (blue, purple, or amber) " +
+    "glows around the frame edges. High contrast, editorial.",
+  misty_depth:
+    "Moody atmospheric fog or haze fills the frame. " +
+    "Dramatic light source partially cutting through the mist.",
+  gradient_float:
+    "Vivid or pastel gradient sky behind the frame. " +
+    "The frame floats centrally, slightly angled, bold and graphic.",
+};
+
+// ── Model shoot-style directives ──────────────────────────────────────────────
+const MODEL_STYLE_DIRECTIVE = {
+  outdoor_lifestyle:
+    "The model is photographed outdoors — a park, beach, city street, or café " +
+    "terrace. Candid, natural sunlight or golden hour light. Relaxed expression.",
+  indoor_studio:
+    "Clean professional studio environment. Seamless backdrop (white, grey, or " +
+    "warm neutral). Even studio lighting. The model looks confident and composed.",
+  active_sporty:
+    "Dynamic environment suggesting movement and energy — urban jogging path, " +
+    "rooftop, or sports court. Action-frozen moment, slight motion blur is fine.",
+  fashion_editorial:
+    "High-fashion editorial style. Bold directional lighting. " +
+    "Magazine-quality staging. The model's pose is intentional and editorial.",
+  street_style:
+    "Urban street or alleyway, candid-style photography. " +
+    "Natural ambient light, authentic street-fashion energy.",
+};
+
 let eyeglasses = null;
 if (eyeglassesMode && wantGlassesId) {
   try {
@@ -159,8 +242,14 @@ console.log(
         (eyeglassesMode ? `, frame: ${eyeglasses?.name || wantGlassesId}` : "") +
         `)`
       : eyeglassesMode
-        ? ` (no reference photos for this frame yet — generic eyeglasses scene)`
+        ? ` (no reference photos for this frame yet — generic scene)`
         : " (no character — scene only)") +
+    (eyeglassesMode
+      ? ` · style:${ePosterStyle}` +
+        (ePosterStyle === "showcase" && ePlacement !== "auto" ? ` · placement:${ePlacement}` : "") +
+        (ePosterStyle === "showcase" && eStyleKey ? ` · key:${eStyleKey}` : "") +
+        (ePosterStyle === "model" ? ` · shoot:${eModelStyle}` : "")
+      : "") +
     ` in ${location}…`,
 );
 
@@ -171,29 +260,84 @@ for (const { q, i } of targets) {
   // "Your everyday pair, elevated.") which steers the SCENE mood better than
   // `quote` (a clean product-name line meant for on-poster type, not imagery).
   const sceneVibe = eyeglassesMode ? q.tagline || q.quote : q.quote;
-  const guidance = eyeglassesMode
-    ? hasRef
-      ? `Feature the EXACT pair of eyeglasses shown in these reference photos ` +
+
+  // Build the eyeglasses placement + style modifier strings from the
+  // dashboard-selected options. Fall back gracefully when not set.
+  const placementNote = PLACEMENT_DIRECTIVE[ePlacement] || "";
+  const styleKeyNote  = STYLE_KEY_DIRECTIVE[eStyleKey]  || "";
+  const modelNote     = MODEL_STYLE_DIRECTIVE[eModelStyle] || "";
+  // Combine placement + style key into a single modifier block (for showcase).
+  const showcaseModifiers =
+    [placementNote, styleKeyNote].filter(Boolean).join(" ") ||
+    "Choose the most impactful product placement for this scene.";
+
+  let guidance;
+  if (eyeglassesMode && ePosterStyle === "model") {
+    // ── Product + Model ────────────────────────────────────────────────────
+    // AI-generated model wearing the frame. No product-only placement needed.
+    const frameDesc = hasRef
+      ? "the EXACT pair of eyeglasses shown in these reference photos " +
+        "(match frame shape, color, lens tint, and details perfectly — " +
+        "do not redesign or substitute)"
+      : "a stylish pair of eyeglasses";
+    guidance =
+      `Photograph of a model wearing ${frameDesc}. ` +
+      `${modelNote} ` +
+      `The eyeglasses must be clearly visible on the model's face and be ` +
+      `the focal accessory of the image. ` +
+      `Scene context: ${q.bgPrompt}. ` +
+      `The overall mood must clearly evoke: "${sceneVibe}". ` +
+      `The model should look natural and aspirational — NOT staged or stiff. ` +
+      `No text, logos, or watermarks anywhere in the image. ` +
+      `Vertical 4:5 portrait composition. Keep the top ~30% and bottom ~35% ` +
+      `darker and visually simple (clean negative space for a text overlay ` +
+      `added later). The photo must contain zero readable text.`;
+  } else if (eyeglassesMode) {
+    // ── Product Showcase ───────────────────────────────────────────────────
+    if (hasRef) {
+      guidance =
+        `Feature the EXACT pair of eyeglasses shown in these reference photos ` +
         `as the hero product — match its frame shape, color, lens tint, and ` +
-        `details perfectly; do not redesign or substitute a different pair. ` +
-        `Place it in this scene: ${q.bgPrompt}. The product must be clearly ` +
-        `visible, in sharp focus, and instantly recognizable as the same ` +
-        `pair shown in the references. The scene must clearly visually ` +
-        `evoke this feeling: "${sceneVibe}". ${STYLE}`
-      : `Create a product-showcase photograph featuring a stylish pair of ` +
-        `eyeglasses as the hero subject, in this scene: ${q.bgPrompt}. ` +
+        `all design details perfectly; do not redesign or substitute a different pair. ` +
+        `${showcaseModifiers} ` +
+        `Scene context: ${q.bgPrompt}. ` +
+        `The product must be clearly visible, in sharp focus, and instantly ` +
+        `recognizable as the same pair shown in the references. ` +
+        `The scene must clearly visually evoke this feeling: "${sceneVibe}". ` +
+        `No people, no hands, no props that obscure the frame. ` +
+        `No text, logos, or watermarks anywhere in the image. ` +
+        `Vertical 4:5 portrait composition. Keep the top ~30% and bottom ~35% ` +
+        `darker and visually simple (clean negative space for a text overlay ` +
+        `added later). The photo must contain zero readable text.`;
+    } else {
+      guidance =
+        `Create a product-showcase photograph featuring a stylish pair of ` +
+        `eyeglasses as the hero subject. ` +
+        `${showcaseModifiers} ` +
+        `Scene context: ${q.bgPrompt}. ` +
         `The eyeglasses must be clearly visible, in sharp focus, and the ` +
-        `main focal point of the frame. The scene must clearly visually ` +
-        `evoke this feeling: "${sceneVibe}". ${STYLE}`
-    : hasRef
-      ? `Use the SAME person shown in these reference photos as the subject — ` +
-        `keep their face, hair, and identity perfectly consistent and clearly ` +
-        `recognizable. Place them in this scene: ${q.bgPrompt}. ` +
-        `The scene must clearly visually express this message so a viewer ` +
-        `instantly gets it: "${q.quote}". ${STYLE}`
-      : `Create a photograph of this scene: ${q.bgPrompt}. ` +
-        `It must clearly visually express this message so a viewer instantly ` +
-        `gets it: "${q.quote}". ${STYLE}`;
+        `main focal point. ` +
+        `The scene must clearly visually evoke this feeling: "${sceneVibe}". ` +
+        `No people, no hands. No text, logos, or watermarks anywhere in the image. ` +
+        `Vertical 4:5 portrait composition. Keep the top ~30% and bottom ~35% ` +
+        `darker and visually simple (clean negative space for a text overlay ` +
+        `added later). The photo must contain zero readable text.`;
+    }
+  } else if (hasRef) {
+    // ── Character (Jurie / other) with reference photos ────────────────────
+    guidance =
+      `Use the SAME person shown in these reference photos as the subject — ` +
+      `keep their face, hair, and identity perfectly consistent and clearly ` +
+      `recognizable. Place them in this scene: ${q.bgPrompt}. ` +
+      `The scene must clearly visually express this message so a viewer ` +
+      `instantly gets it: "${q.quote}". ${STYLE}`;
+  } else {
+    // ── Scene-only (no character, no eyeglasses) ───────────────────────────
+    guidance =
+      `Create a photograph of this scene: ${q.bgPrompt}. ` +
+      `It must clearly visually express this message so a viewer instantly ` +
+      `gets it: "${q.quote}". ${STYLE}`;
+  }
   const t0 = Date.now();
   let buf = null;
   let lastErr = "";

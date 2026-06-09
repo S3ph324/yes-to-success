@@ -14,9 +14,12 @@
 // Usage:
 //   node scripts/batch-eyeglasses-tranzzie.mjs [count] [topic/angle...]
 // Env (set by the dashboard's /api/generate handler):
-//   DASHBOARD_EYEGLASSES_ID    - which config/eyeglasses.json entry to feature
-//   DASHBOARD_EYEGLASSES_STYLE - "showcase" (only style wired up for now)
-//   DASHBOARD_ASPECT_DIST      - optional {"1:1":25,"4:5":50,"9:16":25} mix
+//   DASHBOARD_EYEGLASSES_ID          - which config/eyeglasses.json entry to feature
+//   DASHBOARD_EYEGLASSES_STYLE       - "showcase" | "model"
+//   DASHBOARD_EYEGLASSES_PLACEMENT   - "standing" | "flat" | "floating" | "auto"
+//   DASHBOARD_EYEGLASSES_STYLE_KEY   - visual style key within placement (e.g. "dark_luxury")
+//   DASHBOARD_EYEGLASSES_MODEL_STYLE - "outdoor_lifestyle" | "indoor_studio" | etc.
+//   DASHBOARD_ASPECT_DIST            - optional {"1:1":25,"4:5":50,"9:16":25} mix
 //
 // Autoposting is intentionally NOT wired (manual posting only).
 
@@ -51,6 +54,15 @@ const env = {
     process.env.DASHBOARD_BRAND_PRESET_ID || client.brandPresetId,
   DASHBOARD_EYEGLASSES_ID: eyeglassesId,
   DASHBOARD_EYEGLASSES_STYLE: process.env.DASHBOARD_EYEGLASSES_STYLE || "showcase",
+  ...(process.env.DASHBOARD_EYEGLASSES_PLACEMENT
+    ? { DASHBOARD_EYEGLASSES_PLACEMENT: process.env.DASHBOARD_EYEGLASSES_PLACEMENT }
+    : {}),
+  ...(process.env.DASHBOARD_EYEGLASSES_STYLE_KEY
+    ? { DASHBOARD_EYEGLASSES_STYLE_KEY: process.env.DASHBOARD_EYEGLASSES_STYLE_KEY }
+    : {}),
+  ...(process.env.DASHBOARD_EYEGLASSES_MODEL_STYLE
+    ? { DASHBOARD_EYEGLASSES_MODEL_STYLE: process.env.DASHBOARD_EYEGLASSES_MODEL_STYLE }
+    : {}),
   ...(topic ? { CLIENT_TOPIC: topic } : {}),
 };
 

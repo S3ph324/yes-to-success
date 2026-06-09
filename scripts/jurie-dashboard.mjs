@@ -802,6 +802,9 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
     posterType,
     eyeglassesId,
     eyeglassesStyle,
+    eyeglassesPlacement,
+    eyeglassesStyleKey,
+    eyeglassesModelStyle,
     aspectDist,
   } = req.body || {};
   const c = await getClient(client);
@@ -837,6 +840,9 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
   if (isEyeglasses) {
     env.DASHBOARD_EYEGLASSES_ID = glassesId;
     env.DASHBOARD_EYEGLASSES_STYLE = glassesStyle;
+    if (eyeglassesPlacement) env.DASHBOARD_EYEGLASSES_PLACEMENT = String(eyeglassesPlacement);
+    if (eyeglassesStyleKey)  env.DASHBOARD_EYEGLASSES_STYLE_KEY = String(eyeglassesStyleKey);
+    if (eyeglassesModelStyle) env.DASHBOARD_EYEGLASSES_MODEL_STYLE = String(eyeglassesModelStyle);
   } else if (characterId !== undefined) {
     env.DASHBOARD_CHARACTER_ID = characterId;
   }
@@ -1678,6 +1684,11 @@ transition:border-color .15s,background .15s;background:rgba(255,255,255,.015)}
 .ea-drop:hover,.ea-drop.over{border-color:var(--gold);background:rgba(232,182,74,.05)}
 .ea-drop b{font-size:14px;margin-bottom:2px}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* Eyeglasses poster style cards */
+.esty-card{display:flex;flex-direction:column;gap:6px;padding:11px 13px;border-radius:10px;
+cursor:pointer;font-size:13px;transition:border-color .15s,background .15s;border:1px solid var(--line)}
+.esty-subcard{display:flex;align-items:flex-start;gap:8px;padding:10px 12px;border-radius:9px;
+cursor:pointer;font-size:13px;transition:border-color .15s,background .15s;border:1px solid var(--line)}
 </style></head><body>
 <header><b>QUOTE&nbsp;POSTER&nbsp;<i>STUDIO</i></b>
 <span class="pill" title="deployed version">v${VERSION}</span><span class="sp"></span>
@@ -1841,19 +1852,59 @@ async function viewGenerate(){
    +'<input type="checkbox" id="g_logo_on" style="width:auto;margin:0"> Include logo</label>'
    +'<div><label style="font-size:11px" id="g_extras_label">Extra reference photos (overrides character for this batch)</label>'
    +'<input id="g_extras" type="file" accept="image/*" multiple></div></div>'
-   +'<div id="g_estyle_box" style="display:none;margin-top:16px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
-   +'<div class="section-label" style="margin:0 0 12px">Eyeglasses poster type</div>'
-   +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px">'
-   +'<label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:var(--txt);padding:10px 12px;border:1px solid var(--gold);border-radius:9px;background:rgba(232,182,74,.04)">'
-   +'<input type="radio" name="g_estyle" value="showcase" checked style="width:auto;margin:3px 0 0;accent-color:var(--gold)">'
-   +'<span><b>Product showcase</b> <span style="font-size:9px;background:var(--gold);color:#15120a;padding:1px 5px;border-radius:4px">READY</span><br><span class="muted" style="font-size:11px">Frame as the hero \\u2014 styled photo + tagline</span></span></label>'
-   +'<label style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--mut);padding:10px 12px;border:1px solid var(--line);border-radius:9px;opacity:.5;cursor:not-allowed">'
-   +'<input type="radio" name="g_estyle" value="infographic" disabled style="width:auto;margin:3px 0 0">'
-   +'<span><b>Infographic</b> <span style="font-size:9px;background:var(--line2);color:var(--mut);padding:1px 5px;border-radius:4px">SOON</span><br><span style="font-size:11px">Feature / benefit breakdown layout</span></span></label>'
-   +'<label style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--mut);padding:10px 12px;border:1px solid var(--line);border-radius:9px;opacity:.5;cursor:not-allowed">'
-   +'<input type="radio" name="g_estyle" value="quote" disabled style="width:auto;margin:3px 0 0">'
-   +'<span><b>Quote poster</b> <span style="font-size:9px;background:var(--line2);color:var(--mut);padding:1px 5px;border-radius:4px">SOON</span><br><span style="font-size:11px">Testimonial-style with the frame in shot</span></span></label>'
+   +'<div id="g_estyle_box" style="display:none;margin-top:16px">'
+   // ── Top-level poster style cards ──────────────────────────────────────────
+   +'<div style="padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
+   +'<div class="section-label" style="margin:0 0 12px">Eyeglasses poster style</div>'
+   +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px">'
+   +'<label class="esty-card" style="border-color:var(--gold);background:rgba(232,182,74,.04)">'
+   +'<div style="display:flex;align-items:center;gap:8px"><input type="radio" name="g_estyle" value="showcase" checked style="width:auto;margin:0;accent-color:var(--gold)"><b>Product showcase</b></div>'
+   +'<p class="muted" style="margin:0;font-size:11px;line-height:1.4">Frame as the hero \\u2014 styled product photo + tagline</p>'
+   +'<span style="align-self:flex-start;font-size:9px;background:var(--gold);color:#15120a;padding:1px 5px;border-radius:4px;font-weight:700">READY</span>'
+   +'</label>'
+   +'<label class="esty-card">'
+   +'<div style="display:flex;align-items:center;gap:8px"><input type="radio" name="g_estyle" value="model" style="width:auto;margin:0;accent-color:var(--gold)"><b>Product + Model</b></div>'
+   +'<p class="muted" style="margin:0;font-size:11px;line-height:1.4">Frame worn by an AI-generated model in a lifestyle scene</p>'
+   +'<span style="align-self:flex-start;font-size:9px;background:var(--gold);color:#15120a;padding:1px 5px;border-radius:4px;font-weight:700">READY</span>'
+   +'</label>'
+   +'<label class="esty-card" style="opacity:.42;cursor:not-allowed">'
+   +'<div style="display:flex;align-items:center;gap:8px"><input type="radio" name="g_estyle" value="infographic" disabled style="width:auto;margin:0"><b style="color:var(--mut)">Infographic</b></div>'
+   +'<p style="margin:0;font-size:11px;line-height:1.4;color:var(--mut)">Feature / benefit breakdown layout</p>'
+   +'<span style="align-self:flex-start;font-size:9px;background:var(--line2);color:var(--mut);padding:1px 5px;border-radius:4px">SOON</span>'
+   +'</label>'
+   +'<label class="esty-card" style="opacity:.42;cursor:not-allowed">'
+   +'<div style="display:flex;align-items:center;gap:8px"><input type="radio" name="g_estyle" value="quote" disabled style="width:auto;margin:0"><b style="color:var(--mut)">Quote poster</b></div>'
+   +'<p style="margin:0;font-size:11px;line-height:1.4;color:var(--mut)">Testimonial-style with the frame in shot</p>'
+   +'<span style="align-self:flex-start;font-size:9px;background:var(--line2);color:var(--mut);padding:1px 5px;border-radius:4px">SOON</span>'
+   +'</label>'
    +'</div></div>'
+   // ── Placement sub-panel (showcase only) ───────────────────────────────────
+   +'<div id="ea_pl_box" style="display:block;margin-top:10px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
+   +'<div class="section-label" style="margin:0 0 10px">Product placement</div>'
+   +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">'
+   +'<label class="esty-subcard"><input type="radio" name="g_placement" value="standing" style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">\\u2191 Standing up</b><div class="muted" style="font-size:11px;margin-top:2px">Upright, frame tall and prominent</div></div></label>'
+   +'<label class="esty-subcard"><input type="radio" name="g_placement" value="flat" style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">\\u2194 Laying flat</b><div class="muted" style="font-size:11px;margin-top:2px">Flat-lay, viewed from above or a low angle</div></div></label>'
+   +'<label class="esty-subcard"><input type="radio" name="g_placement" value="floating" style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">\\u2726 Floating</b><div class="muted" style="font-size:11px;margin-top:2px">Suspended mid-air, no surface contact</div></div></label>'
+   +'<label class="esty-subcard" style="border-color:var(--gold);background:rgba(232,182,74,.04)"><input type="radio" name="g_placement" value="auto" checked style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">\\u2605 Let AI decide</b><div class="muted" style="font-size:11px;margin-top:2px">Gemini picks the best placement for each scene</div></div></label>'
+   +'</div></div>'
+   // ── Style-key sub-panel (filled dynamically per placement selection) ───────
+   +'<div id="ea_sk_box" style="display:none;margin-top:10px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
+   +'<div class="section-label" style="margin:0 0 6px">Visual style</div>'
+   +'<p class="muted" style="margin:0 0 10px;font-size:11px">Placeholder cards \\u2014 real sample poster images can be dropped in later.</p>'
+   +'<div id="ea_sk_grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px"></div>'
+   +'</div>'
+   // ── Model style sub-panel (Product + Model only) ───────────────────────────
+   +'<div id="ea_ms_box" style="display:none;margin-top:10px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
+   +'<div class="section-label" style="margin:0 0 6px">Shoot style</div>'
+   +'<p class="muted" style="margin:0 0 10px;font-size:11px">Gemini generates a model wearing your frame in the selected setting.</p>'
+   +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">'
+   +'<label class="esty-subcard" style="border-color:var(--gold);background:rgba(232,182,74,.04)"><input type="radio" name="g_mstyle" value="outdoor_lifestyle" checked style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">Outdoor lifestyle</b><div class="muted" style="font-size:11px;margin-top:2px">Park, street or beach \\u2014 candid, natural light</div></div></label>'
+   +'<label class="esty-subcard"><input type="radio" name="g_mstyle" value="indoor_studio" style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">Indoor studio</b><div class="muted" style="font-size:11px;margin-top:2px">Clean studio, professional lighting</div></div></label>'
+   +'<label class="esty-subcard"><input type="radio" name="g_mstyle" value="active_sporty" style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">Active & sporty</b><div class="muted" style="font-size:11px;margin-top:2px">Movement and energy \\u2014 sport or activity</div></div></label>'
+   +'<label class="esty-subcard"><input type="radio" name="g_mstyle" value="fashion_editorial" style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">Fashion editorial</b><div class="muted" style="font-size:11px;margin-top:2px">Magazine-quality, bold fashion styling</div></div></label>'
+   +'<label class="esty-subcard"><input type="radio" name="g_mstyle" value="street_style" style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">Street style</b><div class="muted" style="font-size:11px;margin-top:2px">Urban environment, candid photography</div></div></label>'
+   +'</div></div>'
+   +'</div>'
    +'<div style="margin-top:16px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
    +'<div class="section-label" style="margin:0 0 6px">Aspect ratio mix</div>'
    +'<p class="muted" style="margin:0 0 12px;font-size:11px">Optional \\u2014 split the batch across formats instead of all 4:5. Check the ones you want, then drag a slider \\u2014 the others rebalance automatically so the mix always totals 100%.</p>'
@@ -1950,6 +2001,107 @@ async function viewGenerate(){
   });
   syncPtypeCards();
   paintSubject();
+  // ── Eyeglasses poster-style card wiring ──────────────────────────────────
+  // Style-key card definitions per placement (placeholder text only; swap in
+  // real sample images via styleImageUrl once they're ready).
+  const STYLE_KEYS = {
+    standing: [
+      { key:'minimalist_white',  label:'Minimalist white',    desc:'Frame on white backdrop, razor-sharp shadows' },
+      { key:'dark_luxury',       label:'Dark luxury',         desc:'Black/charcoal background, dramatic side lighting' },
+      { key:'soft_gradient',     label:'Soft gradient',       desc:'Pastel or warm gradient wash behind the frame' },
+      { key:'editorial_flat',    label:'Editorial flat-lay',  desc:'Clean overhead shot with subtle texture surface' },
+    ],
+    flat: [
+      { key:'overhead_marble',   label:'Overhead marble',     desc:'Marble or stone surface, top-down angle' },
+      { key:'fabric_texture',    label:'Fabric texture',      desc:'Linen or velvet surface, soft diffused light' },
+      { key:'dark_matte',        label:'Dark matte',          desc:'Matte black surface, product reflection' },
+      { key:'styled_props',      label:'Styled props',        desc:'Frame surrounded by complementary brand objects' },
+    ],
+    floating: [
+      { key:'clean_float',       label:'Clean float',         desc:'Frame suspended against pure white/off-white' },
+      { key:'neon_glow',         label:'Neon glow',           desc:'Dark scene, colored rim light glowing on frame' },
+      { key:'misty_depth',       label:'Misty depth',         desc:'Moody fog/haze, dramatic lighting from below' },
+      { key:'gradient_float',    label:'Gradient float',      desc:'Colourful gradient sky, floating mid-composition' },
+    ],
+    auto: [] // AI decides — no style key sub-panel shown
+  };
+  function buildStyleKeyGrid(placement) {
+    const grid = $('#ea_sk_grid'); if (!grid) return;
+    const keys = STYLE_KEYS[placement] || [];
+    if (!keys.length) { $('#ea_sk_box').style.display = 'none'; return; }
+    grid.innerHTML = keys.map((sk, i) =>
+      '<label class="esty-subcard"' + (i === 0 ? ' style="border-color:var(--gold);background:rgba(232,182,74,.04)"' : '') + '>'
+      + '<input type="radio" name="g_stylekey" value="' + sk.key + '"' + (i === 0 ? ' checked' : '') + ' style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)">'
+      + '<div><b style="font-size:12.5px">' + sk.label + '</b>'
+      + '<div class="muted" style="font-size:11px;margin-top:2px">' + sk.desc + '</div></div>'
+      + '</label>'
+    ).join('');
+    $('#ea_sk_box').style.display = 'block';
+    // Wire radio highlight for new style-key cards
+    grid.querySelectorAll('input[name="g_stylekey"]').forEach(r => {
+      r.onchange = () => syncStyleKeyCards();
+    });
+  }
+  function syncStyleKeyCards() {
+    document.querySelectorAll('#ea_sk_grid .esty-subcard').forEach(el => {
+      const r = el.querySelector('input');
+      el.style.borderColor = r.checked ? 'var(--gold)' : 'var(--line)';
+      el.style.background = r.checked ? 'rgba(232,182,74,.04)' : 'transparent';
+    });
+  }
+  function syncEstyCards() {
+    document.querySelectorAll('#g_estyle_box > div:first-child .esty-card').forEach(el => {
+      const r = el.querySelector('input[name="g_estyle"]');
+      if (!r) return;
+      el.style.borderColor = r.checked ? 'var(--gold)' : 'var(--line)';
+      el.style.background = r.checked ? 'rgba(232,182,74,.04)' : 'transparent';
+    });
+    const eStyleVal = (document.querySelector('input[name="g_estyle"]:checked') || {}).value || 'showcase';
+    const plBox = $('#ea_pl_box'), msBox = $('#ea_ms_box'), skBox = $('#ea_sk_box');
+    if (eStyleVal === 'showcase') {
+      if (plBox) plBox.style.display = 'block';
+      if (msBox) msBox.style.display = 'none';
+      // Show/hide style-key panel based on current placement
+      const curPlacement = (document.querySelector('input[name="g_placement"]:checked') || {}).value || 'auto';
+      buildStyleKeyGrid(curPlacement);
+    } else if (eStyleVal === 'model') {
+      if (plBox) plBox.style.display = 'none';
+      if (msBox) msBox.style.display = 'block';
+      if (skBox) skBox.style.display = 'none';
+    } else {
+      if (plBox) plBox.style.display = 'none';
+      if (msBox) msBox.style.display = 'none';
+      if (skBox) skBox.style.display = 'none';
+    }
+  }
+  function syncPlacementCards() {
+    document.querySelectorAll('#ea_pl_box .esty-subcard').forEach(el => {
+      const r = el.querySelector('input[name="g_placement"]');
+      if (!r) return;
+      el.style.borderColor = r.checked ? 'var(--gold)' : 'var(--line)';
+      el.style.background = r.checked ? 'rgba(232,182,74,.04)' : 'transparent';
+    });
+    const curPlacement = (document.querySelector('input[name="g_placement"]:checked') || {}).value || 'auto';
+    buildStyleKeyGrid(curPlacement);
+  }
+  function syncModelStyleCards() {
+    document.querySelectorAll('#ea_ms_box .esty-subcard').forEach(el => {
+      const r = el.querySelector('input[name="g_mstyle"]');
+      if (!r) return;
+      el.style.borderColor = r.checked ? 'var(--gold)' : 'var(--line)';
+      el.style.background = r.checked ? 'rgba(232,182,74,.04)' : 'transparent';
+    });
+  }
+  document.querySelectorAll('input[name="g_estyle"]').forEach(r => {
+    r.onchange = () => syncEstyCards();
+  });
+  document.querySelectorAll('input[name="g_placement"]').forEach(r => {
+    r.onchange = () => syncPlacementCards();
+  });
+  document.querySelectorAll('input[name="g_mstyle"]').forEach(r => {
+    r.onchange = () => syncModelStyleCards();
+  });
+  syncEstyCards();
   // ── Aspect-ratio mix wiring ──
   // Sliders always sum to exactly 100%: dragging one redistributes the
   // remainder across the other CHECKED ratios proportionally to their
@@ -2089,7 +2241,17 @@ async function viewGenerate(){
     if(posterType==='eyeglasses'){
       fd.append('eyeglassesId',$('#g_subject')?$('#g_subject').value:'');
       const er=document.querySelector('input[name="g_estyle"]:checked');
-      fd.append('eyeglassesStyle',er?er.value:'showcase');
+      const eStyleVal=er?er.value:'showcase';
+      fd.append('eyeglassesStyle',eStyleVal);
+      if(eStyleVal==='showcase'){
+        const pr=document.querySelector('input[name="g_placement"]:checked');
+        fd.append('eyeglassesPlacement',pr?pr.value:'auto');
+        const skr=document.querySelector('input[name="g_stylekey"]:checked');
+        fd.append('eyeglassesStyleKey',skr?skr.value:'');
+      }else if(eStyleVal==='model'){
+        const mr=document.querySelector('input[name="g_mstyle"]:checked');
+        fd.append('eyeglassesModelStyle',mr?mr.value:'outdoor_lifestyle');
+      }
       fd.append('characterId','');
     }else{
       fd.append('characterId',$('#g_subject')?$('#g_subject').value:'');
