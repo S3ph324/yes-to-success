@@ -128,10 +128,9 @@ try {
   /* leave "?" */
 }
 
-// Short epoch token injected into the page HTML so the client can use it as a
-// dynamic image cache-buster. Changes on every server restart / Railway deploy,
-// which automatically invalidates any broken cached poster responses in browsers
-// that were open during a downtime window — no need to manually bump ?v=N.
+// SERVER_EPOCH kept for any future server-side use; the client now generates its
+// own per-page-load token (Date.now) for image URLs so it never reuses a URL
+// the browser might have cached during a downtime window.
 const SERVER_EPOCH = Math.floor(Date.now() / 1000).toString(36);
 
 const PORT = parseInt(
@@ -500,7 +499,7 @@ const ASSET_CACHE = { maxAge: "7d", immutable: true };
 // render was still writing the file on first load, and a normal refresh could
 // never fix it (browsers honour immutable strictly). 24h max-age + ETag lets
 // the browser revalidate efficiently without serving stale broken content.
-const POSTER_CACHE = { maxAge: "1d" };
+
 
 // Serve poster style preset images — committed read-only assets, serve from
 // the in-image repo path (projectRoot) so they're always available on Railway
@@ -1100,10 +1099,10 @@ app.get("/posters/:client/:stamp/:file", async (req, res) => {
     return res.status(400).end();
   if (req.query.dl)
     res.set("Content-Disposition", `attachment; filename="${file}"`);
-  // Use error callback so a missing file returns 404 (not Express's HTML error
-  // page, which the browser would display as a broken image icon).
-  // POSTER_CACHE deliberately omits `immutable` — see its definition above.
-  res.sendFile(fp, POSTER_CACHE, (err) => {
+  // No-store: browser must always fetch fresh. Combined with the per-page-load
+  // ?t= buster in the client, this prevents any broken-response caching.
+  if (!req.query.dl) res.set("Cache-Control", "no-store");
+  res.sendFile(fp, {}, (err) => {
     if (err && !res.headersSent) {
       console.warn(`[poster] ${err.code || err.message} – ${fp}`);
       res.status(404).end();
@@ -1834,9 +1833,10 @@ font-size:13px;transition:border-color .15s,box-shadow .15s;border:1.5px solid v
 <div id="view"></div>
 </main>
 <script>
-// Server-epoch token — changes every deploy/restart so any cached broken
-// poster-image responses are automatically busted in the browser.
-const _SE='${SERVER_EPOCH}';
+// Per-page-load image cache-buster. Generated client-side so it is ALWAYS
+// unique — even if the browser cached an old copy of this HTML page, the
+// token changes on every visit and forces a fresh image fetch.
+const _SE=Date.now().toString(36);
 const $=s=>document.querySelector(s);
 // -- GET-response cache: makes tab switching feel instant ----------------
 // Every view re-fetches its config endpoints (briefs/brands/characters/
