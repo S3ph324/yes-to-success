@@ -1367,6 +1367,32 @@ app.get("/api/env", (_q, res) =>
   }),
 );
 app.get("/healthz", (_q, res) => res.json({ ok: true }));
+// Diagnostic: check if poster files are reachable from the server's perspective.
+// Call: /api/debug/posters?client=tranzzie  — returns paths + stat results.
+app.get("/api/debug/posters", async (req, res) => {
+  const c = await getClient(req.query.client);
+  if (!c) return res.status(400).json({ error: "unknown client" });
+  const baseDir = clientExportDir(c);
+  const report = { client: c.id, baseDir, batches: [] };
+  let stamps = [];
+  try { stamps = (await fs.readdir(baseDir)).filter(safeStamp).sort().reverse().slice(0, 3); }
+  catch (err) { report.baseDirError = err.message; return res.json(report); }
+  for (const stamp of stamps) {
+    const entry = { stamp, files: [] };
+    let files = [];
+    try { files = (await fs.readdir(path.join(baseDir, stamp))).filter(f => f.endsWith(".png")).slice(0, 2); }
+    catch (err) { entry.error = err.message; report.batches.push(entry); continue; }
+    for (const f of files) {
+      const fp = path.join(baseDir, stamp, f);
+      let size = null, err = null;
+      try { const st = await fs.stat(fp); size = st.size; }
+      catch (e) { err = e.message; }
+      entry.files.push({ file: f, path: fp, size, err });
+    }
+    report.batches.push(entry);
+  }
+  res.json(report);
+});
 app.get("/", (_q, res) => res.type("html").send(PAGE));
 
 // ── Try-On sub-site (/tryon) ──────────────────────────────────────────────
