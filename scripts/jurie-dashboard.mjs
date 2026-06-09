@@ -2035,8 +2035,8 @@ async function viewGenerate(){
     if(!el)return;
     if(p){el.style.backgroundImage='url(/api/brandlogo?p='+encodeURIComponent(p)+')';el.textContent='';}
     else{el.style.backgroundImage='';el.textContent='no logo';}}
-  $('#g_brand').onchange=updLogo;
-  $('#g_brief').onchange=e=>{const b=briefs.find(x=>x.id===e.target.value);if(b&&b.topics&&b.topics[0])$('#g_topic').value=b.topics[0];};
+  $('#g_brand').onchange=()=>{updLogo();saveGenSettings();};
+  $('#g_brief').onchange=e=>{const b=briefs.find(x=>x.id===e.target.value);if(b&&b.topics&&b.topics[0])$('#g_topic').value=b.topics[0];saveGenSettings();};
   function curPosterType(){
     const r=document.querySelector('input[name="g_ptype"]:checked');
     return r?r.value:'main';
@@ -2075,7 +2075,7 @@ async function viewGenerate(){
     function updSubjPrev(){const id=sel.value,p=map[id],el=$('#g_cprev');
       if(p){el.style.backgroundImage='url('+photoApi+'?p='+encodeURIComponent(p)+')';el.textContent='';}
       else{el.style.backgroundImage='';el.textContent=id?'(no photo)':'none';}}
-    sel.onchange=updSubjPrev;updSubjPrev();
+    sel.onchange=()=>{updSubjPrev();saveGenSettings();};updSubjPrev();
     updLogo();
     const ebox=$('#g_estyle_box');if(ebox)ebox.style.display=pt==='eyeglasses'?'block':'none';
     const exLbl=$('#g_extras_label');
@@ -2107,7 +2107,7 @@ async function viewGenerate(){
     if(ebox) ebox.style.display = isEye ? 'block' : 'none';
   }
   document.querySelectorAll('input[name="g_ptype"]').forEach(r=>{
-    r.onchange=()=>{syncPtypeCards();paintSubject();};
+    r.onchange=()=>{syncPtypeCards();paintSubject();saveGenSettings();};
   });
   syncPtypeCards();
   paintSubject();
@@ -2147,15 +2147,82 @@ async function viewGenerate(){
     });
   }
   document.querySelectorAll('input[name="g_estyle"]').forEach(r => {
-    r.onchange = () => syncEstyCards();
+    r.onchange = () => { syncEstyCards(); saveGenSettings(); };
   });
   document.querySelectorAll('input[name="g_psp"]').forEach(r => {
-    r.onchange = () => syncPspCards();
+    r.onchange = () => { syncPspCards(); saveGenSettings(); };
   });
   document.querySelectorAll('input[name="g_mstyle"]').forEach(r => {
-    r.onchange = () => syncModelStyleCards();
+    r.onchange = () => { syncModelStyleCards(); saveGenSettings(); };
   });
   syncEstyCards();
+  // ── Generate settings persistence (localStorage) ─────────────────────────
+  const _SKEY='gen_settings_'+CLIENT;
+  function saveGenSettings(){
+    const arDist={};
+    document.querySelectorAll('.ar-chk').forEach(chk=>{
+      if(chk.checked){const card=chk.closest('.ar-card'),sl=card&&card.querySelector('.ar-slider');
+        if(sl)arDist[chk.dataset.ar]=sl.value;}
+    });
+    const s={
+      ptype:curPosterType(),
+      topic:$('#g_topic')?$('#g_topic').value:'',
+      headline:$('#ea_headline')?$('#ea_headline').value:'',
+      brief:$('#g_brief')?$('#g_brief').value:'',
+      brand:$('#g_brand')?$('#g_brand').value:'',
+      logoOn:$('#g_logo_on')?$('#g_logo_on').checked:true,
+      count:$('#g_count')?$('#g_count').value:'8',
+      subject:$('#g_subject')?$('#g_subject').value:'',
+      estyle:(document.querySelector('input[name="g_estyle"]:checked')||{}).value||'showcase',
+      psp:(document.querySelector('input[name="g_psp"]:checked')||{}).value||'auto',
+      mstyle:(document.querySelector('input[name="g_mstyle"]:checked')||{}).value||'auto',
+      arDist,
+    };
+    try{localStorage.setItem(_SKEY,JSON.stringify(s));}catch{}
+  }
+  function loadGenSettings(){
+    let s;try{s=JSON.parse(localStorage.getItem(_SKEY)||'null');}catch{}
+    if(!s)return;
+    // Poster type first — determines which subject dropdown paintSubject renders
+    if(s.ptype){
+      const pto=document.querySelector('input[name="g_ptype"][value="'+s.ptype+'"]');
+      if(pto&&!pto.checked){pto.checked=true;syncPtypeCards();paintSubject();}
+    }
+    // Topic / headline
+    if($('#g_topic')&&s.topic)$('#g_topic').value=s.topic;
+    if($('#ea_headline')&&s.headline)$('#ea_headline').value=s.headline;
+    // Brief / brand
+    if($('#g_brief')&&s.brief)$('#g_brief').value=s.brief;
+    if($('#g_brand')&&s.brand){$('#g_brand').value=s.brand;updLogo();}
+    // Logo + count
+    if($('#g_logo_on')&&s.logoOn!=null)$('#g_logo_on').checked=s.logoOn;
+    if($('#g_count')&&s.count)$('#g_count').value=s.count;
+    // Subject — rendered by paintSubject above, fire change so preview updates
+    if($('#g_subject')&&s.subject){$('#g_subject').value=s.subject;$('#g_subject').dispatchEvent(new Event('change'));}
+    // Eyeglasses style / preset / model style
+    if(s.estyle){const er=document.querySelector('input[name="g_estyle"][value="'+s.estyle+'"]');
+      if(er&&!er.checked){er.checked=true;syncEstyCards();}}
+    if(s.psp){const pr=document.querySelector('input[name="g_psp"][value="'+s.psp+'"]');
+      if(pr&&!pr.checked){pr.checked=true;syncPspCards();}}
+    if(s.mstyle){const mr=document.querySelector('input[name="g_mstyle"][value="'+s.mstyle+'"]');
+      if(mr&&!mr.checked){mr.checked=true;syncModelStyleCards();}}
+    // Aspect-ratio distribution
+    if(s.arDist&&typeof s.arDist==='object'){
+      document.querySelectorAll('.ar-chk').forEach(chk=>{
+        const pct=s.arDist[chk.dataset.ar];
+        if(pct!=null){chk.checked=true;
+          const card=chk.closest('.ar-card'),sl=card&&card.querySelector('.ar-slider');
+          if(sl)sl.value=pct;}
+      });
+    }
+  }
+  // Wire remaining fields to save on change
+  if($('#g_topic'))$('#g_topic').oninput=saveGenSettings;
+  if($('#ea_headline'))$('#ea_headline').oninput=saveGenSettings;
+  if($('#g_logo_on'))$('#g_logo_on').onchange=saveGenSettings;
+  if($('#g_count'))$('#g_count').onchange=saveGenSettings;
+  loadGenSettings();
+
   // ── Custom style reference file inputs ───────────────────────────────────
   function wireStyleRefInput(fileInputId, labelId, clearBtnId) {
     const fi=$('#'+fileInputId), lbl=$('#'+labelId), clr=$('#'+clearBtnId);
@@ -2264,8 +2331,8 @@ async function viewGenerate(){
   }
   AR_RATIOS.forEach(r=>{
     const c=arCard(r);
-    c.querySelector('.ar-chk').onchange=e=>arToggle(r,e.target.checked);
-    c.querySelector('.ar-slider').oninput=e=>arSetValue(r,+e.target.value);
+    c.querySelector('.ar-chk').onchange=e=>{arToggle(r,e.target.checked);saveGenSettings();};
+    c.querySelector('.ar-slider').oninput=e=>{arSetValue(r,+e.target.value);saveGenSettings();};
   });
   $('#g_count')&&$('#g_count').addEventListener('input',updArPrev);
   arPaint();
@@ -2295,6 +2362,7 @@ async function viewGenerate(){
     toast('Lock cleared — you can generate again.');
   };
   $('#g_go').onclick=async()=>{
+    saveGenSettings();
     const posterType=showEyeglasses?curPosterType():'main';
     const isEyePoster = posterType === 'eyeglasses';
     // For eyeglasses: topic is optional headline idea; for main: required topic
