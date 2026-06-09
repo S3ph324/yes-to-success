@@ -69,10 +69,17 @@ const env = {
 const run = (args) =>
   new Promise((resolve, reject) => {
     const p = spawn("node", args, { stdio: "inherit", cwd: projectRoot, env });
-    p.on("exit", (code) =>
+    p.on("error", (err) =>
+      reject(new Error(`spawn error for ${args[1]}: ${err.message}`)),
+    );
+    p.on("exit", (code, signal) =>
       code === 0
         ? resolve()
-        : reject(new Error(`node ${args.join(" ")} exited ${code}`)),
+        : reject(
+            new Error(
+              `${path.basename(args[1])} exited ${signal ? `signal:${signal}` : code}`,
+            ),
+          ),
     );
   });
 
@@ -123,20 +130,30 @@ const latestPath = path.join(outDir, latest);
 console.log(`\nUsing ${latest}`);
 
 console.log("\n━━━ Step 2: Generate product-accurate scene backgrounds ━━━");
-await run([
-  "scripts/generate-backgrounds-jurie.mjs",
-  "--client",
-  client.id,
-  latestPath,
-]);
+try {
+  await run([
+    "scripts/generate-backgrounds-jurie.mjs",
+    "--client",
+    client.id,
+    latestPath,
+  ]);
+} catch (err) {
+  console.error(`\n✗ Background generation failed: ${err.message}`);
+  process.exit(1);
+}
 
 console.log("\n━━━ Step 3: Render posters ━━━");
-await run([
-  "scripts/render-batch-jurie.mjs",
-  "--client",
-  client.id,
-  latestPath,
-]);
+try {
+  await run([
+    "scripts/render-batch-jurie.mjs",
+    "--client",
+    client.id,
+    latestPath,
+  ]);
+} catch (err) {
+  console.error(`\n✗ Render step failed: ${err.message}`);
+  process.exit(1);
+}
 
 // The dashboard sets JURIE_NO_OPEN=1 so it does NOT pop a gallery window —
 // results show in the dashboard's Batches tab instead. CLI runs still open it.

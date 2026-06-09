@@ -20,6 +20,16 @@ import {
 
 applyGcpEnv();
 
+// ── Crash guards — ensure any unhandled error is printed before exit ──────────
+process.on("unhandledRejection", (reason) => {
+  console.error("[bg-gen] unhandledRejection:", reason?.stack || reason?.message || String(reason));
+  process.exit(1);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[bg-gen] uncaughtException:", err?.stack || err?.message || String(err));
+  process.exit(1);
+});
+
 // ── Persistent-volume awareness ───────────────────────────────────────────────
 // On Railway the user's runtime data lives in the persistent volume mounted at
 // EXPORT_BASE (e.g. /app/exports), NOT in the Docker-image root (/app).
@@ -140,6 +150,22 @@ const MODEL_STYLE_DIRECTIVE = {
     "Natural ambient light, authentic street-fashion energy.",
 };
 
+// ── Per-poster variety wheel ──────────────────────────────────────────────────
+// Cycles through 8 distinct visual treatments so no two consecutive posters
+// look the same, regardless of which style-reference template was chosen.
+// The treatment overrides the reference's specific background/lighting — the
+// reference only guides brand feel and production quality.
+const VARIETY_WHEEL = [
+  "warm amber glow, frame resting on a rich warm wooden or terracotta clay surface, soft diffused side light",
+  "cool silver-grey palette, frame on polished dark stone or marble, clean top-down studio light from above",
+  "dramatic dark scene, frame elevated on a matte geometric block, single sharp spotlight with deep shadows",
+  "bright airy high-key, frame on a cream or off-white minimal surface, soft window light, no harsh shadows",
+  "deep jewel-toned background — navy or emerald — frame nestled on textured velvet or linen fabric",
+  "moody cinematic, dark concrete or brushed metal surface, a subtle coloured rim accent light on one edge",
+  "golden-hour warmth, frame on frosted or smoked glass, soft hazy backlight creating a glow behind the product",
+  "clean pastel gradient sky-to-floor — muted blush or sky blue — bold defined shadow lines cast below the frame",
+];
+
 let eyeglasses = null;
 if (eyeglassesMode && wantGlassesId) {
   try {
@@ -241,7 +267,12 @@ const hasRef = refParts.length > 0;
 const stem = path.basename(quotesPath, ".json");
 const bgRelDir = path.join("generated-bg", stem);
 const bgDir = path.join(projectRoot, "public", bgRelDir);
-await fs.mkdir(bgDir, { recursive: true });
+try {
+  await fs.mkdir(bgDir, { recursive: true });
+} catch (err) {
+  console.error(`[bg-gen] Cannot create bgDir ${bgDir}: ${err.message}`);
+  process.exit(1);
+}
 
 const ai = new GoogleGenAI({ vertexai: true, project, location });
 const REF_MODEL = process.env.REF_MODEL || "gemini-2.5-flash-image";
@@ -324,15 +355,20 @@ for (const { q, i } of targets) {
       `added later). The photo must contain zero readable text.`;
   } else if (eyeglassesMode) {
     // ── Product Showcase ───────────────────────────────────────────────────
-    // HARD CONSTRAINT printed first so the model reads it before anything else.
+    // Hard constraints + per-poster variety directive printed first.
     const nopeopleLine =
       "ABSOLUTE RULE — PRODUCT ONLY: This image must contain ZERO people, " +
       "ZERO faces, ZERO hands, ZERO skin, and ZERO human body parts of any kind. " +
       "If a person or any body part appears anywhere in the frame the output is " +
       "WRONG. Only the eyeglasses product and its background are allowed. ";
+    const varietyLine =
+      `VISUAL TREATMENT FOR THIS SPECIFIC POSTER (poster ${i + 1}): ` +
+      VARIETY_WHEEL[i % VARIETY_WHEEL.length] +
+      ". Apply this treatment — it must look different from the other posters in this batch. ";
     if (hasRef) {
       guidance =
         nopeopleLine +
+        varietyLine +
         `Feature the EXACT pair of eyeglasses shown in these reference photos ` +
         `as the hero product — match its frame shape, color, lens tint, and ` +
         `all design details perfectly; do not redesign or substitute a different pair. ` +
@@ -349,6 +385,7 @@ for (const { q, i } of targets) {
     } else {
       guidance =
         nopeopleLine +
+        varietyLine +
         `Create a product-showcase photograph featuring a stylish pair of ` +
         `eyeglasses as the hero subject. ` +
         `${showcaseModifiers} ` +
@@ -387,12 +424,13 @@ for (const { q, i } of targets) {
       // either a selected poster template preset or a user-uploaded override.
       // In both cases it is a VISUAL STYLE GUIDE only, not a subject reference.
       const styleNote = styleRefPart
-        ? " The last image is a POSTER STYLE REFERENCE — an example eyeglasses " +
-          "advertisement that defines the visual language you should match: its " +
-          "composition layout, background treatment, lighting mood, color palette, " +
-          "and overall aesthetic. Treat it as a style template to emulate, NOT as " +
-          "a source for products, people, logos, or text. The eyeglasses featured " +
-          "in THIS scene must come only from the product reference images above."
+        ? " The last image is a BRAND AESTHETIC REFERENCE — an example eyeglasses " +
+          "advertisement. Use it ONLY for general brand feel: production quality, " +
+          "premium/editorial/minimal tone, and compositional style. " +
+          "Do NOT copy its specific background colour, surface material, lighting setup, " +
+          "or overall look — the VISUAL TREATMENT directive above already defines those " +
+          "uniquely for this poster. The eyeglasses in this scene must come only from " +
+          "the product reference images above, not from this style reference."
         : "";
       const allParts = [
         ...(hasRef ? refParts : []),

@@ -1874,10 +1874,9 @@ async function viewGenerate(){
    +'<div id="g_section_label" class="section-label">What do you want to post about?</div>'
    +'<div class="row" style="gap:12px;margin-bottom:18px">'
    // Topic — shown for Main style posters
-   +'<div id="g_topic_cell" style="flex:3"><input id="g_topic" placeholder="e.g. why regular eye check-ups matter" style="width:100%;font-size:15px;padding:14px 16px"></div>'
+   +'<div id="g_topic_cell" style="flex:1"><input id="g_topic" placeholder="e.g. why regular eye check-ups matter" style="width:100%;font-size:15px;padding:14px 16px"></div>'
    // Headline idea — shown for Eyeglasses posters (optional)
-   +'<div id="ea_headline_cell" style="flex:3;display:none"><input id="ea_headline" placeholder="Optional headline idea (e.g. See Clearly. Live Boldly.)" style="width:100%;font-size:15px;padding:14px 16px"></div>'
-   +'<div style="flex:0 0 100px"><label style="font-size:11px">Posters</label><input id="g_count" type="number" min="1" max="200" value="8" style="width:100%;text-align:center;font-size:15px;padding:14px 8px"></div>'
+   +'<div id="ea_headline_cell" style="flex:1;display:none"><input id="ea_headline" placeholder="Optional headline idea (e.g. See Clearly. Live Boldly.)" style="width:100%;font-size:15px;padding:14px 16px"></div>'
    +'</div>'
    // ── Advanced toggle (hidden for eyeglasses — settings auto-expand instead) ──
    +'<button class="adv-toggle" id="adv-btn" onclick="toggleAdv()">'
@@ -2017,9 +2016,12 @@ async function viewGenerate(){
    +'<p class="muted" id="ar_prev" style="margin:12px 0 0;font-size:11px"></p>'
    +'</div>'
    +'</div></div>'
-   +'<p style="margin:14px 0;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><button class="go" id="g_go">Generate posters</button>'
+   +'<div style="margin:14px 0 0;display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap">'
+   +'<div style="flex:0 0 110px"><label style="font-size:11px;display:block;margin-bottom:5px">Number of posters</label><input id="g_count" type="number" min="1" max="200" value="8" style="width:100%;text-align:center;font-size:15px;padding:12px 8px"></div>'
+   +'<button class="go" id="g_go" style="align-self:flex-end">Generate posters</button>'
    +'<span id="g_unlock" style="display:none"><button class="sec" id="g_unlock_btn" style="border-color:var(--red);color:var(--red)">⚠ Unlock stuck job</button>'
-   +'<span class="muted" style="font-size:12px">Another job appears stuck. Click to force-clear the lock.</span></span></p>'
+   +'<span class="muted" style="font-size:12px">Another job appears stuck. Click to force-clear the lock.</span></span>'
+   +'</div>'
    +'<div id="g_prog" style="display:none;margin:4px 0 14px">'
    +'<div style="height:12px;background:#0a0a0b;border:1px solid var(--line);border-radius:999px;overflow:hidden">'
    +'<div id="g_bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--gold),#ffe27a);transition:width .45s"></div></div>'
@@ -3007,20 +3009,28 @@ async function viewQueue(){
         +'</div>'
         // Poster grid
         +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px">'
-        +entry.posters.map(p=>{
-          const st=local[qid]?.[p.filename]||p.status;
-          const isApp=st==='approved',isDec=st==='declined';
-          return '<div style="border-radius:12px;overflow:hidden;border:2px solid '+(isApp?'var(--gold)':isDec?'var(--red)':'var(--line)')+';background:#0d0d0f;opacity:'+(isDec?'.45':'1')+';transition:all .18s">'
-            +'<div style="position:relative"><img src="/posters/'+CLIENT+'/'+encodeURIComponent(entry.stamp)+'/'+encodeURIComponent(p.filename)+'" style="width:100%;display:block;aspect-ratio:4/5;object-fit:cover" loading="lazy">'
-            +(isApp?'<div style="position:absolute;top:8px;right:8px;background:var(--gold);color:#15120a;font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px">✓ APPROVED</div>':'')
-            +(isDec?'<div style="position:absolute;top:8px;right:8px;background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px">✗ DECLINED</div>':'')
-            +'</div>'
-            +'<div style="padding:8px 10px;font-size:10.5px;color:var(--mut);max-height:70px;overflow:auto;line-height:1.45">'+esc(p.caption).slice(0,140)+'</div>'
-            +'<div style="display:flex;padding:0 8px 10px;gap:6px">'
-            +'<button class="sec" style="flex:1;font-size:11px;padding:6px 4px;'+(isApp?'border-color:var(--gold);color:var(--gold)':'')+'" onclick="qSS(this)" data-qid="'+qid+'" data-fn="'+encodeURIComponent(p.filename)+'" data-s="approved">'+(isApp?'✓ Approved':'Approve')+'</button>'
-            +'<button class="sec" style="flex:1;font-size:11px;padding:6px 4px;'+(isDec?'border-color:var(--red);color:var(--red)':'')+'" onclick="qSS(this)" data-qid="'+qid+'" data-fn="'+encodeURIComponent(p.filename)+'" data-s="declined">'+(isDec?'✗ Declined':'Decline')+'</button>'
-            +'</div></div>';
-        }).join('')
+        +(()=>{
+          const qItems=entry.posters.map(p=>({
+            url:'/posters/'+CLIENT+'/'+encodeURIComponent(entry.stamp)+'/'+encodeURIComponent(p.filename),
+            caption:p.caption||''
+          }));
+          window._lbItems=qItems;
+          return entry.posters.map((p,pi)=>{
+            const st=local[qid]?.[p.filename]||p.status;
+            const isApp=st==='approved',isDec=st==='declined';
+            const u='/posters/'+CLIENT+'/'+encodeURIComponent(entry.stamp)+'/'+encodeURIComponent(p.filename);
+            return '<div style="border-radius:12px;overflow:hidden;border:2px solid '+(isApp?'var(--gold)':isDec?'var(--red)':'var(--line)')+';background:#0d0d0f;opacity:'+(isDec?'.45':'1')+';transition:all .18s">'
+              +'<div style="position:relative;cursor:zoom-in" onclick="openLb('+pi+')">'
+              +'<img src="'+u+'" style="width:100%;height:auto;display:block" loading="lazy">'
+              +(isApp?'<div style="position:absolute;top:8px;right:8px;background:var(--gold);color:#15120a;font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;pointer-events:none">✓ APPROVED</div>':'')
+              +(isDec?'<div style="position:absolute;top:8px;right:8px;background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;pointer-events:none">✗ DECLINED</div>':'')
+              +'</div>'
+              +'<div style="display:flex;padding:6px 8px 8px;gap:6px">'
+              +'<button class="sec" style="flex:1;font-size:11px;padding:6px 4px;'+(isApp?'border-color:var(--gold);color:var(--gold)':'')+'" onclick="qSS(this)" data-qid="'+qid+'" data-fn="'+encodeURIComponent(p.filename)+'" data-s="approved">'+(isApp?'✓ Approved':'Approve')+'</button>'
+              +'<button class="sec" style="flex:1;font-size:11px;padding:6px 4px;'+(isDec?'border-color:var(--red);color:var(--red)':'')+'" onclick="qSS(this)" data-qid="'+qid+'" data-fn="'+encodeURIComponent(p.filename)+'" data-s="declined">'+(isDec?'✗ Declined':'Decline')+'</button>'
+              +'</div></div>';
+          }).join('');
+        })()
         +'</div></div>';
     }
 
