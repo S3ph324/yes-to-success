@@ -64,9 +64,18 @@ const aiClient = () => {
   return new GoogleGenAI({ vertexai: true, project, location });
 };
 
+// Delays for 429/quota errors — long enough for Vertex AI to recover quota.
+// Jitter (±25%) prevents thundering herd when multiple parallel calls all
+// hit quota and retry at the same time.
+const QUOTA_DELAYS_MS = [15_000, 45_000, 90_000]; // wait before attempt 2, 3, 4
+const jitter = (ms) => ms * (0.75 + Math.random() * 0.5);
+const isQuotaErr = (msg) =>
+  /429|RESOURCE_EXHAUSTED|quota|rate.?limit/i.test(msg);
+
 async function genImage(ai, parts, aspectRatio = "3:4") {
   let buf = null, lastErr = "";
-  for (let attempt = 1; attempt <= 3 && !buf; attempt++) {
+  const MAX_ATTEMPTS = 4;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS && !buf; attempt++) {
     try {
       const resp = await ai.models.generateContent({
         model: IMG_MODEL,
@@ -76,13 +85,25 @@ async function genImage(ai, parts, aspectRatio = "3:4") {
       for (const p of resp.candidates?.[0]?.content?.parts || []) {
         if (p.inlineData?.data) { buf = Buffer.from(p.inlineData.data, "base64"); break; }
       }
-      if (!buf) { lastErr = "no image in response"; if (attempt < 3) await delay(2500 * attempt); }
+      if (!buf) {
+        lastErr = "no image in response";
+        if (attempt < MAX_ATTEMPTS) await delay(3000 * attempt);
+      }
     } catch (err) {
-      lastErr = err?.message?.slice(0, 200) || String(err);
-      if (attempt < 3) await delay(2500 * attempt);
+      lastErr = err?.message?.slice(0, 400) || String(err);
+      if (attempt < MAX_ATTEMPTS) {
+        if (isQuotaErr(lastErr)) {
+          const base = QUOTA_DELAYS_MS[Math.min(attempt - 1, QUOTA_DELAYS_MS.length - 1)];
+          const wait = Math.round(jitter(base));
+          console.warn(`[tryon] genImage attempt ${attempt} hit quota (429). Waiting ${Math.round(wait / 1000)}s before retry…`);
+          await delay(wait);
+        } else {
+          await delay(2500 * attempt);
+        }
+      }
     }
   }
-  if (!buf) throw new Error(`Image generation failed after 3 attempts: ${lastErr}`);
+  if (!buf) throw new Error(`Image generation failed after ${MAX_ATTEMPTS} attempts: ${lastErr}`);
   return buf;
 }
 
