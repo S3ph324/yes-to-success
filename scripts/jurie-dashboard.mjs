@@ -2436,18 +2436,37 @@ async function viewGenerate(){
     $('#g_prog').style.display='block';
     const gr=$('#g_result');if(gr){gr.style.display='none';gr.innerHTML='';}
     $('#g_bar').style.background='linear-gradient(90deg,var(--gold),#ffe27a)';setProg(2,false);
-    es&&es.close();es=new EventSource('/api/log');
-    es.onmessage=ev=>{const line=JSON.parse(ev.data),L=$('#g_log');
+    // Close any previous SSE before firing the request. We open the NEW SSE
+    // only after the server confirms the job started — prevents the server
+    // replaying the previous job's "✗ Exited" log to a pre-connected SSE,
+    // which was re-enabling the Generate button before the new job ran
+    // (root cause of the stuck-lock / 409 loop).
+    es&&es.close();es=null;
+    const r=await fetch('/api/generate',{method:'POST',body:fd});
+    if(!r.ok){
+      const err=(await r.json().catch(()=>({}))).error||'Failed to start';
+      toast(err,true);$('#g_go').disabled=false;$('#g_prog').style.display='none';
+      if(err.indexOf('already running')>-1){$('#g_unlock').style.display='inline-flex';$('#g_unlock').style.gap='10px';$('#g_unlock').style.alignItems='center';}
+      return;
+    }
+    // Job confirmed started — NOW connect SSE. Server log is fresh/empty so
+    // no stale exit line can fire and prematurely re-enable the button.
+    es=new EventSource('/api/log');
+    let _sseErrCount=0;
+    es.onerror=()=>{
+      _sseErrCount++;
+      if(_sseErrCount>=3){
+        api('/api/status').then(s=>{if(s&&!s.running){es&&es.close();es=null;$('#g_go').disabled=false;$('#g_unlock').style.display='none';}});
+      }
+    };
+    es.onmessage=ev=>{_sseErrCount=0;const line=JSON.parse(ev.data),L=$('#g_log');
       L.textContent+=line+'\\n';L.scrollTop=L.scrollHeight;
-      if(line.indexOf('✗ Exited')>-1||line.indexOf('⚠ Job timed out')>-1){setProg(100,true);es.close();$('#g_go').disabled=false;$('#g_unlock').style.display='none';return;}
+      if(line.indexOf('✗ Exited')>-1||line.indexOf('⚠ Job timed out')>-1){setProg(100,true);es.close();es=null;$('#g_go').disabled=false;$('#g_unlock').style.display='none';return;}
       const p=progFrom(line);if(p>=0)setProg(p,false);
-      if(line.indexOf('✓ Done')>-1){es.close();$('#g_go').disabled=false;$('#g_unlock').style.display='none';
+      if(line.indexOf('✓ Done')>-1){es.close();es=null;$('#g_go').disabled=false;$('#g_unlock').style.display='none';
         const bad=line.indexOf('no PNGs found')>-1;
         toast(bad?'⚠ Done but no posters found — check log':'Batch complete \\u2713 — check Queue tab',bad);
         if(!bad){showLatestBatch();setTimeout(()=>{TAB='queue';render();},2500);}}};
-    const r=await fetch('/api/generate',{method:'POST',body:fd});
-    if(!r.ok){const err=(await r.json()).error||'Failed to start';toast(err,true);$('#g_go').disabled=false;$('#g_prog').style.display='none';
-      if(err.indexOf('already running')>-1){$('#g_unlock').style.display='inline-flex';$('#g_unlock').style.gap='10px';$('#g_unlock').style.alignItems='center';}}
   };
 }
 async function showLatestBatch(){
