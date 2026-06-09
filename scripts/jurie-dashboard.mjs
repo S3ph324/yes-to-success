@@ -835,6 +835,7 @@ app.post("/api/generate", extraRefUpload.fields([
     brandPresetId,
     characterId,
     useLogo,
+    includeCta,
     bufferAutopost,
     posterType,
     eyeglassesId,
@@ -885,6 +886,7 @@ app.post("/api/generate", extraRefUpload.fields([
     env.DASHBOARD_CHARACTER_ID = characterId;
   }
   if (useLogo !== "1") env.DASHBOARD_NO_LOGO = "1";
+  if (includeCta !== "1") env.DASHBOARD_NO_CTA = "1";
   if (bufferAutopost === "1") env.BUFFER_AUTOPOST = "1";
   if (extraRefPaths.length)
     env.DASHBOARD_EXTRA_REFS = JSON.stringify(extraRefPaths);
@@ -1943,8 +1945,12 @@ async function viewGenerate(){
    +'<p class="muted" style="margin:5px 0 0;font-size:11px">Colors, logo, and CTA text</p></div></div>'
    +'<div id="g_subjrow"></div>'
    +'<div class="row" style="margin-top:14px;align-items:center">'
+   +'<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">'
    +'<label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;color:var(--txt);white-space:nowrap">'
    +'<input type="checkbox" id="g_logo_on" style="width:auto;margin:0"> Include logo</label>'
+   +'<label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;color:var(--txt);white-space:nowrap">'
+   +'<input type="checkbox" id="g_cta_on" checked style="width:auto;margin:0"> Include CTA chip</label>'
+   +'</div>'
    +'<div><label style="font-size:11px" id="g_extras_label">Extra reference photos (overrides character for this batch)</label>'
    +'<input id="g_extras" type="file" accept="image/*" multiple></div></div>'
    +'<div id="g_estyle_box" style="display:none;margin-top:16px">'
@@ -2221,6 +2227,7 @@ async function viewGenerate(){
       brief:$('#g_brief')?$('#g_brief').value:'',
       brand:$('#g_brand')?$('#g_brand').value:'',
       logoOn:$('#g_logo_on')?$('#g_logo_on').checked:true,
+      ctaOn:$('#g_cta_on')?$('#g_cta_on').checked:true,
       count:$('#g_count')?$('#g_count').value:'8',
       subject:$('#g_subject')?$('#g_subject').value:'',
       estyle:(document.querySelector('input[name="g_estyle"]:checked')||{}).value||'showcase',
@@ -2246,6 +2253,7 @@ async function viewGenerate(){
     if($('#g_brand')&&s.brand){$('#g_brand').value=s.brand;updLogo();}
     // Logo + count
     if($('#g_logo_on')&&s.logoOn!=null)$('#g_logo_on').checked=s.logoOn;
+    if($('#g_cta_on')&&s.ctaOn!=null)$('#g_cta_on').checked=s.ctaOn;
     if($('#g_count')&&s.count)$('#g_count').value=s.count;
     // Subject — rendered by paintSubject above, fire change so preview updates
     if($('#g_subject')&&s.subject){$('#g_subject').value=s.subject;$('#g_subject').dispatchEvent(new Event('change'));}
@@ -2270,6 +2278,7 @@ async function viewGenerate(){
   if($('#g_topic'))$('#g_topic').oninput=saveGenSettings;
   if($('#ea_headline'))$('#ea_headline').oninput=saveGenSettings;
   if($('#g_logo_on'))$('#g_logo_on').onchange=saveGenSettings;
+  if($('#g_cta_on'))$('#g_cta_on').onchange=saveGenSettings;
   if($('#g_count'))$('#g_count').onchange=saveGenSettings;
   loadGenSettings();
 
@@ -2445,6 +2454,7 @@ async function viewGenerate(){
       fd.append('characterId',$('#g_subject')?$('#g_subject').value:'');
     }
     fd.append('useLogo',$('#g_logo_on').checked?'1':'0');
+    fd.append('includeCta',$('#g_cta_on')&&$('#g_cta_on').checked?'1':'0');
     // Aspect-ratio mix → JSON like {"1:1":25,"4:5":50,"9:16":25}; only sent
     // when the user has actually checked at least one ratio with a % > 0.
     const arDist={};

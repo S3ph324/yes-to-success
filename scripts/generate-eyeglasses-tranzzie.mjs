@@ -260,7 +260,9 @@ for (const q of posters) {
   q.kind = "product";
   q.productLine = q.productLine.trim();
   q.tagline = (q.tagline || "").trim();
-  q.ctaTag = (q.ctaTag || "").toUpperCase().trim();
+  q.ctaTag = process.env.DASHBOARD_NO_CTA === "1"
+    ? ""
+    : (q.ctaTag || "").toUpperCase().trim();
   q.caption = q.caption.trim();
   // Keep a `quote` fallback — the renderer's slugify() and any generic
   // gallery/listing code key off `quote` for filenames/labels.

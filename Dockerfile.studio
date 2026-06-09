@@ -2,7 +2,7 @@
 # Multi-client Quote Poster Studio + B-Roll (scripts/jurie-dashboard.mjs).
 # Separate from the existing Dockerfile (which ships server.mjs) — do not
 # merge. Includes Chromium deps for Remotion rendering.
-# (Touched to trigger Railway auto-deploy past a stuck Watch Paths filter — v0.26.29.)
+# (Touched to trigger Railway auto-deploy past a stuck Watch Paths filter — v0.26.30.)
 
 FROM node:20-bookworm-slim AS base
 
