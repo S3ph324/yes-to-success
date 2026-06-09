@@ -1689,6 +1689,15 @@ transition:border-color .15s,background .15s;background:rgba(255,255,255,.015)}
 cursor:pointer;font-size:13px;transition:border-color .15s,background .15s;border:1px solid var(--line)}
 .esty-subcard{display:flex;align-items:flex-start;gap:8px;padding:10px 12px;border-radius:9px;
 cursor:pointer;font-size:13px;transition:border-color .15s,background .15s;border:1px solid var(--line)}
+/* Image-preview style cards (visual style + model shoot) */
+.esty-img-card{display:flex;flex-direction:column;border-radius:9px;overflow:hidden;cursor:pointer;
+font-size:13px;transition:border-color .15s,box-shadow .15s;border:1.5px solid var(--line);background:var(--bg2)}
+.esty-img-card:hover{border-color:var(--line2)}
+.esty-img-card .eic-thumb{width:100%;height:90px;object-fit:cover;object-position:center;display:block;background:#1a1a1e}
+.esty-img-card .eic-body{display:flex;align-items:flex-start;gap:7px;padding:8px 10px}
+.esty-img-card .eic-body input{width:auto;flex-shrink:0;margin:3px 0 0;accent-color:var(--gold)}
+.esty-img-card .eic-body b{font-size:12px;display:block;margin-bottom:1px}
+.esty-img-card .eic-body .muted{font-size:10.5px;line-height:1.35}
 </style></head><body>
 <header><b>QUOTE&nbsp;POSTER&nbsp;<i>STUDIO</i></b>
 <span class="pill" title="deployed version">v${VERSION}</span><span class="sp"></span>
@@ -1891,18 +1900,34 @@ async function viewGenerate(){
    +'<div id="ea_sk_box" style="display:none;margin-top:10px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
    +'<div class="section-label" style="margin:0 0 6px">Visual style</div>'
    +'<p class="muted" style="margin:0 0 10px;font-size:11px">Placeholder cards \\u2014 real sample poster images can be dropped in later.</p>'
-   +'<div id="ea_sk_grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px"></div>'
+   +'<div id="ea_sk_grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px"></div>'
    +'</div>'
    // ── Model style sub-panel (Product + Model only) ───────────────────────────
    +'<div id="ea_ms_box" style="display:none;margin-top:10px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
    +'<div class="section-label" style="margin:0 0 6px">Shoot style</div>'
    +'<p class="muted" style="margin:0 0 10px;font-size:11px">Gemini generates a model wearing your frame in the selected setting.</p>'
-   +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">'
-   +'<label class="esty-subcard" style="border-color:var(--gold);background:rgba(232,182,74,.04)"><input type="radio" name="g_mstyle" value="outdoor_lifestyle" checked style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">Outdoor lifestyle</b><div class="muted" style="font-size:11px;margin-top:2px">Park, street or beach \\u2014 candid, natural light</div></div></label>'
-   +'<label class="esty-subcard"><input type="radio" name="g_mstyle" value="indoor_studio" style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">Indoor studio</b><div class="muted" style="font-size:11px;margin-top:2px">Clean studio, professional lighting</div></div></label>'
-   +'<label class="esty-subcard"><input type="radio" name="g_mstyle" value="active_sporty" style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">Active & sporty</b><div class="muted" style="font-size:11px;margin-top:2px">Movement and energy \\u2014 sport or activity</div></div></label>'
-   +'<label class="esty-subcard"><input type="radio" name="g_mstyle" value="fashion_editorial" style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">Fashion editorial</b><div class="muted" style="font-size:11px;margin-top:2px">Magazine-quality, bold fashion styling</div></div></label>'
-   +'<label class="esty-subcard"><input type="radio" name="g_mstyle" value="street_style" style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">Street style</b><div class="muted" style="font-size:11px;margin-top:2px">Urban environment, candid photography</div></div></label>'
+   +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px">'
+   +(()=>{
+     const MU='https://images.unsplash.com/';
+     const MS=[
+       {v:'outdoor_lifestyle', label:'Outdoor lifestyle', desc:'Park, street or beach — candid natural light',
+        img:MU+'photo-1748590513779-a1ce6dbd6cee?w=400&q=75&fit=crop&crop=center'},
+       {v:'indoor_studio',     label:'Indoor studio',     desc:'Clean studio backdrop, professional lighting',
+        img:MU+'photo-1664076423411-e570cfdfcbed?w=400&q=75&fit=crop&crop=center'},
+       {v:'active_sporty',     label:'Active & sporty',   desc:'Movement and energy — sport or activity',
+        img:MU+'photo-1758684050600-f3bb20eb230d?w=400&q=75&fit=crop&crop=center'},
+       {v:'fashion_editorial', label:'Fashion editorial', desc:'Magazine-quality, bold fashion styling',
+        img:MU+'photo-1653660666869-2345adc51155?w=400&q=75&fit=crop&crop=center'},
+       {v:'street_style',      label:'Street style',      desc:'Urban, candid, authentic street energy',
+        img:MU+'photo-1547082831-58251f0b38cf?w=400&q=75&fit=crop&crop=center'},
+     ];
+     return MS.map((m,i)=>
+       '<label class="esty-img-card"'+(i===0?' style="border-color:var(--gold)"':'')+'>'+
+       '<img class="eic-thumb" src="'+m.img+'" alt="'+m.label+'" loading="lazy">'+
+       '<div class="eic-body"><input type="radio" name="g_mstyle" value="'+m.v+'"'+(i===0?' checked':'')+'>'+
+       '<div><b>'+m.label+'</b><div class="muted">'+m.desc+'</div></div></div></label>'
+     ).join('');
+   })()
    +'</div></div>'
    +'</div>'
    +'<div style="margin-top:16px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
@@ -2002,26 +2027,39 @@ async function viewGenerate(){
   syncPtypeCards();
   paintSubject();
   // ── Eyeglasses poster-style card wiring ──────────────────────────────────
-  // Style-key card definitions per placement (placeholder text only; swap in
-  // real sample images via styleImageUrl once they're ready).
+  // Style-key card definitions per placement.
+  // img = Unsplash CDN thumbnail (free licence, no attribution required for UI use).
+  const U = 'https://images.unsplash.com/';
   const STYLE_KEYS = {
     standing: [
-      { key:'minimalist_white',  label:'Minimalist white',    desc:'Frame on white backdrop, razor-sharp shadows' },
-      { key:'dark_luxury',       label:'Dark luxury',         desc:'Black/charcoal background, dramatic side lighting' },
-      { key:'soft_gradient',     label:'Soft gradient',       desc:'Pastel or warm gradient wash behind the frame' },
-      { key:'editorial_flat',    label:'Editorial flat-lay',  desc:'Clean overhead shot with subtle texture surface' },
+      { key:'minimalist_white', label:'Minimalist white',   desc:'White backdrop, razor-sharp drop shadows',
+        img: U+'photo-1606357086272-eab87f3db598?w=400&q=75&fit=crop&crop=center' },
+      { key:'dark_luxury',      label:'Dark luxury',        desc:'Black/charcoal bg, dramatic side-key light',
+        img: U+'photo-1654257650833-b7398115275a?w=400&q=75&fit=crop&crop=center' },
+      { key:'soft_gradient',    label:'Soft gradient',      desc:'Pastel or warm gradient wash behind the frame',
+        img: U+'photo-1762227144580-431ec0015003?w=400&q=75&fit=crop&crop=center' },
+      { key:'editorial_flat',   label:'Editorial flat-lay', desc:'Overhead editorial shot, subtle surface texture',
+        img: U+'photo-1517330486404-33542d376afd?w=400&q=75&fit=crop&crop=center' },
     ],
     flat: [
-      { key:'overhead_marble',   label:'Overhead marble',     desc:'Marble or stone surface, top-down angle' },
-      { key:'fabric_texture',    label:'Fabric texture',      desc:'Linen or velvet surface, soft diffused light' },
-      { key:'dark_matte',        label:'Dark matte',          desc:'Matte black surface, product reflection' },
-      { key:'styled_props',      label:'Styled props',        desc:'Frame surrounded by complementary brand objects' },
+      { key:'overhead_marble',  label:'Overhead marble',    desc:'Light stone or marble surface, top-down angle',
+        img: U+'photo-1559930284-49819cc0cc7e?w=400&q=75&fit=crop&crop=center' },
+      { key:'fabric_texture',   label:'Fabric texture',     desc:'Linen or velvet surface, soft diffused light',
+        img: U+'photo-1549385117-ba4f57c7144f?w=400&q=75&fit=crop&crop=center' },
+      { key:'dark_matte',       label:'Dark matte',         desc:'Matte black surface, subtle product reflection',
+        img: U+'photo-1654257650833-b7398115275a?w=400&q=75&fit=crop&crop=center' },
+      { key:'styled_props',     label:'Styled props',       desc:'Frame with complementary brand-style objects',
+        img: U+'photo-1559930284-49819cc0cc7e?w=400&q=75&fit=crop&crop=top' },
     ],
     floating: [
-      { key:'clean_float',       label:'Clean float',         desc:'Frame suspended against pure white/off-white' },
-      { key:'neon_glow',         label:'Neon glow',           desc:'Dark scene, colored rim light glowing on frame' },
-      { key:'misty_depth',       label:'Misty depth',         desc:'Moody fog/haze, dramatic lighting from below' },
-      { key:'gradient_float',    label:'Gradient float',      desc:'Colourful gradient sky, floating mid-composition' },
+      { key:'clean_float',      label:'Clean float',        desc:'Frame suspended against pure white/off-white',
+        img: U+'photo-1698084068165-69a631a3ba1b?w=400&q=75&fit=crop&crop=center' },
+      { key:'neon_glow',        label:'Neon glow',          desc:'Dark scene, colored neon rim light on frame',
+        img: U+'photo-1612093532291-408bed8c6ad7?w=400&q=75&fit=crop&crop=center' },
+      { key:'misty_depth',      label:'Misty depth',        desc:'Moody fog/haze, dramatic atmospheric lighting',
+        img: U+'photo-1612093532291-408bed8c6ad7?w=400&q=75&fit=crop&crop=bottom' },
+      { key:'gradient_float',   label:'Gradient float',     desc:'Vivid gradient sky, frame floating mid-comp',
+        img: U+'photo-1762227144580-431ec0015003?w=400&q=75&fit=crop&crop=top' },
     ],
     auto: [] // AI decides — no style key sub-panel shown
   };
@@ -2030,23 +2068,22 @@ async function viewGenerate(){
     const keys = STYLE_KEYS[placement] || [];
     if (!keys.length) { $('#ea_sk_box').style.display = 'none'; return; }
     grid.innerHTML = keys.map((sk, i) =>
-      '<label class="esty-subcard"' + (i === 0 ? ' style="border-color:var(--gold);background:rgba(232,182,74,.04)"' : '') + '>'
-      + '<input type="radio" name="g_stylekey" value="' + sk.key + '"' + (i === 0 ? ' checked' : '') + ' style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)">'
-      + '<div><b style="font-size:12.5px">' + sk.label + '</b>'
-      + '<div class="muted" style="font-size:11px;margin-top:2px">' + sk.desc + '</div></div>'
-      + '</label>'
+      '<label class="esty-img-card"' + (i === 0 ? ' style="border-color:var(--gold)"' : '') + '>'
+      + (sk.img ? '<img class="eic-thumb" src="' + sk.img + '" alt="' + sk.label + '" loading="lazy">' : '<div class="eic-thumb"></div>')
+      + '<div class="eic-body">'
+      + '<input type="radio" name="g_stylekey" value="' + sk.key + '"' + (i === 0 ? ' checked' : '') + '>'
+      + '<div><b>' + sk.label + '</b><div class="muted">' + sk.desc + '</div></div>'
+      + '</div></label>'
     ).join('');
     $('#ea_sk_box').style.display = 'block';
-    // Wire radio highlight for new style-key cards
     grid.querySelectorAll('input[name="g_stylekey"]').forEach(r => {
       r.onchange = () => syncStyleKeyCards();
     });
   }
   function syncStyleKeyCards() {
-    document.querySelectorAll('#ea_sk_grid .esty-subcard').forEach(el => {
+    document.querySelectorAll('#ea_sk_grid .esty-img-card').forEach(el => {
       const r = el.querySelector('input');
       el.style.borderColor = r.checked ? 'var(--gold)' : 'var(--line)';
-      el.style.background = r.checked ? 'rgba(232,182,74,.04)' : 'transparent';
     });
   }
   function syncEstyCards() {
@@ -2085,11 +2122,10 @@ async function viewGenerate(){
     buildStyleKeyGrid(curPlacement);
   }
   function syncModelStyleCards() {
-    document.querySelectorAll('#ea_ms_box .esty-subcard').forEach(el => {
+    document.querySelectorAll('#ea_ms_box .esty-img-card').forEach(el => {
       const r = el.querySelector('input[name="g_mstyle"]');
       if (!r) return;
       el.style.borderColor = r.checked ? 'var(--gold)' : 'var(--line)';
-      el.style.background = r.checked ? 'rgba(232,182,74,.04)' : 'transparent';
     });
   }
   document.querySelectorAll('input[name="g_estyle"]').forEach(r => {
