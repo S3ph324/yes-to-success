@@ -1943,37 +1943,32 @@ async function viewGenerate(){
    +'</div>'
    // ── Model style sub-panel (Product + Model only) ───────────────────────────
    +'<div id="ea_ms_box" style="display:none;margin-top:10px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
-   +'<div class="section-label" style="margin:0 0 6px">Shoot style</div>'
-   +'<p class="muted" style="margin:0 0 10px;font-size:11px">Gemini generates a model wearing your frame in the selected setting.</p>'
-   +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px">'
+   +'<div class="section-label" style="margin:0 0 6px">Poster style template</div>'
+   +'<p class="muted" style="margin:0 0 10px;font-size:11px">Pick a reference poster — the AI generates a scene with a model wearing your frame that matches this visual style.</p>'
    +(()=>{
-     const MU='https://images.unsplash.com/';
      const MS=[
-       {v:'outdoor_lifestyle', label:'Outdoor lifestyle', desc:'Park, street or beach — candid natural light',
-        img:MU+'photo-1747410159099-de06f0a6a1b9?w=400&q=75&fit=crop&crop=center'},
-       {v:'indoor_studio',     label:'Indoor studio',     desc:'Clean studio backdrop, dramatic lighting',
-        img:MU+'photo-1713284060723-5be78613225f?w=400&q=75&fit=crop&crop=center'},
-       {v:'active_sporty',     label:'Active & sporty',   desc:'Movement and energy — sport or activity',
-        img:MU+'photo-1758684050600-f3bb20eb230d?w=400&q=75&fit=crop&crop=center'},
-       {v:'fashion_editorial', label:'Fashion editorial', desc:'Magazine-quality, bold fashion styling',
-        img:MU+'photo-1653660666869-2345adc51155?w=400&q=75&fit=crop&crop=center'},
-       {v:'street_style',      label:'Street style',      desc:'Urban, candid, authentic street energy',
-        img:MU+'photo-1547082831-58251f0b38cf?w=400&q=75&fit=crop&crop=center'},
-       {v:'auto',              label:'Let AI decide',     desc:'Gemini picks the best setting for each poster', img:''},
+       {v:'model-01-bold-type-overlay', label:'Bold type overlay',   desc:'Oversized headline behind model, high contrast, urban energy'},
+       {v:'model-02-elegant-hold',      label:'Elegant product hold', desc:'Clean bg, model holding frame up, serif headline, cream palette'},
+       {v:'model-03-earthy-editorial',  label:'Earthy editorial',     desc:'Textured background, dramatic close-up, earthy tones'},
+       {v:'model-04-clean-fresh',       label:'Clean & fresh',        desc:'White bg, minimal, youthful model-worn editorial'},
+       {v:'model-05-outdoor-cinematic', label:'Outdoor cinematic',    desc:'Natural light, blue sky, quiet narrative composition'},
+       {v:'auto',                       label:'Let AI decide',        desc:'Gemini picks the best style for each poster'},
      ];
-     return MS.map((m,i)=>
-       '<label class="esty-img-card"'+(i===0?' style="border-color:var(--gold)"':'')+'>'+
-       (m.img
-         ? '<img class="eic-thumb" src="'+m.img+'" alt="'+m.label+'" loading="lazy">'
-         : '<div class="eic-thumb" style="display:flex;align-items:center;justify-content:center;font-size:28px;opacity:.4;background:#1a1a1f">✦</div>')+
-       '<div class="eic-body"><input type="radio" name="g_mstyle" value="'+m.v+'"'+(i===0?' checked':'')+'>'+
-       '<div><b>'+m.label+'</b><div class="muted">'+m.desc+'</div></div></div></label>'
-     ).join('');
+     return '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px" id="ea_ms_grid">'
+       +MS.map((m,i)=>
+         '<label class="esty-img-card"'+(i===0?' style="border-color:var(--gold)"':'')+' title="'+m.label+'">'
+         +(m.v!=='auto'
+           ? '<img class="eic-thumb" src="/poster-styles/'+m.v+'.jpg" alt="'+m.label+'" loading="lazy">'
+           : '<div class="eic-thumb" style="display:flex;align-items:center;justify-content:center;font-size:28px;opacity:.4;background:#1a1a1f">✦</div>')
+         +'<div class="eic-body"><input type="radio" name="g_mstyle" value="'+m.v+'"'+(i===0?' checked':'')+' style="accent-color:var(--gold)">'
+         +'<div><b>'+m.label+'</b><div class="muted">'+m.desc+'</div></div>'
+         +'</div></label>'
+       ).join('')
+       +'</div>';
    })()
-   +'</div>'
    +'<div style="margin-top:10px">'
-   +'<details style="font-size:12px;color:var(--mut)"><summary style="cursor:pointer;user-select:none;font-weight:600;color:var(--txt)">📎 Upload your own style reference (optional)</summary>'
-   +'<div style="margin-top:8px"><p class="muted" style="margin:0 0 8px;font-size:11px">Drop an image showing the campaign style, vibe, or poster look you want — the AI will use it as a visual reference for the scene while generating the model wearing your eyeglasses.</p>'
+   +'<details style="font-size:12px;color:var(--mut)"><summary style="cursor:pointer;user-select:none;font-weight:600;color:var(--txt)">📎 Override with your own style reference (optional)</summary>'
+   +'<div style="margin-top:8px"><p class="muted" style="margin:0 0 8px;font-size:11px">Drop an image showing the campaign style you want — lighting, composition, color palette. This overrides the template selected above.</p>'
    +'<label class="ea-drop" id="ea_msref_drop" style="padding:18px 14px">'
    +'<input type="file" id="ea_msref_file" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer">'
    +'<span id="ea_msref_lbl" class="muted" style="font-size:12px">Click or drop an image here</span>'
@@ -2108,7 +2103,7 @@ async function viewGenerate(){
     }
   }
   function syncModelStyleCards() {
-    document.querySelectorAll('#ea_ms_box .esty-img-card').forEach(el => {
+    document.querySelectorAll('#ea_ms_grid .esty-img-card').forEach(el => {
       const r = el.querySelector('input[name="g_mstyle"]');
       if (!r) return;
       el.style.borderColor = r.checked ? 'var(--gold)' : 'var(--line)';
@@ -2282,7 +2277,9 @@ async function viewGenerate(){
         // nothing extra — preset image sent below as styleRef
       }else if(eStyleVal==='model'){
         const mr=document.querySelector('input[name="g_mstyle"]:checked');
-        fd.append('eyeglassesModelStyle',mr?mr.value:'outdoor_lifestyle');
+        const mVal=mr?mr.value:'auto';
+        // Pass 'auto' as the model style env var (text directives) only when no image preset
+        fd.append('eyeglassesModelStyle', mVal==='auto'?'auto':'auto');
       }
       fd.append('characterId','');
     }else{
@@ -2309,12 +2306,19 @@ async function viewGenerate(){
     const manualRef=(skf&&skf.files&&skf.files[0])||(msf&&msf.files&&msf.files[0])||null;
     if(manualRef){
       fd.append('styleRef',manualRef);
-    }else if(posterType==='eyeglasses'&&(document.querySelector('input[name="g_estyle"]:checked')||{}).value==='showcase'){
-      const pspVal=(document.querySelector('input[name="g_psp"]:checked')||{}).value||'auto';
-      if(pspVal&&pspVal!=='auto'){
+    }else if(posterType==='eyeglasses'){
+      // Fetch the selected poster template preset (showcase or model) as the style reference
+      const eStyleVal2=(document.querySelector('input[name="g_estyle"]:checked')||{}).value||'showcase';
+      let presetKey='auto';
+      if(eStyleVal2==='showcase'){
+        presetKey=(document.querySelector('input[name="g_psp"]:checked')||{}).value||'auto';
+      }else if(eStyleVal2==='model'){
+        presetKey=(document.querySelector('input[name="g_mstyle"]:checked')||{}).value||'auto';
+      }
+      if(presetKey&&presetKey!=='auto'){
         try{
-          const r=await fetch('/poster-styles/'+pspVal+'.jpg');
-          if(r.ok){const blob=await r.blob();fd.append('styleRef',blob,pspVal+'.jpg');}
+          const r=await fetch('/poster-styles/'+presetKey+'.jpg');
+          if(r.ok){const blob=await r.blob();fd.append('styleRef',blob,presetKey+'.jpg');}
         }catch(e){console.warn('Could not fetch poster preset:',e);}
       }
     }
