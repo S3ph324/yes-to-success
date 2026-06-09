@@ -19,6 +19,19 @@ import {
 } from "./lib/client.mjs";
 
 applyGcpEnv();
+
+// ── Persistent-volume awareness ───────────────────────────────────────────────
+// On Railway the user's runtime data lives in the persistent volume mounted at
+// EXPORT_BASE (e.g. /app/exports), NOT in the Docker-image root (/app).
+// Child processes inherit EXPORT_BASE from the dashboard server, so we can use
+// it to locate eyeglasses.json and the uploaded reference photos.
+// The generated-bg images (intermediate render inputs) stay at projectRoot/public/
+// — they're ephemeral, recreated each run, and Remotion reads from there.
+const PERSIST_BASE = process.env.EXPORT_BASE
+  ? path.join(process.env.EXPORT_BASE, "_studio-data")
+  : projectRoot;
+const persistConfig = path.join(PERSIST_BASE, "config");
+const persistPublic = path.join(PERSIST_BASE, "public");
 const project = process.env.GOOGLE_CLOUD_PROJECT;
 const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
 
@@ -132,7 +145,7 @@ if (eyeglassesMode && wantGlassesId) {
   try {
     const all = JSON.parse(
       await fs.readFile(
-        path.join(projectRoot, "config", "eyeglasses.json"),
+        path.join(persistConfig, "eyeglasses.json"),
         "utf-8",
       ),
     );
@@ -213,7 +226,7 @@ const refSources =
     ? extraRefs.slice(0, 3).map((p) => ({ abs: true, p }))
     : subjectPhotos.slice(0, 3).map((p) => ({ abs: false, p }));
 for (const { abs, p } of refSources) {
-  const full = abs ? p : path.join(projectRoot, "public", p);
+  const full = abs ? p : path.join(persistPublic, p);
   try {
     const buf = await fs.readFile(full);
     refParts.push({
@@ -311,8 +324,15 @@ for (const { q, i } of targets) {
       `added later). The photo must contain zero readable text.`;
   } else if (eyeglassesMode) {
     // ── Product Showcase ───────────────────────────────────────────────────
+    // HARD CONSTRAINT printed first so the model reads it before anything else.
+    const nopeopleLine =
+      "ABSOLUTE RULE — PRODUCT ONLY: This image must contain ZERO people, " +
+      "ZERO faces, ZERO hands, ZERO skin, and ZERO human body parts of any kind. " +
+      "If a person or any body part appears anywhere in the frame the output is " +
+      "WRONG. Only the eyeglasses product and its background are allowed. ";
     if (hasRef) {
       guidance =
+        nopeopleLine +
         `Feature the EXACT pair of eyeglasses shown in these reference photos ` +
         `as the hero product — match its frame shape, color, lens tint, and ` +
         `all design details perfectly; do not redesign or substitute a different pair. ` +
@@ -321,13 +341,14 @@ for (const { q, i } of targets) {
         `The product must be clearly visible, in sharp focus, and instantly ` +
         `recognizable as the same pair shown in the references. ` +
         `The scene must clearly visually evoke this feeling: "${sceneVibe}". ` +
-        `No people, no hands, no props that obscure the frame. ` +
+        `No props that obscure the frame. ` +
         `No text, logos, or watermarks anywhere in the image. ` +
         `Vertical 4:5 portrait composition. Keep the top ~30% and bottom ~35% ` +
         `darker and visually simple (clean negative space for a text overlay ` +
         `added later). The photo must contain zero readable text.`;
     } else {
       guidance =
+        nopeopleLine +
         `Create a product-showcase photograph featuring a stylish pair of ` +
         `eyeglasses as the hero subject. ` +
         `${showcaseModifiers} ` +
@@ -335,7 +356,7 @@ for (const { q, i } of targets) {
         `The eyeglasses must be clearly visible, in sharp focus, and the ` +
         `main focal point. ` +
         `The scene must clearly visually evoke this feeling: "${sceneVibe}". ` +
-        `No people, no hands. No text, logos, or watermarks anywhere in the image. ` +
+        `No text, logos, or watermarks anywhere in the image. ` +
         `Vertical 4:5 portrait composition. Keep the top ~30% and bottom ~35% ` +
         `darker and visually simple (clean negative space for a text overlay ` +
         `added later). The photo must contain zero readable text.`;
