@@ -1419,7 +1419,7 @@ overflow:auto;font-size:12px;line-height:1.6;white-space:pre-wrap;color:#b9b9bf}
 figure{margin:0;background:#0d0d0f;border:1px solid var(--line);border-radius:12px;overflow:hidden;
 position:relative;transition:border-color .2s}
 figure:hover{border-color:var(--line2)}
-figure img{width:100%;display:block;aspect-ratio:4/5;object-fit:cover}
+figure img{width:100%;height:auto;display:block}
 .dl,.cp{position:absolute;top:9px;background:rgba(0,0,0,.6);color:#fff;
 border:1px solid rgba(255,255,255,.2);text-decoration:none;font-size:11px;font-weight:600;
 padding:6px 11px;border-radius:7px;opacity:0;transition:opacity .18s,background .15s;
@@ -1427,7 +1427,7 @@ backdrop-filter:blur(4px);cursor:pointer;font-family:inherit}
 .dl{right:9px}.cp{left:9px}
 figure:hover .dl,figure:hover .cp{opacity:1}
 .dl:hover,.cp:hover{background:var(--gold);color:#15120a;border-color:var(--gold)}
-figcaption{padding:12px 13px;font-size:11px;line-height:1.55;color:var(--mut);
+figcaption{display:none;padding:12px 13px;font-size:11px;line-height:1.55;color:var(--mut);
 white-space:pre-wrap;max-height:112px;overflow:auto}
 .muted{color:var(--mut);font-size:13px}
 .ps-badge{position:absolute;top:8px;left:8px;font-size:10px;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:.04em;pointer-events:none;z-index:2}
@@ -1490,7 +1490,6 @@ color:var(--mut);margin:20px 0 10px;padding-bottom:8px;border-bottom:1px solid v
   .bx-row{flex-direction:column;align-items:flex-start;gap:8px}
   button.go{width:100%;padding:14px}
   .opts-grid{grid-template-columns:1fr 1fr}
-  figure img{aspect-ratio:3/4}
   .ps-btn{font-size:10px;padding:6px 4px}
   input[type=number]{width:100%!important}
   #g_count{width:100%!important}
@@ -2388,12 +2387,15 @@ async function showLatestBatch(){
     const B=batches[0];if(!B||!B.files.length){return;}
     const esc=s=>(s||'').replace(/[<>]/g,'');
     const caps=B.captions.split(/^#\\d+\\s*$/m).map(s=>s.trim()).filter(Boolean);
-    const posters=B.files.slice(0,12).map((f,i)=>{
-      const u='/posters/'+CLIENT+'/'+encodeURIComponent(B.stamp)+'/'+encodeURIComponent(f);
-      return '<figure style="margin:0;background:#0d0d0f;border:1px solid rgba(255,255,255,.07);border-radius:12px;overflow:hidden;position:relative">'
-        +'<a href="'+u+'" target="_blank"><img src="'+u+'" style="width:100%;display:block;aspect-ratio:4/5;object-fit:cover" loading="lazy"></a>'
-        +'<a href="'+u+'?dl=1" download style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:6px;text-decoration:none;backdrop-filter:blur(4px)">↓</a>'
-        +(caps[i]?'<div style="padding:10px 12px;font-size:11px;color:rgba(255,255,255,.55);line-height:1.5;max-height:80px;overflow:auto">'+esc(caps[i])+'</div>':'')
+    const lbItems=B.files.slice(0,12).map((f,i)=>({
+      url:'/posters/'+CLIENT+'/'+encodeURIComponent(B.stamp)+'/'+encodeURIComponent(f),
+      caption:caps[i]||''
+    }));
+    window._lbItems=lbItems;
+    const posters=lbItems.map((it,i)=>{
+      return '<figure style="margin:0;background:#0d0d0f;border:1px solid rgba(255,255,255,.07);border-radius:12px;overflow:hidden;position:relative;cursor:zoom-in" onclick="openLb('+i+')">'
+        +'<img src="'+it.url+'" style="width:100%;height:auto;display:block" loading="lazy">'
+        +'<a href="'+it.url+'?dl=1" download onclick="event.stopPropagation()" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:6px;text-decoration:none;backdrop-filter:blur(4px)">↓</a>'
         +'</figure>';
     }).join('');
     const more=B.files.length>12?'<p style="color:var(--mut);font-size:12px;margin:4px 0 0">+ '+(B.files.length-12)+' more in Batches</p>':'';
@@ -3180,6 +3182,9 @@ async function viewBatches(){
   function paint(){
     const q=($('#bx_q').value||'').trim().toLowerCase();
     let nb=0,np=0;
+    // Build flat lightbox items array across all rendered posters
+    const bxItems=[];
+    let lbGlobal=0;
     const html=ALL.map(B=>{
       const caps=B.captions.split(/^#\\d+\\s*$/m).map(s=>s.trim()).filter(Boolean);
       const stampHit=B.stamp.toLowerCase().indexOf(q)>-1;
@@ -3187,39 +3192,43 @@ async function viewBatches(){
       if(!idx.length)return '';
       nb++;np+=idx.length;
       const allCaps=idx.map(i=>'#'+(i+1)+'\\n'+(caps[i]||'')).join('\\n\\n---\\n\\n');
-      return '<div class="card" data-stamp="'+B.stamp+'"><div class="bx-row"><b>'+fmtStamp(B.stamp)+'</b>'
-       +'<span><span class="pill">'+idx.length+(idx.length!==B.count?(' / '+B.count):'')+' posters</span> '
-       +'<button class="sec" data-cp-all="'+b64(allCaps)+'">📋 All captions</button> '
-       +'<a class="sec" style="text-decoration:none" href="/api/batch-zip?client='+CLIENT+'&stamp='+encodeURIComponent(B.stamp)+'">⬇ All (.zip)</a>'
-       +' <button class="sec del-batch" data-stamp="'+B.stamp+'" style="color:var(--red);border-color:rgba(224,86,75,.35)" title="Delete this entire batch">🗑 Delete batch</button>'
+      return '<div class=”card” data-stamp=”'+B.stamp+'”><div class=”bx-row”><b>'+fmtStamp(B.stamp)+'</b>'
+       +'<span><span class=”pill”>'+idx.length+(idx.length!==B.count?(' / '+B.count):'')+' posters</span> '
+       +'<button class=”sec” data-cp-all=”'+b64(allCaps)+'”>📋 All captions</button> '
+       +'<a class=”sec” style=”text-decoration:none” href=”/api/batch-zip?client='+CLIENT+'&stamp='+encodeURIComponent(B.stamp)+'”>⬇ All (.zip)</a>'
+       +' <button class=”sec del-batch” data-stamp=”'+B.stamp+'” style=”color:var(--red);border-color:rgba(224,86,75,.35)” title=”Delete this entire batch”>🗑 Delete batch</button>'
        +'</span></div>'
-       +'<div class="grid" style="margin-top:14px">'+idx.map(i=>{
+       +'<div class=”grid” style=”margin-top:14px”>'+idx.map(i=>{
          const f=B.files[i],u='/posters/'+CLIENT+'/'+encodeURIComponent(B.stamp)+'/'+encodeURIComponent(f);
          const st=(B.statuses&&B.statuses[f])||'pending';
-         const badgeHtml=st==='approved'?'<div class="ps-badge" style="background:var(--gold);color:#15120a">✓ Approved</div>'
-           :st==='posted'?'<div class="ps-badge" style="background:#3cb454;color:#fff">✓ Posted</div>'
-           :st==='declined'?'<div class="ps-badge" style="background:var(--red);color:#fff">✗ Declined</div>':'';
-         return '<figure data-stamp="'+B.stamp+'" data-file="'+encodeURIComponent(f)+'" style="opacity:'+(st==='declined'?'.4':'1')+';transition:opacity .2s">'
+         const badgeHtml=st==='approved'?'<div class=”ps-badge” style=”background:var(--gold);color:#15120a”>✓ Approved</div>'
+           :st==='posted'?'<div class=”ps-badge” style=”background:#3cb454;color:#fff”>✓ Posted</div>'
+           :st==='declined'?'<div class=”ps-badge” style=”background:var(--red);color:#fff”>✗ Declined</div>':'';
+         const myLb=lbGlobal++;
+         bxItems.push({url:u,caption:caps[i]||''});
+         return '<figure data-stamp=”'+B.stamp+'” data-file=”'+encodeURIComponent(f)+'” style=”opacity:'+(st==='declined'?'.4':'1')+';transition:opacity .2s”>'
           +badgeHtml
-          +'<a href="'+u+'" target="_blank" rel="noopener" title="Open full size"><img loading="lazy" src="'+u+'"></a>'
-          +'<button class="cp" data-c="'+b64(caps[i]||'')+'" title="Copy caption">📋</button>'
-          +'<a class="dl" href="'+u+'?dl=1" download>↓</a>'
-          +'<figcaption>'+(esc(caps[i])||'—')+'</figcaption>'
-          +'<div class="ps-actions">'
+          +'<div style=”cursor:zoom-in;position:relative” onclick=”openLb('+myLb+')”>'
+          +'<img loading=”lazy” src=”'+u+'” style=”width:100%;height:auto;display:block”>'
+          +'</div>'
+          +'<button class=”cp” data-c=”'+b64(caps[i]||'')+'” title=”Copy caption”>📋</button>'
+          +'<a class=”dl” href=”'+u+'?dl=1” download>↓</a>'
+          +'<div class=”ps-actions”>'
           // Row 1: primary approve/decline
-          +'<div class="ps-row">'
-          +'<button class="ps-btn ps-approve'+(st==='approved'?' ps-on-gold':'')+'" data-stamp="'+B.stamp+'" data-fn="'+encodeURIComponent(f)+'" data-s="approved">'+(st==='approved'?'✓ Approved':'✓ Approve')+'</button>'
-          +'<button class="ps-btn ps-decline'+(st==='declined'?' ps-on-red':'')+'" data-stamp="'+B.stamp+'" data-fn="'+encodeURIComponent(f)+'" data-s="declined">'+(st==='declined'?'✗ Declined':'✗ Decline')+'</button>'
+          +'<div class=”ps-row”>'
+          +'<button class=”ps-btn ps-approve'+(st==='approved'?' ps-on-gold':'')+'” data-stamp=”'+B.stamp+'” data-fn=”'+encodeURIComponent(f)+'” data-s=”approved”>'+(st==='approved'?'✓ Approved':'✓ Approve')+'</button>'
+          +'<button class=”ps-btn ps-decline'+(st==='declined'?' ps-on-red':'')+'” data-stamp=”'+B.stamp+'” data-fn=”'+encodeURIComponent(f)+'” data-s=”declined”>'+(st==='declined'?'✗ Declined':'✗ Decline')+'</button>'
           +'</div>'
           // Row 2: secondary — mark posted + delete
-          +'<div class="ps-row">'
-          +'<button class="ps-btn ps-btn-secondary ps-posted'+(st==='posted'?' ps-on-green':'')+'" style="flex:3" data-stamp="'+B.stamp+'" data-fn="'+encodeURIComponent(f)+'" data-s="posted">'+(st==='posted'?'✓ Posted':'Already posted')+'</button>'
-          +'<button class="ps-btn ps-btn-secondary del-poster" style="flex:1" data-stamp="'+B.stamp+'" data-file="'+encodeURIComponent(f)+'" title="Delete poster">🗑</button>'
+          +'<div class=”ps-row”>'
+          +'<button class=”ps-btn ps-btn-secondary ps-posted'+(st==='posted'?' ps-on-green':'')+'” style=”flex:3” data-stamp=”'+B.stamp+'” data-fn=”'+encodeURIComponent(f)+'” data-s=”posted”>'+(st==='posted'?'✓ Posted':'Already posted')+'</button>'
+          +'<button class=”ps-btn ps-btn-secondary del-poster” style=”flex:1” data-stamp=”'+B.stamp+'” data-file=”'+encodeURIComponent(f)+'” title=”Delete poster”>🗑</button>'
           +'</div>'
           +'</div></figure>';}).join('')
        +'</div></div>';}).join('');
-    $('#bx_list').innerHTML=ALL.length?(html||'<p class="muted">No posters match “'+esc(q)+'”.</p>')
-      :'<p class="muted">No batches yet. Generate some on the Generate tab.</p>';
+    window._lbItems=bxItems;
+    $('#bx_list').innerHTML=ALL.length?(html||'<p class=”muted”>No posters match “'+esc(q)+'”.</p>')
+      :'<p class=”muted”>No batches yet. Generate some on the Generate tab.</p>';
     $('#bx_meta').textContent=ALL.length
       ?(nb+' batch'+(nb===1?'':'es')+' · '+np+' poster'+(np===1?'':'s')+(q?' (filtered)':''))
       :'';
@@ -3487,5 +3496,60 @@ async function viewBroll(){
   }
   loadSets();
 }
+// ── Lightbox ──────────────────────────────────────────────────────────────────
+window._lbItems=[];
+let _lbIdx=0;
+function _lbShow(){
+  const it=window._lbItems[_lbIdx]||{};
+  const el=document.getElementById('lb');if(!el)return;
+  document.getElementById('lb-img').src=it.url||'';
+  document.getElementById('lb-cap').textContent=it.caption||'';
+  const dlEl=document.getElementById('lb-dl');
+  if(dlEl){const fn=(it.url||'').split('/').pop();dlEl.href=(it.url||'')+'?dl=1';dlEl.download=fn||'poster.png';}
+  const n=window._lbItems.length;
+  const ctr=document.getElementById('lb-counter');
+  if(ctr)ctr.textContent=n>1?(_lbIdx+1)+' / '+n:'';
+  const showNav=n>1;
+  const prev=document.getElementById('lb-prev'),next=document.getElementById('lb-next');
+  if(prev)prev.style.display=showNav?'flex':'none';
+  if(next)next.style.display=showNav?'flex':'none';
+  el.style.display='flex';
+  document.body.style.overflow='hidden';
+}
+function openLb(idx,items){
+  if(items)window._lbItems=items;
+  _lbIdx=(idx||0);
+  _lbShow();
+}
+function closeLb(){
+  const el=document.getElementById('lb');if(el)el.style.display='none';
+  document.body.style.overflow='';
+}
+function lbNav(dir){
+  const n=window._lbItems.length;if(!n)return;
+  _lbIdx=(_lbIdx+dir+n)%n;
+  _lbShow();
+}
+document.addEventListener('keydown',function(e){
+  const lb=document.getElementById('lb');
+  if(!lb||lb.style.display==='none')return;
+  if(e.key==='Escape')closeLb();
+  else if(e.key==='ArrowLeft')lbNav(-1);
+  else if(e.key==='ArrowRight')lbNav(1);
+});
+window.openLb=openLb;window.closeLb=closeLb;window.lbNav=lbNav;
+
 boot();
-</script></body></html>`;
+</script>
+<div id="lb" onclick="if(event.target===this)closeLb()" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.92);align-items:center;justify-content:center;flex-direction:column;gap:10px;padding:20px 60px">
+  <button onclick="closeLb()" style="position:fixed;top:14px;right:16px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;font-size:18px;line-height:1;width:40px;height:40px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2">✕</button>
+  <button id="lb-prev" onclick="lbNav(-1)" style="position:fixed;left:12px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;font-size:26px;line-height:1;width:48px;height:48px;border-radius:50%;cursor:pointer;align-items:center;justify-content:center;display:none;z-index:2">‹</button>
+  <img id="lb-img" src="" alt="poster" style="max-width:min(90vw,520px);max-height:80vh;width:auto;height:auto;object-fit:contain;border-radius:10px;box-shadow:0 10px 80px rgba(0,0,0,.9);display:block">
+  <div id="lb-cap" style="max-width:520px;width:100%;text-align:center;font-size:12px;color:rgba(255,255,255,.5);line-height:1.6;padding:0 8px"></div>
+  <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;justify-content:center">
+    <a id="lb-dl" download style="font-size:11px;color:rgba(255,255,255,.45);text-decoration:none;padding:5px 14px;border:1px solid rgba(255,255,255,.15);border-radius:6px">⬇ Download</a>
+    <span id="lb-counter" style="font-size:11px;color:rgba(255,255,255,.3)"></span>
+  </div>
+  <button id="lb-next" onclick="lbNav(1)" style="position:fixed;right:12px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;font-size:26px;line-height:1;width:48px;height:48px;border-radius:50%;cursor:pointer;align-items:center;justify-content:center;display:none;z-index:2">›</button>
+</div>
+</body></html>`;
