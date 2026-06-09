@@ -15,22 +15,16 @@ import {
 } from "./aspect";
 
 // ─────────────────────────────────────────────────────────────────────────
-// Product Showcase Card — clean product-photography poster (eyeglasses
-// showcase and similar). This is deliberately NOT a quote card: no hook→
-// payoff overlay, no big colored word emphasis, no CTA lockup footer. The
-// product photo IS the hero — branding stays small and editorial: a thin
-// two-tone accent rule, a single clean product line + optional tagline, an
-// optional small CTA chip, and a small logo watermark in a corner. Think
-// "premium e-commerce / OOTD ad", not "motivational quote graphic".
+// Product Showcase Card — bold poster-style eyeglasses ad.
+// The AI product photo is the hero (full-bleed). Copy lives in a strong
+// frosted/dark panel at the bottom — big headline, tagline, solid-gold CTA
+// chip. Logo is prominent at top-right. This is deliberately NOT the old
+// "quiet editorial watermark" style — it reads like a campaign poster.
 // ─────────────────────────────────────────────────────────────────────────
 
 export const productShowcaseCardSchema = z.object({
-  // One short, clean line naming/describing the product, e.g.
-  // "Aria Round — Tortoise" or "Your everyday pair, elevated."
   productLine: z.string().default(""),
-  // Optional short supporting clause under the product line (one phrase).
   tagline: z.string().default(""),
-  // Small CTA chip text, e.g. "SHOP NOW". Empty string hides the chip.
   ctaTag: z.string().default(""),
   bgSrc: z.string().default(""),
   aspectRatio: aspectRatioSchema,
@@ -40,8 +34,7 @@ export const productShowcaseCardSchema = z.object({
   logoPosition: z
     .enum(["top-left", "top-right", "bottom-left", "bottom-right"])
     .default("top-right"),
-  // Fraction of canvas height. Kept small — this is a watermark, not a hero.
-  logoSize: z.number().min(0.04).max(0.2).default(0.085),
+  logoSize: z.number().min(0.04).max(0.25).default(0.11),
 });
 
 export type ProductShowcaseCardProps = z.infer<
@@ -71,9 +64,9 @@ const resolveSrc = (src: string) => {
 };
 
 const LOGO_POS: Record<string, React.CSSProperties> = {
-  "top-left": { top: 0, left: 0 },
-  "top-right": { top: 0, right: 0 },
-  "bottom-left": { bottom: 0, left: 0 },
+  "top-left":     { top: 0, left: 0 },
+  "top-right":    { top: 0, right: 0 },
+  "bottom-left":  { bottom: 0, left: 0 },
   "bottom-right": { bottom: 0, right: 0 },
 };
 
@@ -82,9 +75,6 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   tagline,
   ctaTag,
   bgSrc,
-  // aspectRatio is consumed by calcMetaProductShowcaseCard (drives canvas
-  // width/height) — the component itself derives everything from width/height
-  // via useVideoConfig(), so it's intentionally not destructured here.
   brandGold,
   brandRed,
   logoSrc,
@@ -94,24 +84,34 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
 
-  const opacity = interpolate(frame, [0, 18], [0, 1], {
+  // Animation
+  const fadeIn = interpolate(frame, [0, 20], [0, 1], {
     extrapolateRight: "clamp",
   });
-  const lift = spring({ frame, fps, from: 22, to: 0, durationInFrames: 30 });
-  const bgScale = interpolate(frame, [0, 90], [1.035, 1.0], {
+  const lift = spring({ frame, fps, from: 28, to: 0, durationInFrames: 32 });
+  const bgScale = interpolate(frame, [0, 90], [1.04, 1.0], {
+    extrapolateRight: "clamp",
+  });
+  // CTA / logo animate in slightly later for a staggered feel
+  const fadeInLate = interpolate(frame, [10, 30], [0, 1], {
     extrapolateRight: "clamp",
   });
 
-  const bg = resolveSrc(bgSrc);
+  const bg   = resolveSrc(bgSrc);
   const logo = resolveSrc(logoSrc);
-  const inset = Math.round(Math.min(width, height) * 0.055);
-  const logoH = Math.round(height * logoSize);
-  const scale = width / 1080;
+  const scale  = width / 1080;
+  const inset  = Math.round(Math.min(width, height) * 0.052);
+  const logoH  = Math.round(height * logoSize);
+
   const hasCaption = Boolean(productLine || tagline);
 
+  // Bottom panel covers ~38% of frame height — the region where all text lives.
+  const panelH = Math.round(height * 0.38);
+
   return (
-    <AbsoluteFill style={{ background: "#101010", overflow: "hidden" }}>
-      {/* hero product photo — full bleed, no quote-card scrims/treatment */}
+    <AbsoluteFill style={{ background: "#0a0a0c", overflow: "hidden" }}>
+
+      {/* ── Hero background ── */}
       {bg ? (
         <AbsoluteFill style={{ transform: `scale(${bgScale})` }}>
           <Img
@@ -123,30 +123,37 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
         <AbsoluteFill
           style={{
             background:
-              "radial-gradient(ellipse at 50% 40%, #2A2A2A 0%, #0A0A0A 100%)",
+              "radial-gradient(ellipse at 50% 35%, #2e2e36 0%, #080810 100%)",
           }}
         />
       )}
 
-      {/* faint bottom scrim — only enough to keep the caption legible; never
-          the wall-to-wall dark gradient a quote-card overlay needs */}
-      {hasCaption && (
-        <AbsoluteFill
-          style={{
-            background:
-              "linear-gradient(180deg, rgba(0,0,0,0) 60%, rgba(0,0,0,0.50) 100%)",
-          }}
-        />
-      )}
+      {/* ── Full-frame vignette — darkens corners for depth ── */}
+      <AbsoluteFill
+        style={{
+          background:
+            "radial-gradient(ellipse at 50% 50%, transparent 40%, rgba(0,0,0,0.45) 100%)",
+        }}
+      />
 
-      {/* logo mark — small, corner, watermark — never the hero element */}
+      {/* ── Bottom poster panel ──
+           Two-layer approach: a deep gradient from mid-frame down, plus a
+           solid-ish strip at the very bottom so type always reads cleanly. */}
+      <AbsoluteFill
+        style={{
+          background:
+            "linear-gradient(180deg, transparent 38%, rgba(8,6,12,0.72) 62%, rgba(8,6,12,0.96) 100%)",
+        }}
+      />
+
+      {/* ── Logo — prominent, top corner ── */}
       {logo && (
         <div
           style={{
             position: "absolute",
             ...LOGO_POS[logoPosition],
             margin: inset,
-            opacity: opacity * 0.92,
+            opacity: fadeInLate,
           }}
         >
           <Img
@@ -155,92 +162,89 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
               height: logoH,
               width: "auto",
               objectFit: "contain",
-              filter: "drop-shadow(0 4px 16px rgba(0,0,0,0.6))",
+              filter:
+                "drop-shadow(0 3px 18px rgba(0,0,0,0.7)) drop-shadow(0 1px 4px rgba(0,0,0,0.5))",
             }}
           />
         </div>
       )}
 
-      {/* CTA chip — small pill in the opposite corner from the caption */}
-      {ctaTag && (
-        <div
-          style={{
-            position: "absolute",
-            top: inset,
-            left: inset,
-            opacity,
-            transform: `translateY(${lift * 0.6}px)`,
-          }}
-        >
-          <div
-            style={{
-              padding: `${Math.round(10 * scale)}px ${Math.round(20 * scale)}px`,
-              borderRadius: 999,
-              border: `1.5px solid ${brandGold}`,
-              background: "rgba(10,10,10,0.38)",
-              backdropFilter: "blur(6px)",
-              color: brandGold,
-              fontFamily: "system-ui, -apple-system, 'Helvetica Neue', sans-serif",
-              fontWeight: 600,
-              fontSize: Math.round(20 * scale),
-              letterSpacing: "0.16em",
-              textTransform: "uppercase",
-            }}
-          >
-            {ctaTag}
-          </div>
-        </div>
-      )}
-
-      {/* caption — ONE clean product line + optional supporting clause; no
-          hook/payoff structure, no per-word color emphasis */}
+      {/* ── Bottom caption zone ── */}
       {hasCaption && (
         <div
           style={{
             position: "absolute",
             left: inset,
             right: inset,
-            bottom: Math.round(height * 0.06),
-            opacity,
+            bottom: Math.round(height * 0.055),
+            opacity: fadeIn,
             transform: `translateY(${lift}px)`,
           }}
         >
+          {/* Accent rule — spans full text column, red→gold gradient */}
           <div
             style={{
-              width: Math.round(56 * scale),
-              height: 3,
-              background: `linear-gradient(90deg, ${brandRed} 0%, ${brandGold} 100%)`,
-              marginBottom: Math.round(16 * scale),
+              height: Math.round(4 * scale),
+              background: `linear-gradient(90deg, ${brandRed} 0%, ${brandGold} 55%, transparent 100%)`,
+              marginBottom: Math.round(18 * scale),
               borderRadius: 2,
             }}
           />
+
+          {/* CTA chip — solid gold, placed ABOVE headline for poster rhythm */}
+          {ctaTag && (
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: `${Math.round(8 * scale)}px ${Math.round(22 * scale)}px`,
+                background: brandGold,
+                color: "#15120a",
+                borderRadius: 999,
+                fontFamily:
+                  "system-ui, -apple-system, 'Helvetica Neue', sans-serif",
+                fontWeight: 800,
+                fontSize: Math.round(18 * scale),
+                letterSpacing: "0.13em",
+                textTransform: "uppercase",
+                marginBottom: Math.round(16 * scale),
+                boxShadow: `0 4px 24px rgba(0,0,0,0.4)`,
+              }}
+            >
+              {ctaTag}
+            </div>
+          )}
+
+          {/* Main product headline — poster-scale, heavy weight */}
           {productLine && (
             <div
               style={{
                 fontFamily:
                   "system-ui, -apple-system, 'Helvetica Neue', sans-serif",
-                fontWeight: 700,
-                fontSize: Math.round(44 * scale),
+                fontWeight: 800,
+                fontSize: Math.round(58 * scale),
                 color: "#FFFFFF",
-                letterSpacing: "-0.01em",
-                lineHeight: 1.18,
-                textShadow: "0 2px 16px rgba(0,0,0,0.55)",
+                letterSpacing: "-0.018em",
+                lineHeight: 1.1,
+                textShadow: "0 3px 28px rgba(0,0,0,0.75)",
               }}
             >
               {productLine}
             </div>
           )}
+
+          {/* Tagline — secondary line, smaller but still confident */}
           {tagline && (
             <div
               style={{
                 fontFamily:
                   "system-ui, -apple-system, 'Helvetica Neue', sans-serif",
                 fontWeight: 400,
-                fontSize: Math.round(24 * scale),
-                color: "rgba(255,255,255,0.78)",
-                marginTop: Math.round(8 * scale),
-                letterSpacing: "0.01em",
-                lineHeight: 1.35,
+                fontSize: Math.round(27 * scale),
+                color: "rgba(255,255,255,0.82)",
+                marginTop: Math.round(10 * scale),
+                letterSpacing: "0.008em",
+                lineHeight: 1.4,
               }}
             >
               {tagline}

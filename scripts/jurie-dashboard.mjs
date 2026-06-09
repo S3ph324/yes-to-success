@@ -3115,6 +3115,11 @@ async function viewQueue(){
       html+='<div class="callout callout-info"><b>Nothing here yet.</b> Go to <b>⚡ Generate</b>, type a topic and hit Generate. Your posters will appear here automatically when done.</div>';
     }
 
+    // Build ONE flat lightbox array across ALL queue entries (ordered newest-
+    // first, same as the rendered cards). Each onclick uses a global index into
+    // this array — not a per-entry pi — so clicking any card opens the correct
+    // image regardless of how many entries are on screen.
+    const allQItems=[];let qGlobal=0;
     for(const entry of pending){
       const qid=entry.id;
       const approvedCount=entry.posters.filter(p=>(local[qid]?.[p.filename]||p.status)==='approved').length;
@@ -3147,18 +3152,16 @@ async function viewQueue(){
         // Poster grid
         +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px">'
         +(()=>{
-          const qItems=entry.posters.map(p=>({
-            url:'/posters/'+CLIENT+'/'+encodeURIComponent(entry.stamp)+'/'+encodeURIComponent(p.filename),
-            caption:p.caption||''
-          }));
-          window._lbItems=qItems;
-          return entry.posters.map((p,pi)=>{
+          return entry.posters.map((p)=>{
             const st=local[qid]?.[p.filename]||p.status;
             const isApp=st==='approved',isDec=st==='declined';
             const u='/posters/'+CLIENT+'/'+encodeURIComponent(entry.stamp)+'/'+encodeURIComponent(p.filename);
+            const imgU=u+'?v=2';
+            allQItems.push({url:imgU,caption:p.caption||''});
+            const myQIdx=qGlobal++;
             return '<div style="border-radius:12px;overflow:hidden;border:2px solid '+(isApp?'var(--gold)':isDec?'var(--red)':'var(--line)')+';background:#0d0d0f;opacity:'+(isDec?'.45':'1')+';transition:all .18s">'
-              +'<div style="position:relative;cursor:zoom-in" onclick="openLb('+pi+')">'
-              +'<img src="'+u+'" style="width:100%;height:auto;display:block" loading="lazy">'
+              +'<div style="position:relative;cursor:zoom-in" onclick="openLb('+myQIdx+')">'
+              +'<img src="'+imgU+'" style="width:100%;height:auto;display:block">'
               +(isApp?'<div style="position:absolute;top:8px;right:8px;background:var(--gold);color:#15120a;font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;pointer-events:none">✓ APPROVED</div>':'')
               +(isDec?'<div style="position:absolute;top:8px;right:8px;background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;pointer-events:none">✗ DECLINED</div>':'')
               +'</div>'
@@ -3170,6 +3173,9 @@ async function viewQueue(){
         })()
         +'</div></div>';
     }
+    // Set lightbox items ONCE after all pending entries are processed so that
+    // every onclick="openLb(N)" refers to the correct global index.
+    window._lbItems=allQItems;
 
     // Sent history
     if(sent.length){
@@ -3443,7 +3449,9 @@ async function viewBatches(){
     });
   }
   $('#bx_q').oninput=paint;
-  $('#bx_ref').onclick=viewBatches;
+  // Force a fresh fetch on manual Refresh — bypass the 20s api() cache so
+  // newly-completed batches always appear immediately when the user clicks it.
+  $('#bx_ref').onclick=()=>{_apiCache.delete('/api/batches?client='+CLIENT);viewBatches();};
   $('#bx_open').onclick=()=>{fetch('/api/reveal',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({client:CLIENT})});toast('Opening export folder…');};
   paint();
