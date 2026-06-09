@@ -1727,7 +1727,7 @@ cursor:pointer;font-size:13px;transition:border-color .15s,background .15s;borde
 .esty-img-card{display:flex;flex-direction:column;border-radius:9px;overflow:hidden;cursor:pointer;
 font-size:13px;transition:border-color .15s,box-shadow .15s;border:1.5px solid var(--line);background:var(--bg2)}
 .esty-img-card:hover{border-color:var(--line2)}
-.esty-img-card .eic-thumb{width:100%;height:90px;object-fit:cover;object-position:center;display:block;background:#1a1a1e}
+.esty-img-card .eic-thumb{width:100%;height:200px;object-fit:cover;object-position:center top;display:block;background:#1a1a1e}
 .esty-img-card .eic-body{display:flex;align-items:flex-start;gap:7px;padding:8px 10px}
 .esty-img-card .eic-body input{width:auto;flex-shrink:0;margin:3px 0 0;accent-color:var(--gold)}
 .esty-img-card .eic-body b{font-size:12px;display:block;margin-bottom:1px}
@@ -1938,7 +1938,7 @@ async function viewGenerate(){
        {key:'05-glass-panel-spec',    label:'Glass panel spec',       desc:'Frosted acrylic surface, technical spec-sheet aesthetic'},
        {key:'auto',                   label:'Let AI decide',          desc:'Gemini picks the best visual style for each scene'},
      ];
-     return '<div id="ea_psp_grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">'
+     return '<div id="ea_psp_grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px">'
        +PSP.map((p,i)=>
          '<label class="esty-img-card"'+(i===0?' style="border-color:var(--gold)"':'')+' title="'+p.label+'">'
          +(p.key!=='auto'
@@ -1974,7 +1974,7 @@ async function viewGenerate(){
        {v:'model-05-outdoor-cinematic', label:'Outdoor cinematic',    desc:'Natural light, blue sky, quiet narrative composition'},
        {v:'auto',                       label:'Let AI decide',        desc:'Gemini picks the best style for each poster'},
      ];
-     return '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px" id="ea_ms_grid">'
+     return '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px" id="ea_ms_grid">'
        +MS.map((m,i)=>
          '<label class="esty-img-card"'+(i===0?' style="border-color:var(--gold)"':'')+' title="'+m.label+'">'
          +(m.v!=='auto'
