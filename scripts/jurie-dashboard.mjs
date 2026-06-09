@@ -1069,7 +1069,14 @@ app.get("/posters/:client/:stamp/:file", async (req, res) => {
     return res.status(400).end();
   if (req.query.dl)
     res.set("Content-Disposition", `attachment; filename="${file}"`);
-  res.sendFile(fp, ASSET_CACHE);
+  // Use error callback so a missing file returns 404 (not Express's HTML error
+  // page, which the browser would display as a broken image icon).
+  res.sendFile(fp, ASSET_CACHE, (err) => {
+    if (err && !res.headersSent) {
+      console.warn(`[poster] ${err.code || err.message} – ${fp}`);
+      res.status(404).end();
+    }
+  });
 });
 // DELETE a single poster PNG from a batch
 app.delete("/api/poster", async (req, res) => {
@@ -1368,9 +1375,19 @@ registerTryonRoutes(app, { EXPORT_BASE, guard });
 // ── Eyeglasses reference-set generator (Eyeglasses tab) ───────────────────
 registerEyeglassAngleRoutes(app, { guard });
 
-app.listen(PORT, () =>
-  console.log(`\n  Quote Poster Studio → http://localhost:${PORT}\n  Try-On         → http://localhost:${PORT}/tryon\n`),
-);
+app.listen(PORT, async () => {
+  console.log(`\n  Quote Poster Studio → http://localhost:${PORT}\n  Try-On         → http://localhost:${PORT}/tryon\n`);
+  // Boot-time sanity log: print export dirs for each client so Railway logs
+  // immediately show whether the persistent volume is mounted where expected.
+  console.log(`  EXPORT_BASE     : ${EXPORT_BASE || "(local dev)"}`);
+  const clients = await readCfg("clients.json", []);
+  for (const c of clients) {
+    const dir = clientExportDir(c);
+    let stat = "?";
+    try { await fs.access(dir); stat = "✓ accessible"; } catch { stat = "✗ NOT FOUND"; }
+    console.log(`  Export dir [${c.id}]: ${dir}  ${stat}`);
+  }
+});
 
 // ── UI ────────────────────────────────────────────────────────────────────
 const PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -3306,7 +3323,7 @@ async function viewBatches(){
          return '<figure data-stamp=”'+B.stamp+'” data-file=”'+encodeURIComponent(f)+'” style=”opacity:'+(st==='declined'?'.4':'1')+';transition:opacity .2s”>'
           +badgeHtml
           +'<div style=”cursor:zoom-in;position:relative” onclick=”openLb('+myLb+')”>'
-          +'<img loading=”lazy” src=”'+u+'” style=”width:100%;height:auto;display:block”>'
+          +'<img src=”'+u+'” style=”width:100%;height:auto;display:block”>'
           +'</div>'
           +'<button class=”cp” data-c=”'+b64(caps[i]||'')+'” title=”Copy caption”>📋</button>'
           +'<a class=”dl” href=”'+u+'?dl=1” download>↓</a>'
