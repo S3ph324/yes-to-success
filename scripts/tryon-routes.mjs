@@ -21,7 +21,7 @@ applyGcpEnv();
 const __dirname  = path.dirname(url.fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, "..");
 
-export const TRYON_VERSION = "2.0.0";
+export const TRYON_VERSION = "2.0.1";
 
 const TEXT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const IMG_MODEL  = process.env.REF_MODEL    || "gemini-2.5-flash-image";
