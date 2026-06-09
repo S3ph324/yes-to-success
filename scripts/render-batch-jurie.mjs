@@ -186,18 +186,21 @@ for (const q of quotes) {
         productLine: q.productLine || q.quote || "",
         tagline: q.tagline || "",
         ctaTag: q.ctaTag || "",
+        headline: q.headline || "",
+        layout: q.layout || "bottom",
         bgSrc: q.bgPath || "",
         aspectRatio,
         brandGold: brand.brandGold,
         brandRed: brand.brandRed,
         logoSrc: brand.logoSrc,
-        // Showcase posters keep the logo as a small corner watermark
-        // regardless of the brand kit's quote-card logo placement — a
-        // top-center hero lockup would compete with the product photo.
-        logoPosition:
-          brand.logoPosition && brand.logoPosition.includes("right")
+        // For "top" layout the logo is repositioned server-side (bottom-right)
+        // to avoid clashing with the top-panel text. For others, respect the
+        // brand kit setting but keep it to a corner position.
+        logoPosition: q.layout === "top"
+          ? "bottom-right"
+          : (brand.logoPosition && brand.logoPosition.includes("right")
             ? brand.logoPosition
-            : "top-right",
+            : "top-right"),
         logoSize: Math.min(brand.logoSize, 0.1),
       }
     : {

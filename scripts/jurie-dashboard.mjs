@@ -858,6 +858,7 @@ app.post("/api/generate", extraRefUpload.fields([
     eyeglassesStyle,
     eyeglassesModelStyle,
     aspectDist,
+    aiHeadline,
   } = req.body || {};
   const c = await getClient(client);
   if (!c) return res.status(400).json({ error: "Unknown client" });
@@ -908,6 +909,7 @@ app.post("/api/generate", extraRefUpload.fields([
   }
   if (useLogo !== "1") env.DASHBOARD_NO_LOGO = "1";
   if (includeCta !== "1") env.DASHBOARD_NO_CTA = "1";
+  if (aiHeadline === "1") env.DASHBOARD_AI_HEADLINE = "1";
   if (bufferAutopost === "1") env.BUFFER_AUTOPOST = "1";
   if (extraRefPaths.length)
     env.DASHBOARD_EXTRA_REFS = JSON.stringify(extraRefPaths);
@@ -1994,6 +1996,8 @@ async function viewGenerate(){
    +'<input type="checkbox" id="g_logo_on" style="width:auto;margin:0"> Include logo</label>'
    +'<label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;color:var(--txt);white-space:nowrap">'
    +'<input type="checkbox" id="g_cta_on" checked style="width:auto;margin:0"> Include CTA chip</label>'
+   +'<label id="g_aihead_label" style="display:inline-flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;color:var(--txt);white-space:nowrap">'
+   +'<input type="checkbox" id="g_ai_head" style="width:auto;margin:0"> ✨ AI headline</label>'
    +'</div>'
    +'<div><label style="font-size:11px" id="g_extras_label">Extra reference photos (overrides character for this batch)</label>'
    +'<input id="g_extras" type="file" accept="image/*" multiple></div></div>'
@@ -2205,6 +2209,9 @@ async function viewGenerate(){
     // Eyeglasses style box
     const ebox=$('#g_estyle_box');
     if(ebox) ebox.style.display = isEye ? 'block' : 'none';
+    // AI headline toggle — only relevant for eyeglasses showcase posters
+    const aihlLbl=$('#g_aihead_label');
+    if(aihlLbl) aihlLbl.style.display = isEye ? '' : 'none';
   }
   document.querySelectorAll('input[name="g_ptype"]').forEach(r=>{
     r.onchange=()=>{syncPtypeCards();paintSubject();saveGenSettings();};
@@ -2272,6 +2279,7 @@ async function viewGenerate(){
       brand:$('#g_brand')?$('#g_brand').value:'',
       logoOn:$('#g_logo_on')?$('#g_logo_on').checked:true,
       ctaOn:$('#g_cta_on')?$('#g_cta_on').checked:true,
+      aiHeadOn:$('#g_ai_head')?$('#g_ai_head').checked:false,
       count:$('#g_count')?$('#g_count').value:'8',
       subject:$('#g_subject')?$('#g_subject').value:'',
       estyle:(document.querySelector('input[name="g_estyle"]:checked')||{}).value||'showcase',
@@ -2298,6 +2306,7 @@ async function viewGenerate(){
     // Logo + count
     if($('#g_logo_on')&&s.logoOn!=null)$('#g_logo_on').checked=s.logoOn;
     if($('#g_cta_on')&&s.ctaOn!=null)$('#g_cta_on').checked=s.ctaOn;
+    if($('#g_ai_head')&&s.aiHeadOn!=null)$('#g_ai_head').checked=s.aiHeadOn;
     if($('#g_count')&&s.count)$('#g_count').value=s.count;
     // Subject — rendered by paintSubject above, fire change so preview updates
     if($('#g_subject')&&s.subject){$('#g_subject').value=s.subject;$('#g_subject').dispatchEvent(new Event('change'));}
@@ -2323,6 +2332,7 @@ async function viewGenerate(){
   if($('#ea_headline'))$('#ea_headline').oninput=saveGenSettings;
   if($('#g_logo_on'))$('#g_logo_on').onchange=saveGenSettings;
   if($('#g_cta_on'))$('#g_cta_on').onchange=saveGenSettings;
+  if($('#g_ai_head'))$('#g_ai_head').onchange=saveGenSettings;
   if($('#g_count'))$('#g_count').onchange=saveGenSettings;
   loadGenSettings();
 
@@ -2499,6 +2509,7 @@ async function viewGenerate(){
     }
     fd.append('useLogo',$('#g_logo_on').checked?'1':'0');
     fd.append('includeCta',$('#g_cta_on')&&$('#g_cta_on').checked?'1':'0');
+    fd.append('aiHeadline',$('#g_ai_head')&&$('#g_ai_head').checked?'1':'0');
     // Aspect-ratio mix → JSON like {"1:1":25,"4:5":50,"9:16":25}; only sent
     // when the user has actually checked at least one ratio with a % > 0.
     const arDist={};

@@ -62,6 +62,10 @@ const TOPIC =
   process.env.JURIE_TOPIC ||
   rest.slice(1).join(" ").trim();
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+// When set, the AI generates a short typographic `headline` (2-5 words) for
+// each poster so the renderer can display it at large display-type scale
+// (72px+). Without this flag, productLine serves as the headline at 54-58px.
+const AI_HEADLINE = process.env.DASHBOARD_AI_HEADLINE === "1";
 
 const voiceProfile = await fs.readFile(client.voiceProfilePath, "utf-8");
 
@@ -103,24 +107,32 @@ const briefBlock = TOPIC
   ? `\n**SINGLE ANGLE — every poster in this batch must spotlight this angle of the product:** "${TOPIC}"\n`
   : `\n**Vary the angle across the batch** — style, comfort, durability, everyday wearability, the "main character energy" the frame gives, etc.\n`;
 
+const headlineNote = AI_HEADLINE
+  ? `\n- headline: A SHORT, PUNCHY typographic hook — 2 to 5 words MAX — that\n` +
+    `  will be rendered at LARGE DISPLAY SIZE (think billboard or magazine cover).\n` +
+    `  It must work as standalone big type: crisp, confident, no filler words.\n` +
+    `  Examples: "DEFINE YOUR LOOK", "Born for the Bold", "Your Frame. Your Story.",\n` +
+    `  "Effortless. Always.", "See Differently". Mix English and Taglish naturally.\n` +
+    `  This is SEPARATE from productLine — productLine becomes the supporting\n` +
+    `  descriptor below the big headline. Make sure they complement each other.\n`
+  : ``;
+
 const styleNote =
   showcaseStyle === "showcase"
-    ? `\nFORMAT — CLEAN PRODUCT SHOWCASE (the only style wired up right now):\n` +
+    ? `\nFORMAT — CLEAN PRODUCT SHOWCASE:\n` +
       `This is a PRODUCT-PHOTOGRAPHY poster, NOT a quote graphic. The photo IS\n` +
-      `the hero — copy stays small, clean, and editorial, like a premium\n` +
-      `e-commerce / OOTD caption layered tastefully over a product shot.\n` +
+      `the hero — copy stays clean and editorial, like a premium eyewear ad.\n` +
       `- productLine: ONE short, polished line naming or describing\n` +
       `  "${frameLabel}" (a product-style name + finish, or one crisp clause\n` +
-      `  about the look/fit/vibe). NO hook→payoff structure, no rhetorical\n` +
-      `  question, no ellipsis cliffhanger — say the thing, don't tease it.\n` +
+      `  about the look/fit/vibe). NO hook→payoff, no rhetorical question.\n` +
       `- tagline: an OPTIONAL short supporting clause (one phrase, ≤8 words)\n` +
-      `  that adds a feeling or benefit — understated, confident, never hypey.\n` +
-      `  Use "" when the productLine already stands on its own (vary this).\n` +
-      `- ctaTag: a SHORT 1-3 word action chip in ALL CAPS, e.g. "SHOP NOW",\n` +
-      `  "VIEW THE DROP", "SEE THE FIT". Use "" on some posters to vary it —\n` +
-      `  not every poster needs a chip.\n`
-    : `\nFORMAT — CLEAN PRODUCT SHOWCASE (fallback; other formats not enabled yet):\n` +
-      `- Same productLine/tagline/ctaTag shape, spotlighting "${frameLabel}".\n`;
+      `  — understated, confident. Use "" when productLine stands alone.\n` +
+      `- ctaTag: a SHORT 1-3 word chip in ALL CAPS, e.g. "SHOP NOW",\n` +
+      `  "VIEW THE DROP". Use "" on some posters — not every poster needs one.\n` +
+      headlineNote
+    : `\nFORMAT — CLEAN PRODUCT SHOWCASE (fallback):\n` +
+      `- Same productLine/tagline/ctaTag shape, spotlighting "${frameLabel}".\n` +
+      headlineNote;
 
 const systemInstruction = `${voiceProfile}${subjectBlock}${briefBlock}
 You are generating CLEAN PRODUCT-SHOWCASE poster entries for ${client.label}'s
@@ -205,8 +217,11 @@ for (let attempt = 1; attempt <= 3; attempt++) {
               kind: { type: Type.STRING, enum: ["product"] },
               bgPrompt: { type: Type.STRING },
               theme: { type: Type.STRING },
+              ...(AI_HEADLINE ? { headline: { type: Type.STRING } } : {}),
             },
-            required: ["productLine", "caption", "bgPrompt"],
+            required: AI_HEADLINE
+              ? ["productLine", "caption", "bgPrompt", "headline"]
+              : ["productLine", "caption", "bgPrompt"],
           },
         },
         temperature: 0.65,
@@ -239,10 +254,11 @@ if (!Array.isArray(posters) || posters.length === 0) {
   process.exit(1);
 }
 
-// Normalization pass — much lighter than the quote-card generators' since
-// there's no per-word color emphasis or hook/payoff structure to enforce.
-// The output flows into ProductShowcaseCard (clean product photo + a single
-// caption line + optional tagline/CTA chip), NOT JurieQuoteCard.
+// Layout rotation — distribute "bottom", "top", "center" evenly across the
+// batch. Rotating in order ensures a varied set (random would cluster).
+const LAYOUTS = ["bottom", "top", "center"];
+
+// Normalization pass.
 const clean = [];
 for (const q of posters) {
   if (
@@ -264,11 +280,23 @@ for (const q of posters) {
     ? ""
     : (q.ctaTag || "").toUpperCase().trim();
   q.caption = q.caption.trim();
-  // Keep a `quote` fallback — the renderer's slugify() and any generic
-  // gallery/listing code key off `quote` for filenames/labels.
+  // Assign layout in rotation so every three posters in the batch cycle through
+  // all three visual treatments (bottom / top / center).
+  q.layout = LAYOUTS[clean.length % LAYOUTS.length];
+  // headline — if AI generated one, clean it up; otherwise leave empty
+  // so the renderer falls back to productLine as the headline.
+  if (AI_HEADLINE && typeof q.headline === "string" && q.headline.trim()) {
+    q.headline = q.headline.trim();
+    // Trim to 5 words max — anything longer defeats the big-type treatment.
+    const words = q.headline.split(/\s+/);
+    if (words.length > 6) q.headline = words.slice(0, 5).join(" ");
+  } else {
+    q.headline = "";
+  }
+  // Keep a `quote` fallback — the renderer's slugify() and generic gallery/
+  // listing code key off `quote` for filenames/labels.
   q.quote = q.productLine;
-  // Showcase posters skip the AI flat-bg roll rarely — the product needs a
-  // real, on-brand scene, not a plain gradient.
+  // Showcase posters use a real product scene rather than a flat gradient.
   q.useFlatBg = Math.random() < 0.08;
   q.eyeglassesId = eyeglassesId;
   q.eyeglassesStyle = showcaseStyle;
