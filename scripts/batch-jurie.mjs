@@ -74,12 +74,17 @@ console.log(
 }
 
 console.log(`\n━━━ Step 1: Generate quotes (${client.label} voice) ━━━`);
-await run([
-  "scripts/generate-quotes-jurie.mjs",
-  "--client",
-  client.id,
-  String(count),
-]);
+try {
+  await run([
+    "scripts/generate-quotes-jurie.mjs",
+    "--client",
+    client.id,
+    String(count),
+  ]);
+} catch (err) {
+  console.error(`[batch] Step 1 failed: ${err?.message || err}`);
+  process.exit(1);
+}
 
 const outDir = path.join(projectRoot, "out");
 const files = await fs.readdir(outDir);

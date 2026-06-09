@@ -128,6 +128,12 @@ try {
   /* leave "?" */
 }
 
+// Short epoch token injected into the page HTML so the client can use it as a
+// dynamic image cache-buster. Changes on every server restart / Railway deploy,
+// which automatically invalidates any broken cached poster responses in browsers
+// that were open during a downtime window — no need to manually bump ?v=N.
+const SERVER_EPOCH = Math.floor(Date.now() / 1000).toString(36);
+
 const PORT = parseInt(
   process.env.PORT || process.env.JURIE_DASHBOARD_PORT || "4317",
   10,
@@ -236,8 +242,18 @@ const readQueue  = async (clientId) => {
   try { return JSON.parse(await fs.readFile(queuePath(clientId), "utf-8")); }
   catch { return []; }
 };
-const writeQueue = (clientId, data) =>
-  fs.writeFile(queuePath(clientId), JSON.stringify(data, null, 2));
+// Per-client write-queue: serialises concurrent writeQueue calls so that
+// two simultaneous requests (e.g. rapid approve/decline taps) never clobber
+// each other's write. Each client gets its own promise chain.
+const _qWriteMutex = new Map();
+const writeQueue = (clientId, data) => {
+  const prev = _qWriteMutex.get(clientId) || Promise.resolve();
+  const next = prev.then(() =>
+    fs.writeFile(queuePath(clientId), JSON.stringify(data, null, 2)),
+  );
+  _qWriteMutex.set(clientId, next.catch(() => {}));
+  return next;
+};
 
 async function addBatchToQueue(clientId, batchDir, stamp) {
   try {
@@ -484,7 +500,7 @@ const ASSET_CACHE = { maxAge: "7d", immutable: true };
 // render was still writing the file on first load, and a normal refresh could
 // never fix it (browsers honour immutable strictly). 24h max-age + ETag lets
 // the browser revalidate efficiently without serving stale broken content.
-const POSTER_CACHE = { maxAge: "86400" };
+const POSTER_CACHE = { maxAge: "1d" };
 
 // Serve poster style preset images — committed read-only assets, serve from
 // the in-image repo path (projectRoot) so they're always available on Railway
@@ -875,7 +891,12 @@ app.post("/api/generate", extraRefUpload.fields([
       "…",
   );
   const env = { ...process.env };
-  if (EXPORT_BASE) env.JURIE_EXPORT_DIR = path.join(EXPORT_BASE, client);
+  // Pass the persistent-data base path so child scripts read config from the
+  // Railway volume (PERSIST_BASE/config/) instead of the Docker-image snapshot.
+  if (EXPORT_BASE) {
+    env.JURIE_EXPORT_DIR = path.join(EXPORT_BASE, client);
+    env.PERSIST_BASE = PERSIST_BASE;
+  }
   if (briefId) env.DASHBOARD_BRIEF_ID = briefId;
   if (brandPresetId) env.DASHBOARD_BRAND_PRESET_ID = brandPresetId;
   if (isEyeglasses) {
@@ -1209,7 +1230,11 @@ app.post(
         .status(400)
         .json({ error: "Provide a script (10+ chars) or a video file." });
     }
-    if (!guard(req, res)) return;
+    if (!guard(req, res)) {
+      // Rate-limited after upload — clean up the temp file so disk doesn't fill up.
+      if (req.file) fs.unlink(req.file.path).catch(() => {});
+      return;
+    }
     job = { running: true, client: "broll", log: [], code: null };
     log(
       `▶ B-Roll: ${n} shot(s), ${aspect}` +
@@ -1807,6 +1832,9 @@ font-size:13px;transition:border-color .15s,box-shadow .15s;border:1.5px solid v
 <div id="view"></div>
 </main>
 <script>
+// Server-epoch token — changes every deploy/restart so any cached broken
+// poster-image responses are automatically busted in the browser.
+const _SE='${SERVER_EPOCH}';
 const $=s=>document.querySelector(s);
 // -- GET-response cache: makes tab switching feel instant ----------------
 // Every view re-fetches its config endpoints (briefs/brands/characters/
@@ -1841,7 +1869,10 @@ const api=(u,o)=>{
   const hit=_apiCache.get(u);
   if(hit&&(Date.now()-hit.t)<API_TTL)return hit.p;
   const p=fetch(u,o).then(r=>r.json());
-  _apiCache.set(u,{t:Date.now(),p});
+  // Don't cache while CLIENT is still empty (boot race) — an empty-client
+  // response would poison the cache and serve stale data for 20s after CLIENT
+  // resolves. Also don't cache error responses.
+  if(CLIENT||!u.includes('client='))_apiCache.set(u,{t:Date.now(),p});
   p.catch(()=>_apiCache.delete(u));
   return p;
 };
@@ -3179,7 +3210,7 @@ async function viewQueue(){
             const st=local[qid]?.[p.filename]||p.status;
             const isApp=st==='approved',isDec=st==='declined';
             const u='/posters/'+CLIENT+'/'+encodeURIComponent(entry.stamp)+'/'+encodeURIComponent(p.filename);
-            const imgU=u+'?v=2';
+            const imgU=u+'?e='+_SE;
             allQItems.push({url:imgU,caption:p.caption||''});
             const myQIdx=qGlobal++;
             return '<div style="border-radius:12px;overflow:hidden;border:2px solid '+(isApp?'var(--gold)':isDec?'var(--red)':'var(--line)')+';background:#0d0d0f;opacity:'+(isDec?'.45':'1')+';transition:all .18s">'
@@ -3379,7 +3410,7 @@ async function viewBatches(){
          // imgU adds ?v=2 to bust any stale immutable browser-cache entries
          // that were written with partial data in an older build. The download
          // link keeps the clean u (server reads req.query.dl separately).
-         const imgU=u+'?v=2';
+         const imgU=u+'?e='+_SE;
          const st=(B.statuses&&B.statuses[f])||'pending';
          const badgeHtml=st==='approved'?'<div class=”ps-badge” style=”background:var(--gold);color:#15120a”>✓ Approved</div>'
            :st==='posted'?'<div class=”ps-badge” style=”background:#3cb454;color:#fff”>✓ Posted</div>'

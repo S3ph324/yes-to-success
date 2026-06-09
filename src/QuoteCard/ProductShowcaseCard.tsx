@@ -32,7 +32,7 @@ export const productShowcaseCardSchema = z.object({
   brandRed: z.string().default("#E11522"),
   logoSrc: z.string().default(""),
   logoPosition: z
-    .enum(["top-left", "top-right", "bottom-left", "bottom-right"])
+    .enum(["top-left", "top-right", "bottom-left", "bottom-right", "top-center", "bottom-center"])
     .default("top-right"),
   logoSize: z.number().min(0.04).max(0.25).default(0.11),
 });
@@ -64,10 +64,12 @@ const resolveSrc = (src: string) => {
 };
 
 const LOGO_POS: Record<string, React.CSSProperties> = {
-  "top-left":     { top: 0, left: 0 },
-  "top-right":    { top: 0, right: 0 },
-  "bottom-left":  { bottom: 0, left: 0 },
-  "bottom-right": { bottom: 0, right: 0 },
+  "top-left":      { top: 0, left: 0 },
+  "top-right":     { top: 0, right: 0 },
+  "bottom-left":   { bottom: 0, left: 0 },
+  "bottom-right":  { bottom: 0, right: 0 },
+  "top-center":    { top: 0, left: "50%", transform: "translateX(-50%)" },
+  "bottom-center": { bottom: 0, left: "50%", transform: "translateX(-50%)" },
 };
 
 export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({

@@ -30,13 +30,24 @@ export const applyGcpEnv = () => {
 export async function resolveClient(idArg) {
   const id =
     idArg || process.env.CLIENT || process.env.JURIE_CLIENT || "jurie";
+  // On Railway, the dashboard spawns child processes with PERSIST_BASE set to
+  // the persistent-volume config directory so that runtime edits (new brand
+  // kits, edited briefs, etc.) are picked up instead of the Docker-image snapshot.
+  const configBase = process.env.PERSIST_BASE
+    ? path.join(process.env.PERSIST_BASE, "config")
+    : path.join(projectRoot, "config");
   let clients = [];
   try {
     clients = JSON.parse(
-      await fs.readFile(path.join(projectRoot, "config", "clients.json"), "utf-8"),
+      await fs.readFile(path.join(configBase, "clients.json"), "utf-8"),
     );
   } catch {
-    /* fall through */
+    /* fall through — try repo default as a last resort */
+    try {
+      clients = JSON.parse(
+        await fs.readFile(path.join(projectRoot, "config", "clients.json"), "utf-8"),
+      );
+    } catch { /* give up */ }
   }
   const c = clients.find((x) => x.id === id);
   if (!c) {
