@@ -842,7 +842,10 @@ app.post("/api/generate", extraRefUpload.fields([
   let n = parseInt(count, 10);
   if (!Number.isFinite(n)) n = 8;
   n = Math.max(1, Math.min(200, n));
-  if (!t) return res.status(400).json({ error: "Topic is required." });
+  // Topic is required for main/quote posters; optional for eyeglasses showcase
+  // (the eyeglasses content generator uses its own product-copy templates).
+  const isEyeglassesBatch = client === "tranzzie" && posterType === "eyeglasses";
+  if (!t && !isEyeglassesBatch) return res.status(400).json({ error: "Topic is required." });
   if (!guard(req, res)) return;
 
   const filesMap = req.files || {};
