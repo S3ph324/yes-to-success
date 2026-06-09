@@ -658,6 +658,21 @@ app.delete("/api/eyeglasses/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Remove a single reference photo from an eyeglasses asset.
+app.delete("/api/eyeglasses/:id/photo", async (req, res) => {
+  const { id } = req.params;
+  const { client, photoPath } = req.query;
+  if (!photoPath) return res.status(400).json({ error: "photoPath required" });
+  const all = await readCfg("eyeglasses.json", []);
+  const g = all.find((x) => x.id === id && x.client === client);
+  if (!g) return res.status(404).json({ error: "Frame not found" });
+  g.photos = (g.photos || []).filter((p) => p !== photoPath);
+  await writeCfg("eyeglasses.json", all);
+  const fp = path.join(publicDir, photoPath);
+  if (fp.startsWith(path.join(publicDir, "eyeglasses"))) await fs.unlink(fp).catch(() => {});
+  res.json({ ok: true });
+});
+
 const glassPhotoStore = multer.diskStorage({
   destination: async (req, _f, cb) => {
     const client = req.query.client || "misc";
@@ -787,7 +802,10 @@ const extraRefUpload = multer({
   }),
 });
 
-app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) => {
+app.post("/api/generate", extraRefUpload.fields([
+  { name: "extraRef", maxCount: 8 },
+  { name: "styleRef", maxCount: 1 },
+]), async (req, res) => {
   if (job?.running)
     return res.status(409).json({ error: "A batch is already running." });
   const {
@@ -816,7 +834,9 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
   if (!t) return res.status(400).json({ error: "Topic is required." });
   if (!guard(req, res)) return;
 
-  const extraRefPaths = (req.files || []).map((f) => f.path);
+  const filesMap = req.files || {};
+  const extraRefPaths = (filesMap.extraRef || []).map((f) => f.path);
+  const styleRefPath  = (filesMap.styleRef  || [])[0]?.path || "";
 
   // Eyeglasses showcase batches are Tranzzie-only and run a separate
   // orchestrator (different content-gen voice + reference-asset source) that
@@ -850,6 +870,8 @@ app.post("/api/generate", extraRefUpload.array("extraRef", 8), async (req, res) 
   if (bufferAutopost === "1") env.BUFFER_AUTOPOST = "1";
   if (extraRefPaths.length)
     env.DASHBOARD_EXTRA_REFS = JSON.stringify(extraRefPaths);
+  if (styleRefPath)
+    env.DASHBOARD_STYLE_REF_PATH = styleRefPath;
   if (aspectDist) env.DASHBOARD_ASPECT_DIST = String(aspectDist);
   env.JURIE_NO_OPEN = "1";
   const child = spawn(
@@ -1901,6 +1923,16 @@ async function viewGenerate(){
    +'<div class="section-label" style="margin:0 0 6px">Visual style</div>'
    +'<p class="muted" style="margin:0 0 10px;font-size:11px">Placeholder cards \\u2014 real sample poster images can be dropped in later.</p>'
    +'<div id="ea_sk_grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px"></div>'
+   +'<div id="ea_sk_refzone" style="margin-top:10px">'
+   +'<details style="font-size:12px;color:var(--mut)"><summary style="cursor:pointer;user-select:none;font-weight:600;color:var(--txt)">📎 Upload your own style reference (optional)</summary>'
+   +'<div style="margin-top:8px"><p class="muted" style="margin:0 0 8px;font-size:11px">Drop an image that shows the look and feel you want — lighting, composition, color palette. The AI will use it as a visual mood guide while still featuring your eyeglasses as the hero.</p>'
+   +'<label class="ea-drop" id="ea_skref_drop" style="padding:18px 14px">'
+   +'<input type="file" id="ea_skref_file" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer">'
+   +'<span id="ea_skref_lbl" class="muted" style="font-size:12px">Click or drop an image here</span>'
+   +'</label>'
+   +'<button id="ea_skref_clear" class="sec" style="display:none;margin-top:6px;font-size:11px;padding:4px 10px">✕ Remove</button>'
+   +'</div></details>'
+   +'</div>'
    +'</div>'
    // ── Model style sub-panel (Product + Model only) ───────────────────────────
    +'<div id="ea_ms_box" style="display:none;margin-top:10px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
@@ -1911,24 +1943,38 @@ async function viewGenerate(){
      const MU='https://images.unsplash.com/';
      const MS=[
        {v:'outdoor_lifestyle', label:'Outdoor lifestyle', desc:'Park, street or beach — candid natural light',
-        img:MU+'photo-1748590513779-a1ce6dbd6cee?w=400&q=75&fit=crop&crop=center'},
-       {v:'indoor_studio',     label:'Indoor studio',     desc:'Clean studio backdrop, professional lighting',
-        img:MU+'photo-1664076423411-e570cfdfcbed?w=400&q=75&fit=crop&crop=center'},
+        img:MU+'photo-1747410159099-de06f0a6a1b9?w=400&q=75&fit=crop&crop=center'},
+       {v:'indoor_studio',     label:'Indoor studio',     desc:'Clean studio backdrop, dramatic lighting',
+        img:MU+'photo-1713284060723-5be78613225f?w=400&q=75&fit=crop&crop=center'},
        {v:'active_sporty',     label:'Active & sporty',   desc:'Movement and energy — sport or activity',
         img:MU+'photo-1758684050600-f3bb20eb230d?w=400&q=75&fit=crop&crop=center'},
        {v:'fashion_editorial', label:'Fashion editorial', desc:'Magazine-quality, bold fashion styling',
         img:MU+'photo-1653660666869-2345adc51155?w=400&q=75&fit=crop&crop=center'},
        {v:'street_style',      label:'Street style',      desc:'Urban, candid, authentic street energy',
         img:MU+'photo-1547082831-58251f0b38cf?w=400&q=75&fit=crop&crop=center'},
+       {v:'auto',              label:'Let AI decide',     desc:'Gemini picks the best setting for each poster', img:''},
      ];
      return MS.map((m,i)=>
        '<label class="esty-img-card"'+(i===0?' style="border-color:var(--gold)"':'')+'>'+
-       '<img class="eic-thumb" src="'+m.img+'" alt="'+m.label+'" loading="lazy">'+
+       (m.img
+         ? '<img class="eic-thumb" src="'+m.img+'" alt="'+m.label+'" loading="lazy">'
+         : '<div class="eic-thumb" style="display:flex;align-items:center;justify-content:center;font-size:28px;opacity:.4;background:#1a1a1f">✦</div>')+
        '<div class="eic-body"><input type="radio" name="g_mstyle" value="'+m.v+'"'+(i===0?' checked':'')+'>'+
        '<div><b>'+m.label+'</b><div class="muted">'+m.desc+'</div></div></div></label>'
      ).join('');
    })()
-   +'</div></div>'
+   +'</div>'
+   +'<div style="margin-top:10px">'
+   +'<details style="font-size:12px;color:var(--mut)"><summary style="cursor:pointer;user-select:none;font-weight:600;color:var(--txt)">📎 Upload your own style reference (optional)</summary>'
+   +'<div style="margin-top:8px"><p class="muted" style="margin:0 0 8px;font-size:11px">Drop an image showing the campaign style, vibe, or poster look you want — the AI will use it as a visual reference for the scene while generating the model wearing your eyeglasses.</p>'
+   +'<label class="ea-drop" id="ea_msref_drop" style="padding:18px 14px">'
+   +'<input type="file" id="ea_msref_file" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer">'
+   +'<span id="ea_msref_lbl" class="muted" style="font-size:12px">Click or drop an image here</span>'
+   +'</label>'
+   +'<button id="ea_msref_clear" class="sec" style="display:none;margin-top:6px;font-size:11px;padding:4px 10px">✕ Remove</button>'
+   +'</div></details>'
+   +'</div>'
+   +'</div>'
    +'</div>'
    +'<div style="margin-top:16px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
    +'<div class="section-label" style="margin:0 0 6px">Aspect ratio mix</div>'
@@ -2040,6 +2086,7 @@ async function viewGenerate(){
         img: U+'photo-1762227144580-431ec0015003?w=400&q=75&fit=crop&crop=center' },
       { key:'editorial_flat',   label:'Editorial flat-lay', desc:'Overhead editorial shot, subtle surface texture',
         img: U+'photo-1517330486404-33542d376afd?w=400&q=75&fit=crop&crop=center' },
+      { key:'auto', label:'Let AI decide', desc:'Gemini picks the best visual style for each scene', img:'' },
     ],
     flat: [
       { key:'overhead_marble',  label:'Overhead marble',    desc:'Light stone or marble surface, top-down angle',
@@ -2050,6 +2097,7 @@ async function viewGenerate(){
         img: U+'photo-1654257650833-b7398115275a?w=400&q=75&fit=crop&crop=center' },
       { key:'styled_props',     label:'Styled props',       desc:'Frame with complementary brand-style objects',
         img: U+'photo-1559930284-49819cc0cc7e?w=400&q=75&fit=crop&crop=top' },
+      { key:'auto', label:'Let AI decide', desc:'Gemini picks the best visual style for each scene', img:'' },
     ],
     floating: [
       { key:'clean_float',      label:'Clean float',        desc:'Frame suspended against pure white/off-white',
@@ -2060,8 +2108,9 @@ async function viewGenerate(){
         img: U+'photo-1612093532291-408bed8c6ad7?w=400&q=75&fit=crop&crop=bottom' },
       { key:'gradient_float',   label:'Gradient float',     desc:'Vivid gradient sky, frame floating mid-comp',
         img: U+'photo-1762227144580-431ec0015003?w=400&q=75&fit=crop&crop=top' },
+      { key:'auto', label:'Let AI decide', desc:'Gemini picks the best visual style for each scene', img:'' },
     ],
-    auto: [] // AI decides — no style key sub-panel shown
+    auto: [] // placement=auto — no style key sub-panel shown
   };
   function buildStyleKeyGrid(placement) {
     const grid = $('#ea_sk_grid'); if (!grid) return;
@@ -2069,7 +2118,9 @@ async function viewGenerate(){
     if (!keys.length) { $('#ea_sk_box').style.display = 'none'; return; }
     grid.innerHTML = keys.map((sk, i) =>
       '<label class="esty-img-card"' + (i === 0 ? ' style="border-color:var(--gold)"' : '') + '>'
-      + (sk.img ? '<img class="eic-thumb" src="' + sk.img + '" alt="' + sk.label + '" loading="lazy">' : '<div class="eic-thumb"></div>')
+      + (sk.img
+          ? '<img class="eic-thumb" src="' + sk.img + '" alt="' + sk.label + '" loading="lazy">'
+          : '<div class="eic-thumb" style="display:flex;align-items:center;justify-content:center;font-size:28px;opacity:.4;background:#1a1a1f">✦</div>')
       + '<div class="eic-body">'
       + '<input type="radio" name="g_stylekey" value="' + sk.key + '"' + (i === 0 ? ' checked' : '') + '>'
       + '<div><b>' + sk.label + '</b><div class="muted">' + sk.desc + '</div></div>'
@@ -2138,6 +2189,19 @@ async function viewGenerate(){
     r.onchange = () => syncModelStyleCards();
   });
   syncEstyCards();
+  // ── Custom style reference file inputs ───────────────────────────────────
+  function wireStyleRefInput(fileInputId, labelId, clearBtnId) {
+    const fi=$('#'+fileInputId), lbl=$('#'+labelId), clr=$('#'+clearBtnId);
+    if(!fi)return;
+    fi.onchange=()=>{
+      const f=fi.files[0];
+      if(f){lbl.textContent='📎 '+f.name;if(clr)clr.style.display='';}
+      else{lbl.textContent='Click or drop an image here';if(clr)clr.style.display='none';}
+    };
+    if(clr)clr.onclick=()=>{fi.value='';lbl.textContent='Click or drop an image here';clr.style.display='none';};
+  }
+  wireStyleRefInput('ea_skref_file','ea_skref_lbl','ea_skref_clear');
+  wireStyleRefInput('ea_msref_file','ea_msref_lbl','ea_msref_clear');
   // ── Aspect-ratio mix wiring ──
   // Sliders always sum to exactly 100%: dragging one redistributes the
   // remainder across the other CHECKED ratios proportionally to their
@@ -2305,6 +2369,10 @@ async function viewGenerate(){
     if(Object.keys(arDist).length)fd.append('aspectDist',JSON.stringify(arDist));
     const ef=$('#g_extras').files||[];
     for(const f of ef)fd.append('extraRef',f);
+    // Style reference: whichever panel is active (showcase or model)
+    const skf=$('#ea_skref_file'), msf=$('#ea_msref_file');
+    const srf=(skf&&skf.files&&skf.files[0])||(msf&&msf.files&&msf.files[0])||null;
+    if(srf)fd.append('styleRef',srf);
     $('#g_go').disabled=true;phase='';
     $('#g_log').style.display='block';$('#g_log').textContent='';
     $('#g_prog').style.display='block';
@@ -2584,19 +2652,16 @@ async function viewGlasses(){
      const thumb=first
        ?'<img class="thumb" loading="lazy" src="/api/glassesphoto?p='+encodeURIComponent(first)+'">'
        :'<div class="thumb ph">no photo</div>';
-     const gallery=photos.length
-       ?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'
-         +photos.map((ph)=>'<img class="thumb" loading="lazy" style="width:84px;height:84px" src="/api/glassesphoto?p='+encodeURIComponent(ph)+'">').join('')
+     const photoGrid=photos.length
+       ?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
+         +photos.map((ph,pi)=>'<div style="position:relative;width:84px;height:84px;flex-shrink:0">'
+           +'<img class="thumb" loading="lazy" style="width:84px;height:84px;object-fit:cover;border-radius:8px" src="/api/glassesphoto?p='+encodeURIComponent(ph)+'">'
+           +'<button class="asset-rmphoto" data-gid="'+x.id+'" data-ph="'+encodeURIComponent(ph)+'" title="Remove this photo" style="position:absolute;top:2px;right:2px;padding:0;width:20px;height:20px;font-size:10px;line-height:1;border-radius:50%;background:rgba(0,0,0,.7);border:none;color:#fff;cursor:pointer">×</button>'
+           +'</div>').join('')
          +'</div>'
-       :'';
-     const detail='<div class="muted" style="font-size:12px;line-height:2">'
-       +'<b>ID:</b> '+x.id+'<br>'
-       +'<b>Status:</b> '+(x.enabled?'enabled':'disabled')+'<br>'
-       +'<b>Reference photos:</b> '+photos.length
-       +(x.notes?'<br><b>Notes:</b> '+x.notes:'')
-       +'</div>'+gallery;
-     return '<div class="item asset-row" data-idx="'+i+'" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:0">'
-       +'<div style="display:flex;gap:14px;align-items:center">'
+       :'<p class="muted" style="font-size:12px;margin:0 0 10px">No photos yet — add some below.</p>';
+     return '<div class="item asset-row" data-idx="'+i+'" style="flex-direction:column;align-items:stretch;gap:0">'
+       +'<div style="display:flex;gap:14px;align-items:center;cursor:pointer">'
        +thumb
        +'<div style="flex:1;min-width:0">'
        +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>'+x.name+'</b>'
@@ -2605,9 +2670,25 @@ async function viewGlasses(){
        +'<div class="muted" style="margin-top:5px">'+photos.length+' photo'
        +(photos.length===1?'':'s')+(x.enabled?'':' · disabled')+'</div>'
        +'</div>'
-       +'<button class="sec asset-del" data-idx="'+i+'" style="color:var(--red);border-color:rgba(224,86,75,.35);flex-shrink:0" title="Delete this frame">Delete</button>'
+       +'<div style="display:flex;gap:8px;flex-shrink:0">'
+       +'<button class="sec asset-edit" data-idx="'+i+'" style="font-size:12px;padding:6px 12px">Edit</button>'
+       +'<button class="sec asset-del" data-idx="'+i+'" style="color:var(--red);border-color:rgba(224,86,75,.35);font-size:12px;padding:6px 12px">Delete</button>'
        +'</div>'
-       +'<div class="asset-detail" data-idx="'+i+'" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">'+detail+'</div>'
+       +'</div>'
+       // Expand/collapse detail
+       +'<div class="asset-detail" data-idx="'+i+'" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">'
+       +'<div class="muted" style="font-size:12px;margin-bottom:10px"><b>ID:</b> '+x.id+' · <b>Status:</b> '+(x.enabled?'enabled':'disabled')+'</div>'
+       +photoGrid
+       +'</div>'
+       // Edit panel (hidden by default)
+       +'<div class="asset-editpanel" data-idx="'+i+'" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--line);flex-direction:column;gap:12px">'
+       +'<div class="row"><div><label style="font-size:12px">Name</label><input class="ep-name" value="'+x.name.replace(/"/g,'&quot;')+'" style="font-size:13px"></div>'
+       +'<div><label style="font-size:12px">Notes</label><input class="ep-notes" value="'+(x.notes||'').replace(/"/g,'&quot;')+'" placeholder="optional" style="font-size:13px"></div></div>'
+       +'<div><label style="font-size:12px">Add more photos</label><input class="ep-addfiles" type="file" accept="image/*" multiple></div>'
+       +'<div style="display:flex;gap:10px">'
+       +'<button class="go ep-save" data-idx="'+i+'" style="font-size:13px;padding:9px 18px">Save changes</button>'
+       +'<button class="sec ep-cancel" data-idx="'+i+'" style="font-size:13px">Cancel</button>'
+       +'</div></div>'
        +'</div>';
    }).join('')
    :'<p class="muted" style="text-align:center;padding:24px 0">No frames yet — add one below, then pick it on the Generate tab.</p>')
@@ -2620,15 +2701,21 @@ async function viewGlasses(){
   $('#view').querySelectorAll('.asset-row').forEach((row)=>{
     const item=g[Number(row.dataset.idx)];
     if(!item)return;
-    row.onclick=(e)=>{
-      if(e.target.closest('.asset-del'))return;
+    // Expand/collapse detail on header click
+    const header=row.querySelector('.asset-row > div:first-child, [style*="cursor:pointer"]');
+    row.querySelector('div[style*="cursor:pointer"]')?.addEventListener('click',(e)=>{
+      if(e.target.closest('.asset-edit,.asset-del'))return;
       const d=row.querySelector('.asset-detail');
+      const ep=row.querySelector('.asset-editpanel');
       const hint=row.querySelector('.asset-hint');
       if(!d)return;
+      // Close edit panel if open
+      if(ep&&ep.style.display!=='none'){ep.style.display='none';}
       const open=d.style.display!=='none';
       d.style.display=open?'none':'block';
       if(hint)hint.textContent=open?'tap to expand ▾':'tap to collapse ▴';
-    };
+    });
+    // Delete
     const del=row.querySelector('.asset-del');
     if(del)del.onclick=async(e)=>{
       e.stopPropagation();
@@ -2636,6 +2723,56 @@ async function viewGlasses(){
       const r=await fetch('/api/eyeglasses/'+encodeURIComponent(item.id)+'?client='+CLIENT,{method:'DELETE'});
       if(r&&r.ok){toast('Frame deleted');viewGlasses();}
       else toast('Could not delete frame',true);
+    };
+    // Edit button — toggle edit panel
+    const editBtn=row.querySelector('.asset-edit');
+    const editPanel=row.querySelector('.asset-editpanel');
+    const detailPanel=row.querySelector('.asset-detail');
+    if(editBtn&&editPanel){
+      editBtn.onclick=(e)=>{
+        e.stopPropagation();
+        const isOpen=editPanel.style.display!=='none';
+        editPanel.style.display=isOpen?'none':'flex';
+        if(detailPanel)detailPanel.style.display='none';
+        editBtn.textContent=isOpen?'Edit':'Cancel edit';
+        const hint=row.querySelector('.asset-hint');
+        if(hint)hint.textContent='tap to expand ▾';
+      };
+    }
+    // Remove individual photo
+    row.querySelectorAll('.asset-rmphoto').forEach(btn=>{
+      btn.onclick=async(e)=>{
+        e.stopPropagation();
+        if(!confirm('Remove this photo from the frame?'))return;
+        const gid=btn.dataset.gid;
+        const ph=decodeURIComponent(btn.dataset.ph);
+        const r=await fetch('/api/eyeglasses/'+encodeURIComponent(gid)+'/photo?client='+CLIENT+'&photoPath='+encodeURIComponent(ph),{method:'DELETE'});
+        if(r&&r.ok){toast('Photo removed');viewGlasses();}
+        else toast('Could not remove photo',true);
+      };
+    });
+    // Edit panel: save changes
+    const saveBtn=row.querySelector('.ep-save');
+    if(saveBtn)saveBtn.onclick=async(e)=>{
+      e.stopPropagation();
+      saveBtn.disabled=true;
+      const name=row.querySelector('.ep-name')?.value.trim()||item.name;
+      const notes=row.querySelector('.ep-notes')?.value.trim()||'';
+      await fetch('/api/eyeglasses',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({id:item.id,client:CLIENT,name,notes,enabled:item.enabled})});
+      const addFiles=row.querySelector('.ep-addfiles')?.files;
+      if(addFiles&&addFiles.length){
+        const fd=new FormData();for(const f of addFiles)fd.append('photo',f);
+        await fetch('/api/eyeglasses/photo?client='+CLIENT+'&glassesId='+encodeURIComponent(item.id),{method:'POST',body:fd});
+      }
+      toast('Frame updated');viewGlasses();
+    };
+    // Edit panel: cancel
+    const cancelBtn=row.querySelector('.ep-cancel');
+    if(cancelBtn)cancelBtn.onclick=(e)=>{
+      e.stopPropagation();
+      if(editPanel)editPanel.style.display='none';
+      if(editBtn)editBtn.textContent='Edit';
     };
   });
   $('#g_esave').onclick=async()=>{

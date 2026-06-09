@@ -187,6 +187,23 @@ try {
 } catch {
   /* malformed env — ignore */
 }
+
+// User-supplied style reference (one image): used as a visual style guide
+// for the background scene — the subject lock (character/product) still
+// comes from refParts; this is purely compositional/mood inspiration.
+const styleRefPath = process.env.DASHBOARD_STYLE_REF_PATH || "";
+let styleRefPart = null;
+if (styleRefPath) {
+  try {
+    const buf = await fs.readFile(styleRefPath);
+    styleRefPart = {
+      inlineData: { mimeType: mimeFor(styleRefPath), data: buf.toString("base64") },
+    };
+    console.log(`  Using user style reference: ${path.basename(styleRefPath)}`);
+  } catch {
+    console.warn(`  Style reference file not found, ignoring: ${styleRefPath}`);
+  }
+}
 const refParts = [];
 const subjectPhotos = eyeglassesMode
   ? eyeglasses?.photos || []
@@ -344,16 +361,24 @@ for (const { q, i } of targets) {
   const MAX_TRIES = 3;
   for (let attempt = 1; attempt <= MAX_TRIES && !buf; attempt++) {
     try {
+      // Build the parts list: subject refs first, optional style ref, then guidance.
+      // styleRefPart is only included when the user uploaded their own style
+      // reference from the dashboard — it comes with a note that it is a
+      // STYLE guide only, not a subject/identity reference.
+      const styleNote = styleRefPart
+        ? " The last image is a user-supplied STYLE REFERENCE — use its " +
+          "visual composition, lighting mood, color palette, and overall " +
+          "aesthetic as inspiration for the scene. Do NOT replicate any " +
+          "people, faces, or products from it."
+        : "";
+      const allParts = [
+        ...(hasRef ? refParts : []),
+        ...(styleRefPart ? [styleRefPart] : []),
+        { text: guidance + styleNote },
+      ];
       const resp = await ai.models.generateContent({
         model: REF_MODEL,
-        contents: [
-          {
-            role: "user",
-            parts: hasRef
-              ? [...refParts, { text: guidance }]
-              : [{ text: guidance }],
-          },
-        ],
+        contents: [{ role: "user", parts: allParts }],
       });
       const parts = resp.candidates?.[0]?.content?.parts || [];
       for (const p of parts) {
