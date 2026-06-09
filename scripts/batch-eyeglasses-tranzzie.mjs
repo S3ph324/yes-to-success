@@ -28,6 +28,23 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { GCP, projectRoot, resolveClient } from "./lib/client.mjs";
 
+// Crash guards — ensures the dashboard always sees a proper non-null exit code
+// with a readable message instead of a silent signal kill.
+process.on("unhandledRejection", (reason) => {
+  console.error(
+    "[batch-glasses] unhandledRejection:",
+    reason?.stack || reason?.message || String(reason),
+  );
+  process.exit(1);
+});
+process.on("uncaughtException", (err) => {
+  console.error(
+    "[batch-glasses] uncaughtException:",
+    err?.stack || err?.message || String(err),
+  );
+  process.exit(1);
+});
+
 const client = await resolveClient("tranzzie");
 
 const count = process.argv[2] || "8";
@@ -109,12 +126,17 @@ console.log(
 }
 
 console.log(`\n━━━ Step 1: Generate eyeglasses-showcase copy (${client.label} voice) ━━━`);
-await run([
-  "scripts/generate-eyeglasses-tranzzie.mjs",
-  "--client",
-  client.id,
-  String(count),
-]);
+try {
+  await run([
+    "scripts/generate-eyeglasses-tranzzie.mjs",
+    "--client",
+    client.id,
+    String(count),
+  ]);
+} catch (err) {
+  console.error(`\n✗ Copy generation failed: ${err.message}`);
+  process.exit(1);
+}
 
 const outDir = path.join(projectRoot, "out");
 const files = await fs.readdir(outDir);

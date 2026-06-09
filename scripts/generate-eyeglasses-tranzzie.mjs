@@ -33,6 +33,23 @@ import {
 } from "./lib/client.mjs";
 
 applyGcpEnv();
+
+// ── Crash guards (surface errors instead of null exits) ──────────────────────
+process.on("unhandledRejection", (reason) => {
+  console.error(
+    "[glasses-gen] unhandledRejection:",
+    reason?.stack || reason?.message || String(reason),
+  );
+  process.exit(1);
+});
+process.on("uncaughtException", (err) => {
+  console.error(
+    "[glasses-gen] uncaughtException:",
+    err?.stack || err?.message || String(err),
+  );
+  process.exit(1);
+});
+
 const project = process.env.GOOGLE_CLOUD_PROJECT;
 const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
 
@@ -53,10 +70,17 @@ const voiceProfile = await fs.readFile(client.voiceProfilePath, "utf-8");
 // that file starts empty until frames are added via the Eyeglasses tab.
 const eyeglassesId = process.env.DASHBOARD_EYEGLASSES_ID || "";
 const showcaseStyle = process.env.DASHBOARD_EYEGLASSES_STYLE || "showcase";
+
+// On Railway the persistent volume is at EXPORT_BASE/_studio-data; locally
+// fall back to projectRoot. This mirrors the pattern in generate-backgrounds-jurie.mjs.
+const PERSIST_BASE = process.env.EXPORT_BASE
+  ? path.join(process.env.EXPORT_BASE, "_studio-data")
+  : projectRoot;
+
 let frame = null;
 try {
   const all = JSON.parse(
-    await fs.readFile(path.join(projectRoot, "config", "eyeglasses.json"), "utf-8"),
+    await fs.readFile(path.join(PERSIST_BASE, "config", "eyeglasses.json"), "utf-8"),
   );
   frame = all.find((g) => g.id === eyeglassesId) || null;
 } catch {
@@ -154,33 +178,54 @@ console.log(
 );
 const start = Date.now();
 
-const resp = await ai.models.generateContent({
-  model: MODEL,
-  contents: userPrompt,
-  config: {
-    systemInstruction,
-    responseMimeType: "application/json",
-    responseSchema: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          productLine: { type: Type.STRING },
-          tagline: { type: Type.STRING },
-          ctaTag: { type: Type.STRING },
-          caption: { type: Type.STRING },
-          aspectRatio: { type: Type.STRING, enum: ["4:5"] },
-          variant: { type: Type.STRING, enum: ["showcase"] },
-          kind: { type: Type.STRING, enum: ["product"] },
-          bgPrompt: { type: Type.STRING },
-          theme: { type: Type.STRING },
+// Vertex AI text call — retry up to 3× with backoff for 429 quota errors.
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+const isQuota = (msg) => /429|RESOURCE_EXHAUSTED|quota|rate.?limit/i.test(String(msg));
+const QUOTA_WAITS_MS = [15_000, 45_000]; // wait before attempt 2 and 3
+let resp;
+for (let attempt = 1; attempt <= 3; attempt++) {
+  try {
+    resp = await ai.models.generateContent({
+      model: MODEL,
+      contents: userPrompt,
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              productLine: { type: Type.STRING },
+              tagline: { type: Type.STRING },
+              ctaTag: { type: Type.STRING },
+              caption: { type: Type.STRING },
+              aspectRatio: { type: Type.STRING, enum: ["4:5"] },
+              variant: { type: Type.STRING, enum: ["showcase"] },
+              kind: { type: Type.STRING, enum: ["product"] },
+              bgPrompt: { type: Type.STRING },
+              theme: { type: Type.STRING },
+            },
+            required: ["productLine", "caption", "bgPrompt"],
+          },
         },
-        required: ["productLine", "caption", "bgPrompt"],
+        temperature: 0.65,
       },
-    },
-    temperature: 0.65,
-  },
-});
+    });
+    break; // success
+  } catch (err) {
+    const msg = err?.message || String(err);
+    if (attempt < 3 && isQuota(msg)) {
+      const wait = QUOTA_WAITS_MS[attempt - 1];
+      console.warn(`[glasses-gen] attempt ${attempt} hit quota (429). Waiting ${wait / 1000}s…`);
+      await delay(wait);
+    } else {
+      console.error(`[glasses-gen] Vertex AI error (attempt ${attempt}): ${msg}`);
+      process.exit(1);
+    }
+  }
+}
+if (!resp) { console.error("[glasses-gen] No response after retries."); process.exit(1); }
 
 let posters;
 try {
