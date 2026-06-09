@@ -282,7 +282,7 @@ const STUDIO_URL = () =>
 //   new required: schedulingType, mode, assets: []
 //   response: inline fragment ... on PostActionSuccess
 async function bufferPost(channelId, imageUrl, text, dueAt) {
-  const r = await fetch("https://api.buffer.com", {
+  const r = await fetch("https://graph.buffer.com", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${process.env.BUFFER_API_KEY}`,
@@ -435,7 +435,7 @@ app.post("/api/queue/cancel", async (req, res) => {
   let cancelled = 0, failed = 0;
   for (const postId of postIds) {
     try {
-      const r = await fetch("https://api.buffer.com", {
+      const r = await fetch("https://graph.buffer.com", {
         method: "POST",
         headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1043,7 +1043,7 @@ app.post("/api/poster/tag", async (req, res) => {
       let captText = "";
       try { captText = await fs.readFile(path.join(batchDir, "captions.txt"), "utf-8"); } catch {}
       const captions = captText.split(/^-{20,}\s*$/m)
-        .map(s => s.replace(/^#\\d+\\s*/m, "").trim()).filter(Boolean);
+        .map(s => s.replace(/^#\d+\s*/m, "").trim()).filter(Boolean);
       entry = {
         id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         stamp, clientId: client,
@@ -1099,15 +1099,25 @@ app.delete("/api/poster", async (req, res) => {
   catch { res.status(404).json({ error: "File not found" }); }
 });
 
-// DELETE an entire batch folder
+// DELETE an entire batch folder (also removes any matching queue entry to avoid
+// orphaned pointers that show broken images in the Queue tab).
 app.delete("/api/batch", async (req, res) => {
   const { client, stamp } = req.query;
   const c = await getClient(client);
   if (!c || !safeStamp(stamp)) return res.status(400).json({ error: "bad request" });
   const dir = path.join(clientExportDir(c), stamp);
   if (!dir.startsWith(clientExportDir(c))) return res.status(400).json({ error: "bad path" });
-  try { await fs.rm(dir, { recursive: true, force: true }); res.json({ ok: true }); }
-  catch { res.status(404).json({ error: "Batch not found" }); }
+  try {
+    await fs.rm(dir, { recursive: true, force: true });
+    // Remove any queue entry that references this stamp so the Queue tab
+    // doesn't show broken image links after the batch folder is gone.
+    try {
+      const queue = await readQueue(c.id);
+      const pruned = queue.filter(e => e.stamp !== stamp);
+      if (pruned.length !== queue.length) await writeQueue(c.id, pruned);
+    } catch { /* queue cleanup is best-effort */ }
+    res.json({ ok: true });
+  } catch { res.status(404).json({ error: "Batch not found" }); }
 });
 
 app.post("/api/reveal", async (req, res) => {
@@ -1338,10 +1348,13 @@ const sendZip = async (dir, zipName, res) => {
   if (!files.length) return res.status(404).json({ error: "no images" });
   const tmp = path.join("/tmp", `dl-${Date.now()}-${zipName}`);
   const zp = spawn("zip", ["-j", "-q", tmp, ...files], { cwd: dir });
-  zp.on("error", () =>
-    res.status(500).json({ error: "zip not available on server" }),
-  );
+  let responded = false;
+  zp.on("error", () => {
+    if (responded) return; responded = true;
+    res.status(500).json({ error: "zip not available on server" });
+  });
   zp.on("close", (code) => {
+    if (responded) return; responded = true;
     if (code !== 0)
       return res.status(500).json({ error: "zip failed" });
     res.download(tmp, zipName, () => fs.unlink(tmp).catch(() => {}));
@@ -2447,7 +2460,7 @@ async function viewGenerate(){
         const mr=document.querySelector('input[name="g_mstyle"]:checked');
         const mVal=mr?mr.value:'auto';
         // Pass 'auto' as the model style env var (text directives) only when no image preset
-        fd.append('eyeglassesModelStyle', mVal==='auto'?'auto':'auto');
+        fd.append('eyeglassesModelStyle', mVal);
       }
       fd.append('characterId','');
     }else{
@@ -3559,7 +3572,9 @@ async function viewBroll(){
     if(el)el.addEventListener('input',()=>{if(src==='claude')paintClaudePrompt();});
   });
   showSrc();
-  // Wire up the Claude-mode buttons (works even when not currently visible).
+  // Wire up the Claude-mode buttons — use a flag so re-visiting this tab
+  // does not stack duplicate listeners (each visit re-calls viewBroll).
+  if(!window._brClickWired){window._brClickWired=true;
   document.addEventListener('click',(ev)=>{
     if(ev.target&&ev.target.id==='br_copy'){
       const txt=$('#br_claude_prompt').textContent||'';
@@ -3572,6 +3587,7 @@ async function viewBroll(){
       window.open('https://claude.ai/new','_blank','noopener');
     }
   });
+  }
   let es;
   $('#br_go').onclick=async()=>{
     const fd=new FormData();
@@ -3592,9 +3608,13 @@ async function viewBroll(){
       ? 'Uploading '+sizeMB.toFixed(1)+' MB video to server…  (this can take ~5–60s depending on your internet)\\n'
       : 'Submitting…\\n';
     es&&es.close();es=new EventSource('/api/log');
+    // Guard: the SSE server replays the previous job's log to new connections.
+    // Don't act on "done" signals until the XHR confirms a new job has started,
+    // otherwise a finished-job replay re-enables the button before uploading.
+    let jobStarted=false;
     es.onmessage=ev=>{const line=JSON.parse(ev.data);
       L.textContent+=line+'\\n';L.scrollTop=L.scrollHeight;
-      if(line.indexOf('✓ Done')>-1||line.indexOf('✗ Exited')>-1){es.close();
+      if(jobStarted&&(line.indexOf('✓ Done')>-1||line.indexOf('✗ Exited')>-1)){es.close();
         $('#br_go').disabled=false;loadSets();}};
     // Use XHR so we can show real upload progress for big videos.
     const fail=(msg)=>{alert(msg);L.textContent+='\\n✗ '+msg+'\\n';
@@ -3613,7 +3633,7 @@ async function viewBroll(){
     xhr.ontimeout=()=>fail('Upload timed out.');
     xhr.onload=()=>{
       const ok=xhr.status>=200&&xhr.status<300;
-      if(ok)return; // success — leave the SSE log running, button re-enables on '✓ Done'/'✗ Exited'.
+      if(ok){jobStarted=true;return;} // job accepted — SSE log now carries signals for THIS job
       let msg='';try{msg=(JSON.parse(xhr.responseText||'{}').error)||'';}catch{/*not json*/}
       if(!msg)msg='Server returned '+xhr.status+(xhr.statusText?' '+xhr.statusText:'')
         +(xhr.responseText?' — '+xhr.responseText.slice(0,200):'');
