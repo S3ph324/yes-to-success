@@ -479,6 +479,19 @@ app.get("/api/clients", async (_q, res) =>
 // bytes never change — safe to let the browser cache them aggressively
 // instead of revalidating on every tab switch (the slow part users feel).
 const ASSET_CACHE = { maxAge: "7d", immutable: true };
+
+// Serve poster style preset images — committed read-only assets, serve from
+// the in-image repo path (projectRoot) so they're always available on Railway
+// without depending on the persistent volume being seeded.
+app.get("/poster-styles/:file", (req, res) => {
+  const file = String(req.params.file || "").replace(/[^a-zA-Z0-9._-]/g, "");
+  if (!file) return res.status(400).end();
+  const fp = path.join(projectRoot, "public", "poster-styles", file);
+  res.sendFile(fp, { maxAge: "7d" }, (err) => {
+    if (err && !res.headersSent) res.status(404).end();
+  });
+});
+
 app.get("/api/charphoto", (req, res) => {
   const rel = String(req.query.p || "");
   if (!rel.startsWith("characters/") || rel.includes(".."))
@@ -1856,17 +1869,21 @@ async function viewGenerate(){
        +'</div>')
      :'')
    // ── Primary form ──
-   +'<div class="section-label">What do you want to post about?</div>'
+   +'<div id="g_section_label" class="section-label">What do you want to post about?</div>'
    +'<div class="row" style="gap:12px;margin-bottom:18px">'
-   +'<div style="flex:3"><input id="g_topic" placeholder="e.g. why regular eye check-ups matter" style="width:100%;font-size:15px;padding:14px 16px"></div>'
+   // Topic — shown for Main style posters
+   +'<div id="g_topic_cell" style="flex:3"><input id="g_topic" placeholder="e.g. why regular eye check-ups matter" style="width:100%;font-size:15px;padding:14px 16px"></div>'
+   // Headline idea — shown for Eyeglasses posters (optional)
+   +'<div id="ea_headline_cell" style="flex:3;display:none"><input id="ea_headline" placeholder="Optional headline idea (e.g. See Clearly. Live Boldly.)" style="width:100%;font-size:15px;padding:14px 16px"></div>'
    +'<div style="flex:0 0 100px"><label style="font-size:11px">Posters</label><input id="g_count" type="number" min="1" max="200" value="8" style="width:100%;text-align:center;font-size:15px;padding:14px 8px"></div>'
    +'</div>'
-   // ── Advanced toggle ──
+   // ── Advanced toggle (hidden for eyeglasses — settings auto-expand instead) ──
    +'<button class="adv-toggle" id="adv-btn" onclick="toggleAdv()">'
    +'⚙ Advanced settings <span class="muted" style="font-size:11px;margin-left:6px">(topic preset, brand kit, subject, formats)</span></button>'
    +'<div class="adv-body" id="adv-body">'
    +'<div style="border-top:1px solid var(--line);padding-top:16px;margin-top:4px">'
-   +'<div class="row" style="margin-bottom:0">'
+   // Brief + brand kit — shown only for Main style (hidden for eyeglasses)
+   +'<div id="g_mainonly_row" class="row" style="margin-bottom:0">'
    +'<div><label>Topic preset</label><select id="g_brief"><option value="">— none —</option>'
    +briefs.map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')+'</select>'
    +'<p class="muted" style="margin:5px 0 0;font-size:11px">Loads a saved topic with specific voice notes</p></div>'
@@ -2068,6 +2085,22 @@ async function viewGenerate(){
       el.style.borderColor=r.checked?'var(--gold)':'var(--line)';
       el.style.background=r.checked?'rgba(232,182,74,.04)':'transparent';
     });
+    const isEye = curPosterType() === 'eyeglasses';
+    // Topic vs headline
+    const secLbl=$('#g_section_label'), topicCell=$('#g_topic_cell'), hlCell=$('#ea_headline_cell');
+    if(secLbl)  secLbl.style.display  = isEye ? 'none' : '';
+    if(topicCell) topicCell.style.display = isEye ? 'none' : '';
+    if(hlCell)  hlCell.style.display   = isEye ? '' : 'none';
+    // Brief + brand kit row
+    const mainRow=$('#g_mainonly_row');
+    if(mainRow) mainRow.style.display = isEye ? 'none' : '';
+    // Advanced toggle button — hidden for eyeglasses; adv-body auto-opens
+    const advBtn=$('#adv-btn'), advBody=$('#adv-body');
+    if(advBtn) advBtn.style.display = isEye ? 'none' : '';
+    if(advBody) { if(isEye) advBody.classList.add('open'); else advBody.classList.remove('open'); }
+    // Eyeglasses style box
+    const ebox=$('#g_estyle_box');
+    if(ebox) ebox.style.display = isEye ? 'block' : 'none';
   }
   document.querySelectorAll('input[name="g_ptype"]').forEach(r=>{
     r.onchange=()=>{syncPtypeCards();paintSubject();};
@@ -2258,15 +2291,19 @@ async function viewGenerate(){
     toast('Lock cleared — you can generate again.');
   };
   $('#g_go').onclick=async()=>{
-    const topic=$('#g_topic').value.trim();
-    if(!topic)return toast('Enter a topic first',true);
+    const posterType=showEyeglasses?curPosterType():'main';
+    const isEyePoster = posterType === 'eyeglasses';
+    // For eyeglasses: topic is optional headline idea; for main: required topic
+    const topic = isEyePoster
+      ? ($('#ea_headline')&&$('#ea_headline').value.trim() || '')
+      : ($('#g_topic').value.trim());
+    if(!isEyePoster && !topic) return toast('Enter a topic first',true);
     const fd=new FormData();
     fd.append('client',CLIENT);
     fd.append('topic',topic);
     fd.append('count',String(+$('#g_count').value||8));
     fd.append('briefId',$('#g_brief').value);
     fd.append('brandPresetId',$('#g_brand').value);
-    const posterType=showEyeglasses?curPosterType():'main';
     fd.append('posterType',posterType);
     if(posterType==='eyeglasses'){
       fd.append('eyeglassesId',$('#g_subject')?$('#g_subject').value:'');
