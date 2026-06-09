@@ -3376,7 +3376,7 @@ async function viewBatches(){
        +'</span></div>'
        +'<div class=”grid” style=”margin-top:14px”>'+idx.map(i=>{
          const f=B.files[i],u='/posters/'+CLIENT+'/'+encodeURIComponent(B.stamp)+'/'+encodeURIComponent(f);
-         // imgU adds ?v=2 to bust any stale `immutable` browser-cache entries
+         // imgU adds ?v=2 to bust any stale immutable browser-cache entries
          // that were written with partial data in an older build. The download
          // link keeps the clean u (server reads req.query.dl separately).
          const imgU=u+'?v=2';
