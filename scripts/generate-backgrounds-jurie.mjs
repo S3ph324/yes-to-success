@@ -362,14 +362,16 @@ for (const { q, i } of targets) {
   for (let attempt = 1; attempt <= MAX_TRIES && !buf; attempt++) {
     try {
       // Build the parts list: subject refs first, optional style ref, then guidance.
-      // styleRefPart is only included when the user uploaded their own style
-      // reference from the dashboard — it comes with a note that it is a
-      // STYLE guide only, not a subject/identity reference.
+      // styleRefPart is included when the dashboard sends a style reference —
+      // either a selected poster template preset or a user-uploaded override.
+      // In both cases it is a VISUAL STYLE GUIDE only, not a subject reference.
       const styleNote = styleRefPart
-        ? " The last image is a user-supplied STYLE REFERENCE — use its " +
-          "visual composition, lighting mood, color palette, and overall " +
-          "aesthetic as inspiration for the scene. Do NOT replicate any " +
-          "people, faces, or products from it."
+        ? " The last image is a POSTER STYLE REFERENCE — an example eyeglasses " +
+          "advertisement that defines the visual language you should match: its " +
+          "composition layout, background treatment, lighting mood, color palette, " +
+          "and overall aesthetic. Treat it as a style template to emulate, NOT as " +
+          "a source for products, people, logos, or text. The eyeglasses featured " +
+          "in THIS scene must come only from the product reference images above."
         : "";
       const allParts = [
         ...(hasRef ? refParts : []),

@@ -99,7 +99,7 @@ async function seedPersistentData() {
       /* repo has no default for this file — fine, readCfg() falls back */
     }
   }
-  for (const sub of ["characters", "eyeglasses", "brand"]) {
+  for (const sub of ["characters", "eyeglasses", "brand", "poster-styles"]) {
     const dest = path.join(publicDir, sub);
     try {
       await fs.access(dest);
@@ -820,8 +820,6 @@ app.post("/api/generate", extraRefUpload.fields([
     posterType,
     eyeglassesId,
     eyeglassesStyle,
-    eyeglassesPlacement,
-    eyeglassesStyleKey,
     eyeglassesModelStyle,
     aspectDist,
   } = req.body || {};
@@ -860,8 +858,6 @@ app.post("/api/generate", extraRefUpload.fields([
   if (isEyeglasses) {
     env.DASHBOARD_EYEGLASSES_ID = glassesId;
     env.DASHBOARD_EYEGLASSES_STYLE = glassesStyle;
-    if (eyeglassesPlacement) env.DASHBOARD_EYEGLASSES_PLACEMENT = String(eyeglassesPlacement);
-    if (eyeglassesStyleKey)  env.DASHBOARD_EYEGLASSES_STYLE_KEY = String(eyeglassesStyleKey);
     if (eyeglassesModelStyle) env.DASHBOARD_EYEGLASSES_MODEL_STYLE = String(eyeglassesModelStyle);
   } else if (characterId !== undefined) {
     env.DASHBOARD_CHARACTER_ID = characterId;
@@ -1909,23 +1905,34 @@ async function viewGenerate(){
    +'<span style="align-self:flex-start;font-size:9px;background:var(--line2);color:var(--mut);padding:1px 5px;border-radius:4px">SOON</span>'
    +'</label>'
    +'</div></div>'
-   // ── Placement sub-panel (showcase only) ───────────────────────────────────
-   +'<div id="ea_pl_box" style="display:block;margin-top:10px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
-   +'<div class="section-label" style="margin:0 0 10px">Product placement</div>'
-   +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">'
-   +'<label class="esty-subcard"><input type="radio" name="g_placement" value="standing" style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">\\u2191 Standing up</b><div class="muted" style="font-size:11px;margin-top:2px">Upright, frame tall and prominent</div></div></label>'
-   +'<label class="esty-subcard"><input type="radio" name="g_placement" value="flat" style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">\\u2194 Laying flat</b><div class="muted" style="font-size:11px;margin-top:2px">Flat-lay, viewed from above or a low angle</div></div></label>'
-   +'<label class="esty-subcard"><input type="radio" name="g_placement" value="floating" style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">\\u2726 Floating</b><div class="muted" style="font-size:11px;margin-top:2px">Suspended mid-air, no surface contact</div></div></label>'
-   +'<label class="esty-subcard" style="border-color:var(--gold);background:rgba(232,182,74,.04)"><input type="radio" name="g_placement" value="auto" checked style="width:auto;margin:2px 0 0;flex-shrink:0;accent-color:var(--gold)"><div><b style="font-size:12.5px">\\u2605 Let AI decide</b><div class="muted" style="font-size:11px;margin-top:2px">Gemini picks the best placement for each scene</div></div></label>'
-   +'</div></div>'
-   // ── Style-key sub-panel (filled dynamically per placement selection) ───────
-   +'<div id="ea_sk_box" style="display:none;margin-top:10px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
-   +'<div class="section-label" style="margin:0 0 6px">Visual style</div>'
-   +'<p class="muted" style="margin:0 0 10px;font-size:11px">Placeholder cards \\u2014 real sample poster images can be dropped in later.</p>'
-   +'<div id="ea_sk_grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px"></div>'
-   +'<div id="ea_sk_refzone" style="margin-top:10px">'
-   +'<details style="font-size:12px;color:var(--mut)"><summary style="cursor:pointer;user-select:none;font-weight:600;color:var(--txt)">📎 Upload your own style reference (optional)</summary>'
-   +'<div style="margin-top:8px"><p class="muted" style="margin:0 0 8px;font-size:11px">Drop an image that shows the look and feel you want — lighting, composition, color palette. The AI will use it as a visual mood guide while still featuring your eyeglasses as the hero.</p>'
+   // ── Poster style preset panel (showcase only) ─────────────────────────────
+   +'<div id="ea_psp_box" style="display:block;margin-top:10px;padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px">'
+   +'<div class="section-label" style="margin:0 0 6px">Poster style template</div>'
+   +'<p class="muted" style="margin:0 0 10px;font-size:11px">Pick a reference poster — the AI generates backgrounds that match its visual language while keeping your eyeglasses as the hero.</p>'
+   +(()=>{
+     const PSP=[
+       {key:'01-dramatic-multiangle', label:'Dramatic multi-angle',  desc:'Dark bg, floating fragments, multiple product angles'},
+       {key:'02-minimal-pedestal',    label:'Minimal pedestal',       desc:'Clean white/grey, product on block, spec-style type'},
+       {key:'03-type-overlay',        label:'Type overlay flat-lay',  desc:'Bold type layered behind laid-flat frames, warm palette'},
+       {key:'04-editorial-props',     label:'Editorial props',        desc:'Off-white, geometric prop staging, elegant copy'},
+       {key:'05-glass-panel-spec',    label:'Glass panel spec',       desc:'Frosted acrylic surface, technical spec-sheet aesthetic'},
+       {key:'auto',                   label:'Let AI decide',          desc:'Gemini picks the best visual style for each scene'},
+     ];
+     return '<div id="ea_psp_grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">'
+       +PSP.map((p,i)=>
+         '<label class="esty-img-card"'+(i===0?' style="border-color:var(--gold)"':'')+' title="'+p.label+'">'
+         +(p.key!=='auto'
+           ? '<img class="eic-thumb" src="/poster-styles/'+p.key+'.jpg" alt="'+p.label+'" loading="lazy">'
+           : '<div class="eic-thumb" style="display:flex;align-items:center;justify-content:center;font-size:28px;opacity:.4;background:#1a1a1f">✦</div>')
+         +'<div class="eic-body"><input type="radio" name="g_psp" value="'+p.key+'"'+(i===0?' checked':'')+' style="accent-color:var(--gold)">'
+         +'<div><b>'+p.label+'</b><div class="muted">'+p.desc+'</div></div>'
+         +'</div></label>'
+       ).join('')
+       +'</div>';
+   })()
+   +'<div style="margin-top:10px">'
+   +'<details style="font-size:12px;color:var(--mut)"><summary style="cursor:pointer;user-select:none;font-weight:600;color:var(--txt)">📎 Override with your own style reference (optional)</summary>'
+   +'<div style="margin-top:8px"><p class="muted" style="margin:0 0 8px;font-size:11px">Drop an image showing the look and feel you want — lighting, composition, color palette. This overrides the template selected above.</p>'
    +'<label class="ea-drop" id="ea_skref_drop" style="padding:18px 14px">'
    +'<input type="file" id="ea_skref_file" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer">'
    +'<span id="ea_skref_lbl" class="muted" style="font-size:12px">Click or drop an image here</span>'
@@ -2073,67 +2080,10 @@ async function viewGenerate(){
   syncPtypeCards();
   paintSubject();
   // ── Eyeglasses poster-style card wiring ──────────────────────────────────
-  // Style-key card definitions per placement.
-  // img = Unsplash CDN thumbnail (free licence, no attribution required for UI use).
-  const U = 'https://images.unsplash.com/';
-  const STYLE_KEYS = {
-    standing: [
-      { key:'minimalist_white', label:'Minimalist white',   desc:'White backdrop, razor-sharp drop shadows',
-        img: U+'photo-1606357086272-eab87f3db598?w=400&q=75&fit=crop&crop=center' },
-      { key:'dark_luxury',      label:'Dark luxury',        desc:'Black/charcoal bg, dramatic side-key light',
-        img: U+'photo-1654257650833-b7398115275a?w=400&q=75&fit=crop&crop=center' },
-      { key:'soft_gradient',    label:'Soft gradient',      desc:'Pastel or warm gradient wash behind the frame',
-        img: U+'photo-1762227144580-431ec0015003?w=400&q=75&fit=crop&crop=center' },
-      { key:'editorial_flat',   label:'Editorial flat-lay', desc:'Overhead editorial shot, subtle surface texture',
-        img: U+'photo-1517330486404-33542d376afd?w=400&q=75&fit=crop&crop=center' },
-      { key:'auto', label:'Let AI decide', desc:'Gemini picks the best visual style for each scene', img:'' },
-    ],
-    flat: [
-      { key:'overhead_marble',  label:'Overhead marble',    desc:'Light stone or marble surface, top-down angle',
-        img: U+'photo-1559930284-49819cc0cc7e?w=400&q=75&fit=crop&crop=center' },
-      { key:'fabric_texture',   label:'Fabric texture',     desc:'Linen or velvet surface, soft diffused light',
-        img: U+'photo-1549385117-ba4f57c7144f?w=400&q=75&fit=crop&crop=center' },
-      { key:'dark_matte',       label:'Dark matte',         desc:'Matte black surface, subtle product reflection',
-        img: U+'photo-1654257650833-b7398115275a?w=400&q=75&fit=crop&crop=center' },
-      { key:'styled_props',     label:'Styled props',       desc:'Frame with complementary brand-style objects',
-        img: U+'photo-1559930284-49819cc0cc7e?w=400&q=75&fit=crop&crop=top' },
-      { key:'auto', label:'Let AI decide', desc:'Gemini picks the best visual style for each scene', img:'' },
-    ],
-    floating: [
-      { key:'clean_float',      label:'Clean float',        desc:'Frame suspended against pure white/off-white',
-        img: U+'photo-1698084068165-69a631a3ba1b?w=400&q=75&fit=crop&crop=center' },
-      { key:'neon_glow',        label:'Neon glow',          desc:'Dark scene, colored neon rim light on frame',
-        img: U+'photo-1612093532291-408bed8c6ad7?w=400&q=75&fit=crop&crop=center' },
-      { key:'misty_depth',      label:'Misty depth',        desc:'Moody fog/haze, dramatic atmospheric lighting',
-        img: U+'photo-1612093532291-408bed8c6ad7?w=400&q=75&fit=crop&crop=bottom' },
-      { key:'gradient_float',   label:'Gradient float',     desc:'Vivid gradient sky, frame floating mid-comp',
-        img: U+'photo-1762227144580-431ec0015003?w=400&q=75&fit=crop&crop=top' },
-      { key:'auto', label:'Let AI decide', desc:'Gemini picks the best visual style for each scene', img:'' },
-    ],
-    auto: [] // placement=auto — no style key sub-panel shown
-  };
-  function buildStyleKeyGrid(placement) {
-    const grid = $('#ea_sk_grid'); if (!grid) return;
-    const keys = STYLE_KEYS[placement] || [];
-    if (!keys.length) { $('#ea_sk_box').style.display = 'none'; return; }
-    grid.innerHTML = keys.map((sk, i) =>
-      '<label class="esty-img-card"' + (i === 0 ? ' style="border-color:var(--gold)"' : '') + '>'
-      + (sk.img
-          ? '<img class="eic-thumb" src="' + sk.img + '" alt="' + sk.label + '" loading="lazy">'
-          : '<div class="eic-thumb" style="display:flex;align-items:center;justify-content:center;font-size:28px;opacity:.4;background:#1a1a1f">✦</div>')
-      + '<div class="eic-body">'
-      + '<input type="radio" name="g_stylekey" value="' + sk.key + '"' + (i === 0 ? ' checked' : '') + '>'
-      + '<div><b>' + sk.label + '</b><div class="muted">' + sk.desc + '</div></div>'
-      + '</div></label>'
-    ).join('');
-    $('#ea_sk_box').style.display = 'block';
-    grid.querySelectorAll('input[name="g_stylekey"]').forEach(r => {
-      r.onchange = () => syncStyleKeyCards();
-    });
-  }
-  function syncStyleKeyCards() {
-    document.querySelectorAll('#ea_sk_grid .esty-img-card').forEach(el => {
-      const r = el.querySelector('input');
+  function syncPspCards() {
+    document.querySelectorAll('#ea_psp_grid .esty-img-card').forEach(el => {
+      const r = el.querySelector('input[name="g_psp"]');
+      if (!r) return;
       el.style.borderColor = r.checked ? 'var(--gold)' : 'var(--line)';
     });
   }
@@ -2145,32 +2095,17 @@ async function viewGenerate(){
       el.style.background = r.checked ? 'rgba(232,182,74,.04)' : 'transparent';
     });
     const eStyleVal = (document.querySelector('input[name="g_estyle"]:checked') || {}).value || 'showcase';
-    const plBox = $('#ea_pl_box'), msBox = $('#ea_ms_box'), skBox = $('#ea_sk_box');
+    const pspBox = $('#ea_psp_box'), msBox = $('#ea_ms_box');
     if (eStyleVal === 'showcase') {
-      if (plBox) plBox.style.display = 'block';
-      if (msBox) msBox.style.display = 'none';
-      // Show/hide style-key panel based on current placement
-      const curPlacement = (document.querySelector('input[name="g_placement"]:checked') || {}).value || 'auto';
-      buildStyleKeyGrid(curPlacement);
+      if (pspBox) pspBox.style.display = 'block';
+      if (msBox)  msBox.style.display  = 'none';
     } else if (eStyleVal === 'model') {
-      if (plBox) plBox.style.display = 'none';
-      if (msBox) msBox.style.display = 'block';
-      if (skBox) skBox.style.display = 'none';
+      if (pspBox) pspBox.style.display = 'none';
+      if (msBox)  msBox.style.display  = 'block';
     } else {
-      if (plBox) plBox.style.display = 'none';
-      if (msBox) msBox.style.display = 'none';
-      if (skBox) skBox.style.display = 'none';
+      if (pspBox) pspBox.style.display = 'none';
+      if (msBox)  msBox.style.display  = 'none';
     }
-  }
-  function syncPlacementCards() {
-    document.querySelectorAll('#ea_pl_box .esty-subcard').forEach(el => {
-      const r = el.querySelector('input[name="g_placement"]');
-      if (!r) return;
-      el.style.borderColor = r.checked ? 'var(--gold)' : 'var(--line)';
-      el.style.background = r.checked ? 'rgba(232,182,74,.04)' : 'transparent';
-    });
-    const curPlacement = (document.querySelector('input[name="g_placement"]:checked') || {}).value || 'auto';
-    buildStyleKeyGrid(curPlacement);
   }
   function syncModelStyleCards() {
     document.querySelectorAll('#ea_ms_box .esty-img-card').forEach(el => {
@@ -2182,8 +2117,8 @@ async function viewGenerate(){
   document.querySelectorAll('input[name="g_estyle"]').forEach(r => {
     r.onchange = () => syncEstyCards();
   });
-  document.querySelectorAll('input[name="g_placement"]').forEach(r => {
-    r.onchange = () => syncPlacementCards();
+  document.querySelectorAll('input[name="g_psp"]').forEach(r => {
+    r.onchange = () => syncPspCards();
   });
   document.querySelectorAll('input[name="g_mstyle"]').forEach(r => {
     r.onchange = () => syncModelStyleCards();
@@ -2344,10 +2279,7 @@ async function viewGenerate(){
       const eStyleVal=er?er.value:'showcase';
       fd.append('eyeglassesStyle',eStyleVal);
       if(eStyleVal==='showcase'){
-        const pr=document.querySelector('input[name="g_placement"]:checked');
-        fd.append('eyeglassesPlacement',pr?pr.value:'auto');
-        const skr=document.querySelector('input[name="g_stylekey"]:checked');
-        fd.append('eyeglassesStyleKey',skr?skr.value:'');
+        // nothing extra — preset image sent below as styleRef
       }else if(eStyleVal==='model'){
         const mr=document.querySelector('input[name="g_mstyle"]:checked');
         fd.append('eyeglassesModelStyle',mr?mr.value:'outdoor_lifestyle');
@@ -2369,10 +2301,23 @@ async function viewGenerate(){
     if(Object.keys(arDist).length)fd.append('aspectDist',JSON.stringify(arDist));
     const ef=$('#g_extras').files||[];
     for(const f of ef)fd.append('extraRef',f);
-    // Style reference: whichever panel is active (showcase or model)
+    // Style reference priority:
+    // 1. Manual override upload (ea_skref_file for showcase, ea_msref_file for model)
+    // 2. Selected poster preset (showcase only, if not "auto")
+    // 3. Nothing — Let AI decide
     const skf=$('#ea_skref_file'), msf=$('#ea_msref_file');
-    const srf=(skf&&skf.files&&skf.files[0])||(msf&&msf.files&&msf.files[0])||null;
-    if(srf)fd.append('styleRef',srf);
+    const manualRef=(skf&&skf.files&&skf.files[0])||(msf&&msf.files&&msf.files[0])||null;
+    if(manualRef){
+      fd.append('styleRef',manualRef);
+    }else if(posterType==='eyeglasses'&&(document.querySelector('input[name="g_estyle"]:checked')||{}).value==='showcase'){
+      const pspVal=(document.querySelector('input[name="g_psp"]:checked')||{}).value||'auto';
+      if(pspVal&&pspVal!=='auto'){
+        try{
+          const r=await fetch('/poster-styles/'+pspVal+'.jpg');
+          if(r.ok){const blob=await r.blob();fd.append('styleRef',blob,pspVal+'.jpg');}
+        }catch(e){console.warn('Could not fetch poster preset:',e);}
+      }
+    }
     $('#g_go').disabled=true;phase='';
     $('#g_log').style.display='block';$('#g_log').textContent='';
     $('#g_prog').style.display='block';
