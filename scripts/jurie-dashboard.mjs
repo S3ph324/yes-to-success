@@ -1506,11 +1506,13 @@ border-radius:8px;cursor:pointer;font-size:13px}
 button.sec:hover{border-color:var(--gold);color:var(--txt)}
 pre{background:#0d0d0f;border:1px solid var(--line);border-radius:10px;padding:15px;max-height:240px;
 overflow:auto;font-size:12px;line-height:1.6;white-space:pre-wrap;color:#b9b9bf}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));gap:18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
 figure{margin:0;background:#0d0d0f;border:1px solid var(--line);border-radius:12px;overflow:hidden;
 position:relative;transition:border-color .2s}
 figure:hover{border-color:var(--line2)}
-figure img{width:100%;height:auto;display:block}
+/* Fixed thumbnail height keeps layout compact even while images are loading */
+figure .poster-thumb{height:160px;overflow:hidden;background:#0d0d0f}
+figure .poster-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .dl,.cp{position:absolute;top:9px;background:rgba(0,0,0,.6);color:#fff;
 border:1px solid rgba(255,255,255,.2);text-decoration:none;font-size:11px;font-weight:600;
 padding:6px 11px;border-radius:7px;opacity:0;transition:opacity .18s,background .15s;
@@ -1575,7 +1577,7 @@ color:var(--mut);margin:20px 0 10px;padding-bottom:8px;border-bottom:1px solid v
   h2{font-size:10px}
   .row{flex-direction:column;gap:10px}
   .row>div{min-width:0!important;flex:1 1 auto!important}
-  .grid{grid-template-columns:repeat(2,1fr);gap:10px}
+  .grid{grid-template-columns:repeat(3,1fr);gap:10px}
   .result-grid{grid-template-columns:repeat(2,1fr);gap:10px}
   .bx-head{flex-direction:column;align-items:flex-start;gap:10px}
   .bx-row{flex-direction:column;align-items:flex-start;gap:8px}
@@ -3225,10 +3227,10 @@ async function viewQueue(){
             allQItems.push({url:imgU,caption:p.caption||''});
             const myQIdx=qGlobal++;
             return '<div style="border-radius:12px;overflow:hidden;border:2px solid '+(isApp?'var(--gold)':isDec?'var(--red)':'var(--line)')+';background:#0d0d0f;opacity:'+(isDec?'.45':'1')+';transition:all .18s">'
-              +'<div style="position:relative;cursor:zoom-in" onclick="openLb('+myQIdx+')">'
-              +'<img src="'+imgU+'" style="width:100%;height:auto;display:block">'
+              +'<div class="poster-thumb" style="position:relative;cursor:zoom-in" onclick="openLb('+myQIdx+')">'
+              +'<img src="'+imgU+'" loading="lazy">'
               +(isApp?'<div style="position:absolute;top:8px;right:8px;background:var(--gold);color:#15120a;font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;pointer-events:none">✓ APPROVED</div>':'')
-              +(isDec?'<div style="position:absolute;top:8px;right:8px;background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;pointer-events:none">✗ DECLINED</div>':'')
+              +(isDec?'<div style="position:absolute;top:8px;right:8px;background:var(--red);color:#fff;font-size:10px;font-weight:707;padding:3px 8px;border-radius:999px;pointer-events:none">✗ DECLINED</div>':'')
               +'</div>'
               +'<div style="display:flex;padding:6px 8px 8px;gap:6px">'
               +'<button class="sec" style="flex:1;font-size:11px;padding:6px 4px;'+(isApp?'border-color:var(--gold);color:var(--gold)':'')+'" onclick="qSS(this)" data-qid="'+qid+'" data-fn="'+encodeURIComponent(p.filename)+'" data-s="approved">'+(isApp?'✓ Approved':'Approve')+'</button>'
@@ -3430,8 +3432,8 @@ async function viewBatches(){
          bxItems.push({url:imgU,caption:caps[i]||''});
          return '<figure data-stamp=”'+B.stamp+'” data-file=”'+encodeURIComponent(f)+'” style=”opacity:'+(st==='declined'?'.4':'1')+';transition:opacity .2s”>'
           +badgeHtml
-          +'<div style=”cursor:zoom-in;position:relative” onclick=”openLb('+myLb+')”>'
-          +'<img src=”'+imgU+'” style=”width:100%;height:auto;display:block”>'
+          +'<div class=”poster-thumb” style=”cursor:zoom-in” onclick=”openLb('+myLb+')”>'
+          +'<img src=”'+imgU+'” loading=”lazy”>'
           +'</div>'
           +'<button class=”cp” data-c=”'+b64(caps[i]||'')+'” title=”Copy caption”>📋</button>'
           +'<a class=”dl” href=”'+u+'?dl=1” download>↓</a>'
