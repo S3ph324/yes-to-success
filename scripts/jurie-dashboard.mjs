@@ -479,6 +479,12 @@ app.get("/api/clients", async (_q, res) =>
 // bytes never change — safe to let the browser cache them aggressively
 // instead of revalidating on every tab switch (the slow part users feel).
 const ASSET_CACHE = { maxAge: "7d", immutable: true };
+// Poster images are user-generated content — NOT immutable. Using immutable on
+// these caused browsers to permanently cache partial/broken responses when the
+// render was still writing the file on first load, and a normal refresh could
+// never fix it (browsers honour immutable strictly). 24h max-age + ETag lets
+// the browser revalidate efficiently without serving stale broken content.
+const POSTER_CACHE = { maxAge: "86400" };
 
 // Serve poster style preset images — committed read-only assets, serve from
 // the in-image repo path (projectRoot) so they're always available on Railway
@@ -1071,7 +1077,8 @@ app.get("/posters/:client/:stamp/:file", async (req, res) => {
     res.set("Content-Disposition", `attachment; filename="${file}"`);
   // Use error callback so a missing file returns 404 (not Express's HTML error
   // page, which the browser would display as a broken image icon).
-  res.sendFile(fp, ASSET_CACHE, (err) => {
+  // POSTER_CACHE deliberately omits `immutable` — see its definition above.
+  res.sendFile(fp, POSTER_CACHE, (err) => {
     if (err && !res.headersSent) {
       console.warn(`[poster] ${err.code || err.message} – ${fp}`);
       res.status(404).end();
@@ -3340,16 +3347,20 @@ async function viewBatches(){
        +'</span></div>'
        +'<div class=”grid” style=”margin-top:14px”>'+idx.map(i=>{
          const f=B.files[i],u='/posters/'+CLIENT+'/'+encodeURIComponent(B.stamp)+'/'+encodeURIComponent(f);
+         // imgU adds ?v=2 to bust any stale `immutable` browser-cache entries
+         // that were written with partial data in an older build. The download
+         // link keeps the clean u (server reads req.query.dl separately).
+         const imgU=u+'?v=2';
          const st=(B.statuses&&B.statuses[f])||'pending';
          const badgeHtml=st==='approved'?'<div class=”ps-badge” style=”background:var(--gold);color:#15120a”>✓ Approved</div>'
            :st==='posted'?'<div class=”ps-badge” style=”background:#3cb454;color:#fff”>✓ Posted</div>'
            :st==='declined'?'<div class=”ps-badge” style=”background:var(--red);color:#fff”>✗ Declined</div>':'';
          const myLb=lbGlobal++;
-         bxItems.push({url:u,caption:caps[i]||''});
+         bxItems.push({url:imgU,caption:caps[i]||''});
          return '<figure data-stamp=”'+B.stamp+'” data-file=”'+encodeURIComponent(f)+'” style=”opacity:'+(st==='declined'?'.4':'1')+';transition:opacity .2s”>'
           +badgeHtml
           +'<div style=”cursor:zoom-in;position:relative” onclick=”openLb('+myLb+')”>'
-          +'<img src=”'+u+'” style=”width:100%;height:auto;display:block”>'
+          +'<img src=”'+imgU+'” style=”width:100%;height:auto;display:block”>'
           +'</div>'
           +'<button class=”cp” data-c=”'+b64(caps[i]||'')+'” title=”Copy caption”>📋</button>'
           +'<a class=”dl” href=”'+u+'?dl=1” download>↓</a>'
