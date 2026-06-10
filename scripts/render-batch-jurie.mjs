@@ -188,6 +188,9 @@ for (const q of quotes) {
         ctaTag: q.ctaTag || "",
         headline: q.headline || "",
         layout: q.layout || "bottom",
+        // Selected poster style template — the card maps it to a matching
+        // overlay type voice (e.g. 03-type-overlay → heavy gold echo caps).
+        stylePreset: q.stylePreset || process.env.DASHBOARD_STYLE_PRESET || "",
         bgSrc: q.bgPath || "",
         aspectRatio,
         brandGold: brand.brandGold,

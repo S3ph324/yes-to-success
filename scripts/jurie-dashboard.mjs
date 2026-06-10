@@ -918,6 +918,7 @@ app.post("/api/generate", extraRefUpload.fields([
     eyeglassesModelStyle,
     aspectDist,
     aiHeadline,
+    stylePreset,
   } = req.body || {};
   const c = await getClient(client);
   if (!c) return res.status(400).json({ error: "Unknown client" });
@@ -974,6 +975,10 @@ app.post("/api/generate", extraRefUpload.fields([
     env.DASHBOARD_EXTRA_REFS = JSON.stringify(extraRefPaths);
   if (styleRefPath)
     env.DASHBOARD_STYLE_REF_PATH = styleRefPath;
+  // Which poster style template was picked (e.g. "03-type-overlay") — the
+  // renderer maps this to a matching overlay type voice. "custom" for manual
+  // style-ref uploads; unset → layout-based rotation.
+  if (stylePreset) env.DASHBOARD_STYLE_PRESET = String(stylePreset).slice(0, 64);
   if (aspectDist) env.DASHBOARD_ASPECT_DIST = String(aspectDist);
   env.JURIE_NO_OPEN = "1";
   const child = spawn(
@@ -2604,6 +2609,7 @@ async function viewGenerate(){
     const manualRef=(skf&&skf.files&&skf.files[0])||(msf&&msf.files&&msf.files[0])||null;
     if(manualRef){
       fd.append('styleRef',manualRef);
+      fd.append('stylePreset','custom');
     }else if(posterType==='eyeglasses'){
       // Fetch the selected poster template preset (showcase or model) as the style reference
       const eStyleVal2=(document.querySelector('input[name="g_estyle"]:checked')||{}).value||'showcase';
@@ -2616,7 +2622,7 @@ async function viewGenerate(){
       if(presetKey&&presetKey!=='auto'){
         try{
           const r=await fetch('/poster-styles/'+presetKey+'.jpg');
-          if(r.ok){const blob=await r.blob();fd.append('styleRef',blob,presetKey+'.jpg');}
+          if(r.ok){const blob=await r.blob();fd.append('styleRef',blob,presetKey+'.jpg');fd.append('stylePreset',presetKey);}
         }catch(e){console.warn('Could not fetch poster preset:',e);}
       }
     }

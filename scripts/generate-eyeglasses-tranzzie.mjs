@@ -335,6 +335,10 @@ for (const q of posters) {
   q.useFlatBg = false;
   q.eyeglassesId = eyeglassesId;
   q.eyeglassesStyle = showcaseStyle;
+  // Which poster style template the user picked — the renderer maps this to
+  // a matching overlay type voice so the on-poster text matches the visual
+  // style of the reference (e.g. type-overlay → heavy gold echo type).
+  q.stylePreset = process.env.DASHBOARD_STYLE_PRESET || "";
   clean.push(q);
 }
 if (!clean.length) {

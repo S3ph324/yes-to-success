@@ -39,6 +39,9 @@ export const productShowcaseCardSchema = z.object({
   ctaTag: z.string().default(""),
   headline: z.string().default(""),          // short punchy AI hook (optional)
   layout: z.enum(["bottom", "top", "center"]).default("bottom"),
+  // Poster style template key (e.g. "03-type-overlay") — maps to an overlay
+  // type voice so the on-poster text matches the reference's typography.
+  stylePreset: z.string().default(""),
   bgSrc: z.string().default(""),
   aspectRatio: aspectRatioSchema,
   brandGold: z.string().default("#F5C13B"),
@@ -221,6 +224,119 @@ const CampaignHero: React.FC<{
   );
 };
 
+/** Echo hero — heavy expanded caps in brand gold with outline echo copies
+ *  stacked behind, matching the "type overlay" reference posters. */
+const EchoHero: React.FC<{
+  text: string;
+  size: number;
+  gold: string;
+}> = ({ text, size, gold }) => {
+  const t = text.trim().toUpperCase();
+  const stroke = Math.max(1.5, Math.round(size * 0.02));
+  const base: React.CSSProperties = {
+    fontFamily: ARCHIVO,
+    fontWeight: 900,
+    fontStretch: "125%",
+    fontSize: size,
+    lineHeight: 1.02,
+    letterSpacing: "0.01em",
+  };
+  const echo: React.CSSProperties = {
+    ...base,
+    position: "absolute",
+    left: 0,
+    right: 0,
+    color: "transparent",
+    WebkitTextStroke: `${stroke}px ${gold}`,
+  };
+  return (
+    <div style={{ position: "relative" }}>
+      <div aria-hidden style={{ ...echo, top: 0, transform: "translateY(-82%)", opacity: 0.32 }}>{t}</div>
+      <div aria-hidden style={{ ...echo, top: 0, transform: "translateY(82%)", opacity: 0.18 }}>{t}</div>
+      <div style={{ ...base, position: "relative", color: gold, textShadow: "0 3px 24px rgba(0,0,0,0.55)" }}>
+        {t}
+      </div>
+    </div>
+  );
+};
+
+/** Minimal hero — restrained tracked caps, medium weight. For clean/minimal
+ *  reference styles where the product owns the poster and type whispers. */
+const MinimalHero: React.FC<{ text: string; size: number }> = ({ text, size }) => (
+  <div
+    style={{
+      fontFamily: ARCHIVO,
+      fontWeight: 500,
+      fontSize: size,
+      letterSpacing: "0.3em",
+      textTransform: "uppercase" as const,
+      color: "#FFFFFF",
+      lineHeight: 1.4,
+      textShadow: "0 2px 22px rgba(0,0,0,0.7)",
+    }}
+  >
+    {text}
+  </div>
+);
+
+/** Spec hero — tracked caps between hairline rules, technical spec-sheet
+ *  aesthetic for the pedestal / glass-panel reference styles. */
+const SpecHero: React.FC<{ text: string; size: number; scale: number }> = ({
+  text, size, scale,
+}) => (
+  <div
+    style={{
+      borderTop: "1px solid rgba(255,255,255,0.55)",
+      borderBottom: "1px solid rgba(255,255,255,0.55)",
+      padding: `${Math.round(14 * scale)}px 0`,
+      display: "inline-block",
+    }}
+  >
+    <div
+      style={{
+        fontFamily: ARCHIVO,
+        fontWeight: 600,
+        fontSize: size,
+        letterSpacing: "0.2em",
+        textTransform: "uppercase" as const,
+        color: "#FFFFFF",
+        lineHeight: 1.35,
+        textShadow: "0 2px 18px rgba(0,0,0,0.7)",
+      }}
+    >
+      {text}
+    </div>
+  </div>
+);
+
+// Which type voice each poster style template gets. Unknown keys fall through
+// to substring heuristics, so future presets pick a sensible voice from their
+// filename alone; no key at all → the original layout-based rotation.
+type TypeVoice = "serif" | "campaign" | "echo" | "minimal" | "spec";
+const PRESET_VOICE: Record<string, TypeVoice> = {
+  "01-dramatic-multiangle":      "minimal",
+  "02-minimal-pedestal":         "spec",
+  "03-type-overlay":             "echo",
+  "04-editorial-props":          "serif",
+  "05-glass-panel-spec":         "spec",
+  "model-01-bold-type-overlay":  "campaign",
+  "model-02-elegant-hold":       "serif",
+  "model-03-earthy-editorial":   "serif",
+  "model-04-clean-fresh":        "minimal",
+  "model-05-outdoor-cinematic":  "campaign",
+};
+const voiceFor = (preset: string, layout: string): TypeVoice => {
+  if (PRESET_VOICE[preset]) return PRESET_VOICE[preset];
+  const p = preset.toLowerCase();
+  if (p && p !== "custom" && p !== "auto") {
+    if (p.includes("type-overlay") || p.includes("echo")) return "echo";
+    if (p.includes("spec") || p.includes("pedestal") || p.includes("panel")) return "spec";
+    if (p.includes("minimal") || p.includes("clean")) return "minimal";
+    if (p.includes("bold") || p.includes("cinematic") || p.includes("campaign")) return "campaign";
+  }
+  return layout === "top" ? "campaign" : "serif";
+};
+
 /** Tracked-caps kicker — small Archivo line above the hero ("THE PINK DROP"). */
 const Kicker: React.FC<{ text: string; scale: number; gold: string }> = ({
   text, scale, gold,
@@ -297,6 +413,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   ctaTag,
   headline,
   layout,
+  stylePreset,
   bgSrc,
   brandGold,
   brandRed,
@@ -328,6 +445,35 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   const isHeroShort = heroText.length < 30; // short = can go bigger
 
   const hasText = Boolean(heroText);
+
+  // Hero type voice — from the selected poster style template, with a
+  // layout-based fallback. One element, reused by every layout below.
+  const voice = voiceFor(stylePreset, layout);
+  const heroEl = (() => {
+    switch (voice) {
+      case "campaign":
+        return <CampaignHero text={heroText} size={Math.round((isHeroShort ? 80 : 52) * scale)} />;
+      case "echo":
+        return <EchoHero text={heroText} size={Math.round((isHeroShort ? 72 : 50) * scale)} gold={brandGold} />;
+      case "minimal":
+        return <MinimalHero text={heroText} size={Math.round((isHeroShort ? 46 : 34) * scale)} />;
+      case "spec":
+        return <SpecHero text={heroText} size={Math.round((isHeroShort ? 40 : 30) * scale)} scale={scale} />;
+      default:
+        return (
+          <SerifHero
+            text={heroText}
+            size={Math.round((isHeroShort ? (layout === "center" ? 98 : 92) : (layout === "center" ? 64 : 60)) * scale)}
+            gold={brandGold}
+            weight={layout === "center" ? 560 : 650}
+            lineHeight={layout === "center" ? 1.04 : 1.06}
+            shadow={layout === "center"
+              ? "0 2px 40px rgba(0,0,0,0.8), 0 0 80px rgba(0,0,0,0.4)"
+              : undefined}
+          />
+        );
+    }
+  })();
 
   // Supporting type — shared across layouts.
   // Descriptor: tracked-caps Archivo. Tagline: italic Fraunces, muted.
@@ -410,12 +556,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
             ) : (
               <AccentRule scale={scale} brandRed={brandRed} brandGold={brandGold} />
             )}
-            <SerifHero
-              text={heroText}
-              size={isHeroShort ? Math.round(92 * scale) : Math.round(60 * scale)}
-              gold={brandGold}
-              weight={650}
-            />
+            {heroEl}
             {extraTagline && (
               <div style={{ ...taglineStyle, marginTop: Math.round(10 * scale) }}>
                 {extraTagline}
@@ -470,10 +611,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
               transform: `translateY(${-lift}px)`,  // animate from above
             }}
           >
-            <CampaignHero
-              text={heroText}
-              size={isHeroShort ? Math.round(80 * scale) : Math.round(52 * scale)}
-            />
+            {heroEl}
             <div style={{ marginTop: Math.round(14 * scale) }}>
               <AccentRule scale={scale} brandRed={brandRed} brandGold={brandGold} mb={0} />
             </div>
@@ -548,14 +686,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
               opacity: fadeInLate,
             }}>{ctaTag}</div>
           )}
-          <SerifHero
-            text={heroText}
-            size={isHeroShort ? Math.round(98 * scale) : Math.round(64 * scale)}
-            gold={brandGold}
-            weight={560}
-            lineHeight={1.04}
-            shadow="0 2px 40px rgba(0,0,0,0.8), 0 0 80px rgba(0,0,0,0.4)"
-          />
+          {heroEl}
           {/* Gold accent rule below headline */}
           <div style={{
             height: Math.round(3 * scale),

@@ -455,13 +455,17 @@ for (const { q, i } of targets) {
           ? " The LAST image is the STYLE REFERENCE — a finished eyeglasses " +
             "advertisement whose look this poster must MATCH. Replicate its visual " +
             "identity faithfully: background treatment, colour palette, lighting " +
-            "style, compositional structure, prop and staging approach, level of " +
-            "drama, and overall mood. The finished image should look like another " +
-            "poster from the SAME campaign as the reference. Two exceptions only: " +
-            "(1) do NOT copy any text, lettering, or logos from the reference — " +
-            "this image must contain zero readable text; (2) do NOT copy the " +
-            "eyeglasses shown in the reference — the product must come ONLY from " +
-            "the product reference photos above."
+            "style, prop and staging approach, level of drama, and overall mood. " +
+            "The finished image should look like another poster from the SAME " +
+            "campaign as the reference. Three exceptions: " +
+            "(1) COMPOSITION — the SHOT VARIATION directive above dictates the " +
+            "camera angle, distance, and product position for THIS poster and " +
+            "OVERRIDES the reference's framing; do NOT default to the reference's " +
+            "centered composition. " +
+            "(2) do NOT copy any text, lettering, or logos from the reference — " +
+            "this image must contain zero readable text. " +
+            "(3) do NOT copy the eyeglasses shown in the reference — the product " +
+            "must come ONLY from the product reference photos above."
           : " The last image is a BRAND AESTHETIC REFERENCE. Use it for general " +
             "brand feel: production quality, premium/editorial/minimal tone, and " +
             "compositional style. The subject must come only from the reference " +
