@@ -142,6 +142,14 @@ const app = express();
 app.set("trust proxy", true);
 app.use(express.json());
 
+// Serve rendered poster PNGs via static middleware on Railway (EXPORT_BASE set).
+// This avoids calling getClient() on every image request — 171 simultaneous
+// reads from the Railway volume saturate I/O and return 400s for most images.
+// Local dev falls through to the per-client route further down.
+if (EXPORT_BASE) {
+  app.use("/posters", express.static(EXPORT_BASE, { maxAge: 0, etag: true, dotfiles: "deny" }));
+}
+
 // ── Cost guardrails — public/no-login, so these protect the GCP bill ──────
 const CAP_DAY = parseInt(process.env.STUDIO_DAILY_CAP || "40", 10);
 const CAP_IP_HR = parseInt(process.env.STUDIO_IP_PER_HOUR || "4", 10);
@@ -1441,7 +1449,10 @@ app.get("/api/debug/posters", async (req, res) => {
   }
   res.json(report);
 });
-app.get("/", (_q, res) => res.type("html").send(PAGE));
+app.get("/", (_q, res) => {
+  res.set("Cache-Control", "no-store");
+  res.type("html").send(PAGE);
+});
 
 // ── Try-On sub-site (/tryon) ──────────────────────────────────────────────
 registerTryonRoutes(app, { EXPORT_BASE, guard });
