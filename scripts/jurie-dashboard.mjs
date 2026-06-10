@@ -1522,8 +1522,8 @@ figure{margin:0;background:#0d0d0f;border:1px solid var(--line);border-radius:12
 position:relative;transition:border-color .2s}
 figure:hover{border-color:var(--line2)}
 /* Fixed thumbnail height keeps layout compact even while images are loading */
-figure .poster-thumb{height:160px;overflow:hidden;background:#0d0d0f}
-figure .poster-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.poster-thumb{height:160px;overflow:hidden;background:#0d0d0f}
+.poster-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .dl,.cp{position:absolute;top:9px;background:rgba(0,0,0,.6);color:#fff;
 border:1px solid rgba(255,255,255,.2);text-decoration:none;font-size:11px;font-weight:600;
 padding:6px 11px;border-radius:7px;opacity:0;transition:opacity .18s,background .15s;

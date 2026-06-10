@@ -2,7 +2,7 @@
 # Multi-client Quote Poster Studio + B-Roll (scripts/jurie-dashboard.mjs).
 # Separate from the existing Dockerfile (which ships server.mjs) — do not
 # merge. Includes Chromium deps for Remotion rendering.
-# (Redeploy trigger — v0.26.38: express.static for /posters, no-store on HTML page.)
+# (Redeploy trigger — v0.26.39: fix .poster-thumb CSS selector for queue tab.)
 
 FROM node:20-bookworm-slim AS base
 
