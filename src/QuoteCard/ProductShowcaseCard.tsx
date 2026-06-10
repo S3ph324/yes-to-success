@@ -1,6 +1,9 @@
+import { useEffect, useState } from "react";
 import {
   AbsoluteFill,
   Img,
+  continueRender,
+  delayRender,
   interpolate,
   spring,
   staticFile,
@@ -78,6 +81,40 @@ const LOGO_POS: Record<string, React.CSSProperties> = {
   "bottom-center": { bottom: 0, left: "50%", transform: "translateX(-50%)" },
 };
 
+// ── Typography system ──────────────────────────────────────────────────────
+// Premium-eyewear pairing: high-contrast display serif for the hero line
+// (Playfair Display) + geometric sans for everything supporting (Montserrat).
+// Both load from public/fonts/ so the Docker render on Railway uses the same
+// faces as local — without this, headless Chrome fell back to a monospace
+// face and every poster looked typewriter-set.
+const SERIF = "'Playfair Display',Georgia,'Times New Roman',serif";
+const SANS  = "'Montserrat','Helvetica Neue',Arial,sans-serif";
+
+const useShowcaseFonts = () => {
+  const [handle] = useState(() => delayRender("load-showcase-fonts"));
+  useEffect(() => {
+    const faces = [
+      new FontFace(
+        "Playfair Display",
+        `url(${staticFile("fonts/PlayfairDisplay.ttf")}) format("truetype")`,
+        { weight: "400 900" },
+      ),
+      new FontFace(
+        "Montserrat",
+        `url(${staticFile("fonts/Montserrat.ttf")}) format("truetype")`,
+        { weight: "100 900" },
+      ),
+    ];
+    Promise.all(
+      faces.map((f) =>
+        f.load().then((loaded) => document.fonts.add(loaded)),
+      ),
+    )
+      .then(() => continueRender(handle))
+      .catch(() => continueRender(handle));
+  }, [handle]);
+};
+
 // ── Shared sub-components ─────────────────────────────────────────────────
 
 /** Accent rule — red→gold gradient, always spans the text column */
@@ -94,7 +131,8 @@ const AccentRule: React.FC<{ scale: number; brandRed: string; brandGold: string;
   />
 );
 
-/** CTA chip */
+/** CTA chip — tracked-out uppercase kicker, sans, deliberately small so the
+ *  serif headline owns the hierarchy (size jump ≥4×). */
 const CtaChip: React.FC<{ text: string; brandGold: string; scale: number; opacity: number }> = ({
   text, brandGold, scale, opacity,
 }) => (
@@ -102,16 +140,16 @@ const CtaChip: React.FC<{ text: string; brandGold: string; scale: number; opacit
     style={{
       display: "inline-flex",
       alignItems: "center",
-      padding: `${Math.round(8 * scale)}px ${Math.round(22 * scale)}px`,
+      padding: `${Math.round(7 * scale)}px ${Math.round(20 * scale)}px`,
       background: brandGold,
       color: "#15120a",
       borderRadius: 999,
-      fontFamily: "system-ui,-apple-system,'Helvetica Neue',sans-serif",
-      fontWeight: 800,
-      fontSize: Math.round(18 * scale),
-      letterSpacing: "0.13em",
+      fontFamily: SANS,
+      fontWeight: 700,
+      fontSize: Math.round(15 * scale),
+      letterSpacing: "0.16em",
       textTransform: "uppercase" as const,
-      marginBottom: Math.round(14 * scale),
+      marginBottom: Math.round(18 * scale),
       boxShadow: "0 4px 24px rgba(0,0,0,0.45)",
       opacity,
     }}
@@ -135,6 +173,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
 }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
+  useShowcaseFonts();
 
   // Animations
   const fadeIn     = interpolate(frame, [0, 22], [0, 1], { extrapolateRight: "clamp" });
@@ -155,11 +194,41 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   const extraTagline = headline ? tagline : "";
   const isHeroShort = heroText.length < 30; // short = can go bigger
 
+  // Hierarchy (per the optical-marketing design research): distinct size
+  // jumps — hero ≈84px, descriptor ≈0.36× hero, tagline differentiated by
+  // weight + muted colour rather than another size step.
   const heroSize   = isHeroShort
-    ? Math.round(72 * scale)   // short hook → big impact
-    : Math.round(54 * scale);  // longer line → readable
-  const subSize    = Math.round(26 * scale);
-  const extraSize  = Math.round(22 * scale);
+    ? Math.round(84 * scale)   // short hook → display-serif impact
+    : Math.round(56 * scale);  // longer line → still display, stays readable
+  const subSize    = Math.round(30 * scale);
+  const extraSize  = Math.round(21 * scale);
+
+  // Shared text styles — serif hero, sans support.
+  const heroStyle: React.CSSProperties = {
+    fontFamily: SERIF,
+    fontWeight: 800,
+    fontSize: heroSize,
+    color: "#FFFFFF",
+    letterSpacing: "-0.012em", // serifs need air; never track tight like a sans
+    lineHeight: 1.06,
+    textShadow: "0 3px 28px rgba(0,0,0,0.75)",
+  };
+  const subStyle: React.CSSProperties = {
+    fontFamily: SANS,
+    fontWeight: 500,
+    fontSize: subSize,
+    color: "rgba(255,255,255,0.85)",
+    letterSpacing: "0.01em",
+    lineHeight: 1.35,
+  };
+  const taglineStyle: React.CSSProperties = {
+    fontFamily: SANS,
+    fontWeight: 400,
+    fontSize: extraSize,
+    color: "rgba(255,255,255,0.58)",
+    letterSpacing: "0.02em",
+    lineHeight: 1.45,
+  };
 
   const hasText = Boolean(heroText);
 
@@ -219,29 +288,16 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
           >
             <AccentRule scale={scale} brandRed={brandRed} brandGold={brandGold} />
             {ctaTag && <CtaChip text={ctaTag} brandGold={brandGold} scale={scale} opacity={fadeInLate} />}
-            <div style={{
-              fontFamily: "system-ui,-apple-system,'Helvetica Neue',sans-serif",
-              fontWeight: 800, fontSize: heroSize, color: "#FFFFFF",
-              letterSpacing: isHeroShort ? "-0.025em" : "-0.018em",
-              lineHeight: 1.08, textShadow: "0 3px 28px rgba(0,0,0,0.75)",
-            }}>{heroText}</div>
+            <div style={heroStyle}>{heroText}</div>
             {subText && (
-              <div style={{
-                fontFamily: "system-ui,-apple-system,'Helvetica Neue',sans-serif",
-                fontWeight: 400, fontSize: subSize,
-                color: "rgba(255,255,255,0.78)",
-                marginTop: Math.round(10 * scale),
-                letterSpacing: "0.006em", lineHeight: 1.4,
-              }}>{subText}</div>
+              <div style={{ ...subStyle, marginTop: Math.round(12 * scale) }}>
+                {subText}
+              </div>
             )}
             {extraTagline && (
-              <div style={{
-                fontFamily: "system-ui,-apple-system,'Helvetica Neue',sans-serif",
-                fontWeight: 300, fontSize: extraSize,
-                color: "rgba(255,255,255,0.55)",
-                marginTop: Math.round(6 * scale),
-                letterSpacing: "0.01em", lineHeight: 1.4,
-              }}>{extraTagline}</div>
+              <div style={{ ...taglineStyle, marginTop: Math.round(7 * scale) }}>
+                {extraTagline}
+              </div>
             )}
           </div>
         )}
@@ -288,30 +344,19 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
             }}
           >
             {ctaTag && <CtaChip text={ctaTag} brandGold={brandGold} scale={scale} opacity={fadeInLate} />}
-            <div style={{
-              fontFamily: "system-ui,-apple-system,'Helvetica Neue',sans-serif",
-              fontWeight: 800, fontSize: heroSize, color: "#FFFFFF",
-              letterSpacing: isHeroShort ? "-0.025em" : "-0.018em",
-              lineHeight: 1.08, textShadow: "0 4px 32px rgba(0,0,0,0.9)",
-            }}>{heroText}</div>
+            <div style={{ ...heroStyle, textShadow: "0 4px 32px rgba(0,0,0,0.9)" }}>
+              {heroText}
+            </div>
             <AccentRule scale={scale} brandRed={brandRed} brandGold={brandGold} mb={0} />
             {subText && (
-              <div style={{
-                fontFamily: "system-ui,-apple-system,'Helvetica Neue',sans-serif",
-                fontWeight: 400, fontSize: subSize,
-                color: "rgba(255,255,255,0.80)",
-                marginTop: Math.round(12 * scale),
-                letterSpacing: "0.006em", lineHeight: 1.4,
-              }}>{subText}</div>
+              <div style={{ ...subStyle, marginTop: Math.round(14 * scale) }}>
+                {subText}
+              </div>
             )}
             {extraTagline && (
-              <div style={{
-                fontFamily: "system-ui,-apple-system,'Helvetica Neue',sans-serif",
-                fontWeight: 300, fontSize: extraSize,
-                color: "rgba(255,255,255,0.55)",
-                marginTop: Math.round(6 * scale),
-                letterSpacing: "0.01em", lineHeight: 1.4,
-              }}>{extraTagline}</div>
+              <div style={{ ...taglineStyle, marginTop: Math.round(7 * scale) }}>
+                {extraTagline}
+              </div>
             )}
           </div>
         )}
@@ -361,22 +406,20 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
               border: `2px solid ${brandGold}`,
               color: brandGold,
               borderRadius: 999,
-              fontFamily: "system-ui,-apple-system,'Helvetica Neue',sans-serif",
+              fontFamily: SANS,
               fontWeight: 700,
               fontSize: Math.round(14 * scale),
-              letterSpacing: "0.14em",
+              letterSpacing: "0.16em",
               textTransform: "uppercase" as const,
-              marginBottom: Math.round(16 * scale),
+              marginBottom: Math.round(18 * scale),
               opacity: fadeInLate,
             }}>{ctaTag}</div>
           )}
           <div style={{
-            fontFamily: "system-ui,-apple-system,'Helvetica Neue',sans-serif",
+            ...heroStyle,
             fontWeight: 900,
-            fontSize: isHeroShort ? Math.round(78 * scale) : Math.round(58 * scale),
-            color: "#FFFFFF",
-            letterSpacing: isHeroShort ? "-0.03em" : "-0.02em",
-            lineHeight: 1.02,
+            fontSize: isHeroShort ? Math.round(88 * scale) : Math.round(60 * scale),
+            lineHeight: 1.04,
             textShadow: "0 2px 40px rgba(0,0,0,0.8), 0 0 80px rgba(0,0,0,0.4)",
           }}>{heroText}</div>
           {/* Gold accent rule below headline */}
@@ -388,22 +431,11 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
             marginBottom: Math.round(14 * scale),
             borderRadius: 2,
           }} />
-          {subText && (
-            <div style={{
-              fontFamily: "system-ui,-apple-system,'Helvetica Neue',sans-serif",
-              fontWeight: 400, fontSize: subSize,
-              color: "rgba(255,255,255,0.82)",
-              letterSpacing: "0.01em", lineHeight: 1.45,
-            }}>{subText}</div>
-          )}
+          {subText && <div style={subStyle}>{subText}</div>}
           {extraTagline && (
-            <div style={{
-              fontFamily: "system-ui,-apple-system,'Helvetica Neue',sans-serif",
-              fontWeight: 300, fontSize: extraSize,
-              color: "rgba(255,255,255,0.55)",
-              marginTop: Math.round(8 * scale),
-              letterSpacing: "0.012em", lineHeight: 1.45,
-            }}>{extraTagline}</div>
+            <div style={{ ...taglineStyle, marginTop: Math.round(9 * scale) }}>
+              {extraTagline}
+            </div>
           )}
         </div>
       )}
