@@ -12,11 +12,63 @@ import { bundle } from "@remotion/bundler";
 import { renderStill, selectComposition } from "@remotion/renderer";
 import fs from "node:fs/promises";
 import path from "node:path";
+import pngjs from "pngjs";
 import {
   projectRoot,
   resolveClient,
   takeClientArg,
 } from "./lib/client.mjs";
+
+const { PNG } = pngjs;
+
+// ── Background busyness analysis ─────────────────────────────────────────────
+// Measures how visually busy a horizontal band of the generated background is
+// (luminance spread + edge density, downsampled). The showcase card uses the
+// scores to scale its scrims (no heavy vignette over clean art), pick the
+// cleaner band for text when no template forces a layout, and switch to a
+// compact overlay when the image already carries its own display type.
+function bandBusyness(png, y0Frac, y1Frac) {
+  const { width: W, height: H, data } = png;
+  const step = Math.max(1, Math.floor(W / 96));
+  const y0 = Math.floor(H * y0Frac), y1 = Math.floor(H * y1Frac);
+  let n = 0, sum = 0, sum2 = 0, grad = 0, gn = 0;
+  let prevRow = null;
+  for (let y = y0; y < y1; y += step) {
+    const row = [];
+    for (let x = 0; x < W; x += step) {
+      const idx = (y * W + x) * 4;
+      const l = 0.2126 * data[idx] + 0.7152 * data[idx + 1] + 0.0722 * data[idx + 2];
+      if (row.length) { grad += Math.abs(l - row[row.length - 1]); gn++; }
+      row.push(l);
+      sum += l; sum2 += l * l; n++;
+    }
+    if (prevRow) {
+      const m = Math.min(row.length, prevRow.length);
+      for (let k = 0; k < m; k++) { grad += Math.abs(row[k] - prevRow[k]); gn++; }
+    }
+    prevRow = row;
+  }
+  if (!n) return 0.75;
+  const mean = sum / n;
+  const std = Math.sqrt(Math.max(0, sum2 / n - mean * mean));
+  const g = gn ? grad / gn : 0;
+  return Math.max(0, Math.min(1, (std / 70) * 0.6 + (g / 28) * 0.4));
+}
+
+async function analyzeBg(relBgPath) {
+  try {
+    const abs = path.isAbsolute(relBgPath)
+      ? relBgPath
+      : path.join(projectRoot, "public", relBgPath);
+    const png = PNG.sync.read(await fs.readFile(abs));
+    return {
+      busyTop: bandBusyness(png, 0, 0.34),
+      busyBottom: bandBusyness(png, 0.64, 1),
+    };
+  } catch {
+    return null; // defaults in the card keep current full-scrim behavior
+  }
+}
 
 const { client: clientArg, rest } = takeClientArg(process.argv.slice(2));
 const client = await resolveClient(clientArg);
@@ -181,6 +233,7 @@ for (const q of quotes) {
   // treatment (that's the whole point of the separate composition).
   const isShowcase = Boolean(q.eyeglassesId);
   const compositionId = isShowcase ? "ProductShowcaseCard" : "JurieQuoteCard";
+  const bgStats = isShowcase && q.bgPath ? await analyzeBg(q.bgPath) : null;
   const inputProps = isShowcase
     ? {
         productLine: q.productLine || q.quote || "",
@@ -191,6 +244,9 @@ for (const q of quotes) {
         // Selected poster style template — the card maps it to a matching
         // overlay type voice (e.g. 03-type-overlay → heavy gold echo caps).
         stylePreset: q.stylePreset || process.env.DASHBOARD_STYLE_PRESET || "",
+        // Measured band busyness — drives adaptive scrims / placement / compact
+        // overlay in the card. Omitted (defaults) when analysis fails.
+        ...(bgStats ? { busyTop: bgStats.busyTop, busyBottom: bgStats.busyBottom } : {}),
         bgSrc: q.bgPath || "",
         aspectRatio,
         brandGold: brand.brandGold,

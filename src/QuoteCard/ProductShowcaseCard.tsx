@@ -42,6 +42,12 @@ export const productShowcaseCardSchema = z.object({
   // Poster style template key (e.g. "03-type-overlay") — maps to an overlay
   // type voice so the on-poster text matches the reference's typography.
   stylePreset: z.string().default(""),
+  // Measured background busyness per band (0 = flat/clean, 1 = very busy),
+  // computed by render-batch from the actual PNG. Drives adaptive scrims,
+  // placement, and compact overlay. Defaults assume "busy" so behavior
+  // without analysis matches the previous full-scrim look.
+  busyTop: z.number().min(0).max(1).default(0.75),
+  busyBottom: z.number().min(0).max(1).default(0.75),
   bgSrc: z.string().default(""),
   aspectRatio: aspectRatioSchema,
   brandGold: z.string().default("#F5C13B"),
@@ -478,6 +484,8 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   headline,
   layout,
   stylePreset,
+  busyTop,
+  busyBottom,
   bgSrc,
   brandGold,
   brandRed,
@@ -511,8 +519,26 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   const hasText = Boolean(heroText);
 
   // Effective layout — the chosen template's signature placement wins over
-  // the copy generator's rotation.
-  const effLayout = PRESET_LAYOUT[stylePreset] || layout;
+  // the copy generator's rotation. Without a template, the rotation's pick
+  // flips to the measurably cleaner band so text never sits on the busiest
+  // part of the art.
+  const presetForced = Boolean(PRESET_LAYOUT[stylePreset]);
+  let effLayout = PRESET_LAYOUT[stylePreset] || layout;
+  if (!presetForced && effLayout === "bottom" && busyBottom - busyTop > 0.22) effLayout = "top";
+  else if (!presetForced && effLayout === "top" && busyTop - busyBottom > 0.22) effLayout = "bottom";
+
+  // Busyness of the band the text actually occupies → adaptive overlay:
+  // - scrimScale: clean art gets a whisper of a scrim, busy art the full one
+  // - compact: the image already reads as a designed poster (e.g. it carries
+  //   its own display type) → shrink the overlay and drop secondary lines so
+  //   we frame the art instead of fighting it.
+  const bandBusy = effLayout === "top" ? busyTop
+    : effLayout === "bottom" ? busyBottom
+    : (busyTop + busyBottom) / 2;
+  const scrimScale = 0.35 + 0.65 * Math.max(0, Math.min(1, bandBusy));
+  const sa = (alpha: number) => +(alpha * scrimScale).toFixed(3);
+  const compact = bandBusy > 0.82;
+  const cs = compact ? 0.62 : 1; // hero size factor in compact mode
 
   // Tone — light templates get bright frosted panels + dark ink type.
   const tone = toneFor(stylePreset);
@@ -531,18 +557,18 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   const heroEl = (() => {
     switch (voice) {
       case "campaign":
-        return <CampaignHero text={heroText} size={Math.round((isHeroShort ? 80 : 52) * scale)} color={ink} shadow={heroShadow} />;
+        return <CampaignHero text={heroText} size={Math.round((isHeroShort ? 80 : 52) * cs * scale)} color={ink} shadow={heroShadow} />;
       case "echo":
-        return <EchoHero text={heroText} size={Math.round((isHeroShort ? 72 : 50) * scale)} gold={brandGold} />;
+        return <EchoHero text={heroText} size={Math.round((isHeroShort ? 72 : 50) * cs * scale)} gold={brandGold} />;
       case "minimal":
-        return <CleanHero text={heroText} size={Math.round((isHeroShort ? 74 : 50) * scale)} color={ink} gold={brandGold} shadow={heroShadow} />;
+        return <CleanHero text={heroText} size={Math.round((isHeroShort ? 74 : 50) * cs * scale)} color={ink} gold={brandGold} shadow={heroShadow} />;
       case "spec":
-        return <SpecHero text={heroText} size={Math.round((isHeroShort ? 46 : 34) * scale)} scale={scale} color={ink} line={isLight ? "rgba(27,24,34,0.5)" : "rgba(255,255,255,0.55)"} shadow={heroShadow} />;
+        return <SpecHero text={heroText} size={Math.round((isHeroShort ? 46 : 34) * cs * scale)} scale={scale} color={ink} line={isLight ? "rgba(27,24,34,0.5)" : "rgba(255,255,255,0.55)"} shadow={heroShadow} />;
       default:
         return (
           <SerifHero
             text={heroText}
-            size={Math.round((isHeroShort ? (masthead ? 110 : effLayout === "center" ? 98 : 92) : (effLayout === "center" || masthead ? 64 : 60)) * scale)}
+            size={Math.round((isHeroShort ? (masthead ? 110 : effLayout === "center" ? 98 : 92) : (effLayout === "center" || masthead ? 64 : 60)) * cs * scale)}
             gold={brandGold}
             color={ink}
             weight={effLayout === "center" ? 560 : masthead ? 600 : 650}
@@ -594,10 +620,11 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
       ) : (
         <AbsoluteFill style={{ background: fallbackBg }} />
       )}
-      {/* Corner vignette — dark tone only; vignettes muddy a high-key shot */}
+      {/* Corner vignette — dark tone only, scaled by busyness; clean art
+          stays unobstructed */}
       {!isLight && (
         <AbsoluteFill
-          style={{ background: "radial-gradient(ellipse at 50% 50%, transparent 40%, rgba(0,0,0,0.4) 100%)" }}
+          style={{ background: `radial-gradient(ellipse at 50% 50%, transparent 40%, rgba(0,0,0,${sa(0.4)}) 100%)` }}
         />
       )}
     </>
@@ -636,9 +663,9 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
     return (
       <AbsoluteFill style={{ background: baseFill, overflow: "hidden" }}>
         {heroBg}
-        {/* Bottom scrim — frosted white panel on light tone, deep fade on dark */}
+        {/* Bottom scrim — frosted panel scaled to how busy the band is */}
         <AbsoluteFill
-          style={{ background: `linear-gradient(180deg, transparent 35%, rgba(${scrimRGB},0.72) 60%, rgba(${scrimRGB},0.97) 100%)` }}
+          style={{ background: `linear-gradient(180deg, transparent 35%, rgba(${scrimRGB},${sa(0.72)}) 60%, rgba(${scrimRGB},${sa(0.97)}) 100%)` }}
         />
         {logoEl}
         {hasText && (
@@ -651,13 +678,13 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
               transform: `translateY(${lift}px)`,
             }}
           >
-            {subText ? (
+            {!compact && (subText ? (
               <Kicker text={subText} scale={scale} gold={brandGold} color={inkSub} />
             ) : (
               <AccentRule scale={scale} brandRed={brandRed} brandGold={brandGold} />
-            )}
+            ))}
             {heroEl}
-            {extraTagline && (
+            {!compact && extraTagline && (
               <div style={{ ...taglineStyle, marginTop: Math.round(10 * scale) }}>
                 {extraTagline}
               </div>
@@ -682,15 +709,16 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
         {heroBg}
         {/* Top scrim — solid at the very top, fades to transparent. Light tone
             gets a stronger, longer band so masthead type reads like it sits on
-            a clean wall (per the reference), not on the photo. */}
+            a clean wall (per the reference), not on the photo. Scaled by the
+            band's measured busyness — clean art keeps showing through. */}
         <AbsoluteFill
           style={{ background: isLight
-            ? `linear-gradient(180deg, rgba(${scrimRGB},1) 0%, rgba(${scrimRGB},0.92) 32%, transparent 64%)`
-            : `linear-gradient(180deg, rgba(${scrimRGB},0.97) 0%, rgba(${scrimRGB},0.72) 30%, transparent 58%)` }}
+            ? `linear-gradient(180deg, rgba(${scrimRGB},${sa(1)}) 0%, rgba(${scrimRGB},${sa(0.92)}) 32%, transparent 64%)`
+            : `linear-gradient(180deg, rgba(${scrimRGB},${sa(0.97)}) 0%, rgba(${scrimRGB},${sa(0.72)}) 30%, transparent 58%)` }}
         />
         {/* Subtle bottom fade so logo / bottom CTA read if present */}
         <AbsoluteFill
-          style={{ background: `linear-gradient(180deg, transparent 75%, rgba(${scrimRGB},0.55) 100%)` }}
+          style={{ background: `linear-gradient(180deg, transparent 75%, rgba(${scrimRGB},${sa(0.55)}) 100%)` }}
         />
         {/* Logo: mirror position to bottom when layout is top — keeps it away from the text */}
         {logo && (
@@ -718,7 +746,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
             }}
           >
             {/* Masthead eyebrow — small italic serif line above the big type */}
-            {masthead && extraTagline && (
+            {masthead && !compact && extraTagline && (
               <div style={{
                 ...taglineStyle,
                 fontSize: Math.round(27 * scale),
@@ -728,12 +756,12 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
               </div>
             )}
             {heroEl}
-            {!masthead && (
+            {!masthead && !compact && (
               <div style={{ marginTop: Math.round(14 * scale) }}>
                 <AccentRule scale={scale} brandRed={brandRed} brandGold={brandGold} mb={0} />
               </div>
             )}
-            {subText && (
+            {!compact && subText && (
               <div style={{
                 ...descriptorStyle,
                 marginTop: Math.round(masthead ? 18 : 14) * scale,
@@ -742,7 +770,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
                 {subText}
               </div>
             )}
-            {!masthead && extraTagline && (
+            {!masthead && !compact && extraTagline && (
               <div style={{ ...taglineStyle, marginTop: Math.round(8 * scale) }}>
                 {extraTagline}
               </div>
@@ -765,16 +793,17 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   return (
     <AbsoluteFill style={{ background: baseFill, overflow: "hidden" }}>
       {heroBg}
-      {/* Directional contrast wash — left-weighted so the text column reads */}
+      {/* Directional contrast wash — left-weighted so the text column reads.
+          Scaled by busyness so clean art isn't needlessly washed out. */}
       <AbsoluteFill
         style={{ background: isLight
-          ? "linear-gradient(105deg, rgba(255,255,255,0.66) 0%, transparent 55%, rgba(255,255,255,0.3) 100%)"
-          : "linear-gradient(105deg, rgba(0,0,0,0.62) 0%, transparent 55%, rgba(0,0,0,0.28) 100%)" }}
+          ? `linear-gradient(105deg, rgba(255,255,255,${sa(0.66)}) 0%, transparent 55%, rgba(255,255,255,${sa(0.3)}) 100%)`
+          : `linear-gradient(105deg, rgba(0,0,0,${sa(0.62)}) 0%, transparent 55%, rgba(0,0,0,${sa(0.28)}) 100%)` }}
       />
       {/* Subtle full-frame wash that animates in */}
       <AbsoluteFill style={{ background: isLight
-        ? `rgba(248,246,241,${overlayOpacity * 0.8})`
-        : `rgba(0,0,0,${overlayOpacity})` }} />
+        ? `rgba(248,246,241,${overlayOpacity * 0.8 * scrimScale})`
+        : `rgba(0,0,0,${overlayOpacity * scrimScale})` }} />
       {logoEl}
       {hasText && (
         <div
@@ -822,8 +851,8 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
             marginBottom: Math.round(14 * scale),
             borderRadius: 2,
           }} />
-          {subText && <div style={descriptorStyle}>{subText}</div>}
-          {extraTagline && (
+          {!compact && subText && <div style={descriptorStyle}>{subText}</div>}
+          {!compact && extraTagline && (
             <div style={{ ...taglineStyle, marginTop: Math.round(9 * scale) }}>
               {extraTagline}
             </div>
