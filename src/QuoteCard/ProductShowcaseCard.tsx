@@ -356,6 +356,23 @@ const toneFor = (preset: string): "light" | "dark" => {
   return "dark";
 };
 
+// Per-template layout — each reference poster has a signature text placement
+// (e.g. "Elegant product hold" is a top masthead over the model). Overrides
+// the copy generator's blind bottom/top/center rotation when a template is
+// chosen; no template → rotation stands.
+const PRESET_LAYOUT: Record<string, "bottom" | "top" | "center"> = {
+  "01-dramatic-multiangle":      "center",
+  "02-minimal-pedestal":         "top",
+  "03-type-overlay":             "center",
+  "04-editorial-props":          "bottom",
+  "05-glass-panel-spec":         "top",
+  "model-01-bold-type-overlay":  "top",
+  "model-02-elegant-hold":       "top",
+  "model-03-earthy-editorial":   "bottom",
+  "model-04-clean-fresh":        "top",
+  "model-05-outdoor-cinematic":  "bottom",
+};
+
 /** Tracked-caps kicker — small Archivo line above the hero ("THE PINK DROP"). */
 const Kicker: React.FC<{ text: string; scale: number; gold: string; color?: string }> = ({
   text, scale, gold, color = "rgba(255,255,255,0.82)",
@@ -465,6 +482,10 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
 
   const hasText = Boolean(heroText);
 
+  // Effective layout — the chosen template's signature placement wins over
+  // the copy generator's rotation.
+  const effLayout = PRESET_LAYOUT[stylePreset] || layout;
+
   // Tone — light templates get bright frosted panels + dark ink type.
   const tone = toneFor(stylePreset);
   const isLight = tone === "light";
@@ -475,7 +496,10 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
 
   // Hero type voice — from the selected poster style template, with a
   // layout-based fallback. One element, reused by every layout below.
-  const voice = voiceFor(stylePreset, layout);
+  const voice = voiceFor(stylePreset, effLayout);
+  // Masthead: serif voice anchored top = the "elevate your VISION" reference
+  // structure — centered italic eyebrow, huge serif, details row below.
+  const masthead = voice === "serif" && effLayout === "top";
   const heroEl = (() => {
     switch (voice) {
       case "campaign":
@@ -490,12 +514,12 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
         return (
           <SerifHero
             text={heroText}
-            size={Math.round((isHeroShort ? (layout === "center" ? 98 : 92) : (layout === "center" ? 64 : 60)) * scale)}
+            size={Math.round((isHeroShort ? (masthead ? 110 : effLayout === "center" ? 98 : 92) : (effLayout === "center" || masthead ? 64 : 60)) * scale)}
             gold={brandGold}
             color={ink}
-            weight={layout === "center" ? 560 : 650}
-            lineHeight={layout === "center" ? 1.04 : 1.06}
-            shadow={heroShadow ?? (layout === "center"
+            weight={effLayout === "center" ? 560 : masthead ? 600 : 650}
+            lineHeight={effLayout === "center" || masthead ? 1.04 : 1.06}
+            shadow={heroShadow ?? (effLayout === "center"
               ? "0 2px 40px rgba(0,0,0,0.8), 0 0 80px rgba(0,0,0,0.4)"
               : undefined)}
           />
@@ -570,7 +594,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   // ─────────────────────────────────────────────────────────────────────────
   // LAYOUT: "bottom" — editorial serif over a deep gradient panel
   // ─────────────────────────────────────────────────────────────────────────
-  if (layout === "bottom") {
+  if (effLayout === "bottom") {
     return (
       <AbsoluteFill style={{ background: baseFill, overflow: "hidden" }}>
         {heroBg}
@@ -614,7 +638,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   // ─────────────────────────────────────────────────────────────────────────
   // LAYOUT: "top" — campaign statement caps at top, photo hero below
   // ─────────────────────────────────────────────────────────────────────────
-  if (layout === "top") {
+  if (effLayout === "top") {
     return (
       <AbsoluteFill style={{ background: baseFill, overflow: "hidden" }}>
         {heroBg}
@@ -647,18 +671,35 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
               top: Math.round(height * 0.058),
               opacity: fadeIn,
               transform: `translateY(${-lift}px)`,  // animate from above
+              textAlign: masthead ? ("center" as const) : ("left" as const),
             }}
           >
+            {/* Masthead eyebrow — small italic serif line above the big type */}
+            {masthead && extraTagline && (
+              <div style={{
+                ...taglineStyle,
+                fontSize: Math.round(27 * scale),
+                marginBottom: Math.round(2 * scale),
+              }}>
+                {extraTagline}
+              </div>
+            )}
             {heroEl}
-            <div style={{ marginTop: Math.round(14 * scale) }}>
-              <AccentRule scale={scale} brandRed={brandRed} brandGold={brandGold} mb={0} />
-            </div>
+            {!masthead && (
+              <div style={{ marginTop: Math.round(14 * scale) }}>
+                <AccentRule scale={scale} brandRed={brandRed} brandGold={brandGold} mb={0} />
+              </div>
+            )}
             {subText && (
-              <div style={{ ...descriptorStyle, marginTop: Math.round(14 * scale) }}>
+              <div style={{
+                ...descriptorStyle,
+                marginTop: Math.round(masthead ? 18 : 14) * scale,
+                ...(masthead ? { fontSize: Math.round(16 * scale), letterSpacing: "0.26em" } : {}),
+              }}>
                 {subText}
               </div>
             )}
-            {extraTagline && (
+            {!masthead && extraTagline && (
               <div style={{ ...taglineStyle, marginTop: Math.round(8 * scale) }}>
                 {extraTagline}
               </div>

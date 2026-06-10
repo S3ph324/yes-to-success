@@ -102,10 +102,19 @@ const frameNotes = frame?.notes ? `\nFrame notes: ${frame.notes}` : "";
 
 const subjectBlock = `\n\n## SUBJECT — PRODUCT SHOWCASE\n\nEvery poster in this batch is a PRODUCT SHOWCASE for a specific pair of eyeglasses: "${frameLabel}".${frameNotes}\nThe eyeglasses are the hero of the image — copy must spotlight THEM (the look, the fit, the feature, the vibe), not a generic life lesson. Treat the frame like the main character of the post.\n`;
 
-const topics = TOPIC ? [TOPIC] : [];
-const briefBlock = TOPIC
-  ? `\n**SINGLE ANGLE — every poster in this batch must spotlight this angle of the product:** "${TOPIC}"\n`
-  : `\n**Vary the angle across the batch** — style, comfort, durability, everyday wearability, the "main character energy" the frame gives, etc.\n`;
+// The dashboard's "Optional headline idea" field arrives as TOPIC. When it
+// reads like a headline (≤8 words) it IS the headline — placed verbatim on
+// every poster (enforced again in the normalization pass below). Longer text
+// is treated as a thematic angle like before.
+const HEADLINE_IDEA = TOPIC && TOPIC.split(/\s+/).length <= 8 ? TOPIC : "";
+const briefBlock = HEADLINE_IDEA
+  ? `\n**USER HEADLINE — "${HEADLINE_IDEA}" is the literal headline of EVERY poster ` +
+    `in this batch.** It will be placed on the posters verbatim. Do NOT write your ` +
+    `own headlines. Write productLine / tagline / caption that SUPPORT this headline ` +
+    `— complement it, never restate or contradict it.\n`
+  : TOPIC
+    ? `\n**SINGLE ANGLE — every poster in this batch must spotlight this angle of the product:** "${TOPIC}"\n`
+    : `\n**Vary the angle across the batch** — style, comfort, durability, everyday wearability, the "main character energy" the frame gives, etc.\n`;
 
 const headlineNote = AI_HEADLINE
   ? `\n- headline: A SHORT typographic hook — 2 to 5 words MAX — rendered at\n` +
@@ -330,9 +339,12 @@ for (const q of posters) {
   // Assign layout in rotation so every three posters in the batch cycle through
   // all three visual treatments (bottom / top / center).
   q.layout = LAYOUTS[clean.length % LAYOUTS.length];
-  // headline — if AI generated one, clean it up; otherwise leave empty
-  // so the renderer falls back to productLine as the headline.
-  if (AI_HEADLINE && typeof q.headline === "string" && q.headline.trim()) {
+  // headline — user-supplied idea wins VERBATIM (the whole point of the
+  // dashboard field); else the AI's, cleaned up; else empty so the renderer
+  // falls back to productLine as the headline.
+  if (HEADLINE_IDEA) {
+    q.headline = HEADLINE_IDEA;
+  } else if (AI_HEADLINE && typeof q.headline === "string" && q.headline.trim()) {
     q.headline = q.headline.trim();
     // Trim to 5 words max — anything longer defeats the big-type treatment.
     const words = q.headline.split(/\s+/);
