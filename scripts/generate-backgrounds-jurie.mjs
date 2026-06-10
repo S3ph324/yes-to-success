@@ -72,6 +72,35 @@ const ePlacement      = process.env.DASHBOARD_EYEGLASSES_PLACEMENT   || "auto";
 const eStyleKey       = process.env.DASHBOARD_EYEGLASSES_STYLE_KEY   || "";
 const eModelStyle     = process.env.DASHBOARD_EYEGLASSES_MODEL_STYLE || "outdoor_lifestyle";
 
+// ── Light/dark tone from the selected poster style template ─────────────────
+// Light templates (cream/white/minimal references) must produce BRIGHT
+// high-key photography; the old hard-coded "keep top/bottom darker" line made
+// every poster dark regardless of the chosen reference. Keep in sync with
+// PRESET_TONE in src/QuoteCard/ProductShowcaseCard.tsx.
+const stylePresetKey = (process.env.DASHBOARD_STYLE_PRESET || "").toLowerCase();
+const LIGHT_PRESETS = new Set([
+  "02-minimal-pedestal", "03-type-overlay", "04-editorial-props",
+  "05-glass-panel-spec", "model-02-elegant-hold", "model-04-clean-fresh",
+]);
+const refTone = LIGHT_PRESETS.has(stylePresetKey)
+  ? "light"
+  : /dark|cinematic|bold|earthy|dramatic/.test(stylePresetKey)
+    ? "dark"
+    : /minimal|clean|pedestal|panel|spec|elegant|fresh|cream|white|overlay/.test(stylePresetKey)
+      ? "light"
+      : "dark";
+// Negative-space directive appended to every eyeglasses guidance prompt —
+// tone-aware so light references stay bright instead of being forced dark.
+const NEG_SPACE = refTone === "light"
+  ? `Vertical 4:5 portrait composition. HIGH-KEY and bright: keep the top ` +
+    `~30% and bottom ~35% of the frame bright, airy and low-detail (clean ` +
+    `seamless backdrop or soft gradient — negative space for a text overlay ` +
+    `added later). No heavy vignettes, no moody darkness. The photo must ` +
+    `contain zero readable text.`
+  : `Vertical 4:5 portrait composition. Keep the top ~30% and bottom ~35% ` +
+    `darker and visually simple (clean negative space for a text overlay ` +
+    `added later). The photo must contain zero readable text.`;
+
 // ── Placement directives ──────────────────────────────────────────────────────
 const PLACEMENT_DIRECTIVE = {
   standing:
@@ -339,24 +368,41 @@ for (const { q, i } of targets) {
   let guidance;
   if (eyeglassesMode && ePosterStyle === "model") {
     // ── Product + Model ────────────────────────────────────────────────────
-    // AI-generated model wearing the frame. No product-only placement needed.
+    // AI-generated model wearing the frame. A person MUST be present — the
+    // copy generator's scene prompts used to leak still-life staging in here,
+    // which produced product-only pedestal shots in "model" batches.
+    const MODEL_SHOT_WHEEL = [
+      "classic head-and-shoulders portrait, model facing camera, the frames front and center",
+      "tight beauty crop: eyes and frames fill the frame, cheekbones up",
+      "the model holding the frame up toward the camera with one hand, product in sharp focus, face soft behind it",
+      "three-quarter profile portrait, model looking off-frame, the temple line of the glasses catching the light",
+      "waist-up fashion stance, model mid-gesture, relaxed confident energy",
+      "over-the-shoulder glance back at the camera",
+      "candid laughing moment, head tilted, natural movement",
+      "the model adjusting the frames at the temple with one hand, chin slightly down",
+    ];
     const frameDesc = hasRef
       ? "the EXACT pair of eyeglasses shown in these reference photos " +
         "(match frame shape, color, lens tint, and details perfectly — " +
         "do not redesign or substitute)"
       : "a stylish pair of eyeglasses";
     guidance =
+      `ABSOLUTE RULE — MODEL-WORN: a real person wearing the eyeglasses MUST ` +
+      `be present in this image. NEVER a product-only still life — no ` +
+      `pedestals, no flat-lays, no empty-set product staging. If the scene ` +
+      `context below implies a still life, IGNORE that part and stage the ` +
+      `scene around the person instead. ` +
+      `SHOT FOR THIS POSTER (poster ${i + 1}): ` +
+      MODEL_SHOT_WHEEL[i % MODEL_SHOT_WHEEL.length] + `. ` +
       `Photograph of a model wearing ${frameDesc}. ` +
       `${modelNote} ` +
-      `The eyeglasses must be clearly visible on the model's face and be ` +
-      `the focal accessory of the image. ` +
+      `The eyeglasses must be clearly visible and the focal accessory of the ` +
+      `image. ` +
       `Scene context: ${q.bgPrompt}. ` +
       `The overall mood must clearly evoke: "${sceneVibe}". ` +
       `The model should look natural and aspirational — NOT staged or stiff. ` +
       `No text, logos, or watermarks anywhere in the image. ` +
-      `Vertical 4:5 portrait composition. Keep the top ~30% and bottom ~35% ` +
-      `darker and visually simple (clean negative space for a text overlay ` +
-      `added later). The photo must contain zero readable text.`;
+      NEG_SPACE;
   } else if (eyeglassesMode) {
     // ── Product Showcase ───────────────────────────────────────────────────
     // Hard constraints + per-poster variety directive printed first.
@@ -402,9 +448,7 @@ for (const { q, i } of targets) {
         `The scene must clearly visually evoke this feeling: "${sceneVibe}". ` +
         `No props that obscure the frame. ` +
         `No text, logos, or watermarks anywhere in the image. ` +
-        `Vertical 4:5 portrait composition. Keep the top ~30% and bottom ~35% ` +
-        `darker and visually simple (clean negative space for a text overlay ` +
-        `added later). The photo must contain zero readable text.`;
+        NEG_SPACE;
     } else {
       guidance =
         nopeopleLine +
@@ -417,9 +461,7 @@ for (const { q, i } of targets) {
         `main focal point. ` +
         `The scene must clearly visually evoke this feeling: "${sceneVibe}". ` +
         `No text, logos, or watermarks anywhere in the image. ` +
-        `Vertical 4:5 portrait composition. Keep the top ~30% and bottom ~35% ` +
-        `darker and visually simple (clean negative space for a text overlay ` +
-        `added later). The photo must contain zero readable text.`;
+        NEG_SPACE;
     }
   } else if (hasRef) {
     // ── Character (Jurie / other) with reference photos ────────────────────

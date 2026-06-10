@@ -184,7 +184,23 @@ GRAMMAR & COHERENCE — most important; reject anything that fails:
 - Vary structure and openers across the batch — no two entries should read
   alike, no duplicates, no template-filling feel.
 
-bgPrompt — describe a PRODUCT-PHOTOGRAPHY scene that puts "${frameLabel}" in
+${showcaseStyle === "model"
+  ? `bgPrompt — describe a MODEL-WORN fashion-campaign scene: a real person
+WEARING "${frameLabel}" (or holding it up to camera). NEVER a product-only
+still life — no pedestals, no flat-lays, no empty-set product staging in
+this batch. Rotate these campaign archetypes across the batch:
+- Studio beauty portrait: clean seamless backdrop, soft directional key
+  light, the frames front and center on the model's face.
+- Lifestyle moment: golden-hour street, café window, or rooftop — candid
+  confident energy, frames catching the light.
+- Editorial gesture: the model holding the frame toward camera or adjusting
+  it at the temple, fashion-magazine posing.
+- Character moment: laughing, mid-glance-back, head tilt — natural movement,
+  never a stiff passport-photo pose.
+Describe the model only generically (age range, vibe, styling) — never name
+or describe a real person's identity. The eyeglasses must stay sharp and
+instantly recognizable on the face.`
+  : `bgPrompt — describe a PRODUCT-PHOTOGRAPHY scene that puts "${frameLabel}" in
 frame as the unmistakable hero, written for an AI image generator that will
 receive the product's reference photos alongside this prompt. Pull from these
 real eyewear-ad archetypes — rotate through them across the batch so the set
@@ -195,15 +211,12 @@ reads as a varied campaign, not the same shot four times:
 - Minimalist styled set: the frame angled atop a small arrangement of clean
   geometric props (a pedestal, a sphere, a tilted slab, a stepped block) on a
   quiet two-tone backdrop — premium, considered, gallery-like.
-- On-face / lifestyle moment: a person wearing the frame or holding it up to
-  camera, cropped tight (shoulders-up or hand-and-frame), natural light,
-  confident styled-fashion energy — never a flat posed headshot.
 - Textured-surface flat-lay: the frame resting on an evocative natural surface
   (sand, linen, warm stone, brushed fabric) with soft directional shadow and
   generous negative space around it.
 Whichever you pick, the frame must stay sharp, well-lit, and instantly
-recognizable — the scene serves the product, never competes with it. Leave
-clean negative space in the lower third of the frame for a small caption
+recognizable — the scene serves the product, never competes with it.`}
+Leave clean negative space in the lower third of the frame for a small caption
 overlay (the renderer adds that — do not describe any text in the bgPrompt).
 
 Output ONLY a valid JSON array. No commentary, no markdown fences.`;

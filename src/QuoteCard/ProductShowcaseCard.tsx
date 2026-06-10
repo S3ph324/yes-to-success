@@ -143,7 +143,8 @@ const SerifHero: React.FC<{
   weight?: number;
   lineHeight?: number;
   shadow?: string;
-}> = ({ text, size, gold, weight = 700, lineHeight = 1.06, shadow }) => {
+  color?: string;
+}> = ({ text, size, gold, weight = 700, lineHeight = 1.06, shadow, color = "#FFFFFF" }) => {
   const words = sentenceCase(text).split(/\s+/);
   const accentIdx = words.length > 1 ? words.length - 1 : -1;
   return (
@@ -152,7 +153,7 @@ const SerifHero: React.FC<{
         fontFamily: FRAUNCES,
         fontWeight: weight,
         fontSize: size,
-        color: "#FFFFFF",
+        color,
         letterSpacing: "-0.01em",
         lineHeight,
         textShadow: shadow ?? "0 3px 28px rgba(0,0,0,0.75)",
@@ -186,7 +187,8 @@ const CampaignHero: React.FC<{
   text: string;
   size: number;
   shadow?: string;
-}> = ({ text, size, shadow }) => {
+  color?: string;
+}> = ({ text, size, shadow, color = "#FFFFFF" }) => {
   const words = text.trim().toUpperCase().split(/\s+/);
   const stroke = Math.max(2, Math.round(size * 0.025));
   return (
@@ -198,7 +200,7 @@ const CampaignHero: React.FC<{
         fontSize: size,
         lineHeight: 0.98,
         letterSpacing: "0.01em",
-        color: "#FFFFFF",
+        color,
         textShadow: shadow ?? "0 4px 32px rgba(0,0,0,0.9)",
       }}
     >
@@ -210,7 +212,7 @@ const CampaignHero: React.FC<{
               ? {
                   display: "block",
                   color: "transparent",
-                  WebkitTextStroke: `${stroke}px #FFFFFF`,
+                  WebkitTextStroke: `${stroke}px ${color}`,
                   textShadow: "none",
                 }
               : { display: words.length > 2 ? "block" : "inline" }
@@ -262,7 +264,9 @@ const EchoHero: React.FC<{
 
 /** Minimal hero — restrained tracked caps, medium weight. For clean/minimal
  *  reference styles where the product owns the poster and type whispers. */
-const MinimalHero: React.FC<{ text: string; size: number }> = ({ text, size }) => (
+const MinimalHero: React.FC<{ text: string; size: number; color?: string; shadow?: string }> = ({
+  text, size, color = "#FFFFFF", shadow,
+}) => (
   <div
     style={{
       fontFamily: ARCHIVO,
@@ -270,9 +274,9 @@ const MinimalHero: React.FC<{ text: string; size: number }> = ({ text, size }) =
       fontSize: size,
       letterSpacing: "0.3em",
       textTransform: "uppercase" as const,
-      color: "#FFFFFF",
+      color,
       lineHeight: 1.4,
-      textShadow: "0 2px 22px rgba(0,0,0,0.7)",
+      textShadow: shadow ?? "0 2px 22px rgba(0,0,0,0.7)",
     }}
   >
     {text}
@@ -281,13 +285,13 @@ const MinimalHero: React.FC<{ text: string; size: number }> = ({ text, size }) =
 
 /** Spec hero — tracked caps between hairline rules, technical spec-sheet
  *  aesthetic for the pedestal / glass-panel reference styles. */
-const SpecHero: React.FC<{ text: string; size: number; scale: number }> = ({
-  text, size, scale,
+const SpecHero: React.FC<{ text: string; size: number; scale: number; color?: string; line?: string; shadow?: string }> = ({
+  text, size, scale, color = "#FFFFFF", line = "rgba(255,255,255,0.55)", shadow,
 }) => (
   <div
     style={{
-      borderTop: "1px solid rgba(255,255,255,0.55)",
-      borderBottom: "1px solid rgba(255,255,255,0.55)",
+      borderTop: `1px solid ${line}`,
+      borderBottom: `1px solid ${line}`,
       padding: `${Math.round(14 * scale)}px 0`,
       display: "inline-block",
     }}
@@ -299,9 +303,9 @@ const SpecHero: React.FC<{ text: string; size: number; scale: number }> = ({
         fontSize: size,
         letterSpacing: "0.2em",
         textTransform: "uppercase" as const,
-        color: "#FFFFFF",
+        color,
         lineHeight: 1.35,
-        textShadow: "0 2px 18px rgba(0,0,0,0.7)",
+        textShadow: shadow ?? "0 2px 18px rgba(0,0,0,0.7)",
       }}
     >
       {text}
@@ -337,9 +341,24 @@ const voiceFor = (preset: string, layout: string): TypeVoice => {
   return layout === "top" ? "campaign" : "serif";
 };
 
+// Light/dark tone per template — light references (cream/white/minimal) get
+// bright frosted panels + dark ink type instead of dark scrims + white type.
+// Keep in sync with LIGHT_PRESETS in scripts/generate-backgrounds-jurie.mjs.
+const LIGHT_PRESETS = new Set([
+  "02-minimal-pedestal", "03-type-overlay", "04-editorial-props",
+  "05-glass-panel-spec", "model-02-elegant-hold", "model-04-clean-fresh",
+]);
+const toneFor = (preset: string): "light" | "dark" => {
+  const p = preset.toLowerCase();
+  if (LIGHT_PRESETS.has(p)) return "light";
+  if (/dark|cinematic|bold|earthy|dramatic/.test(p)) return "dark";
+  if (/minimal|clean|pedestal|panel|spec|elegant|fresh|cream|white|overlay/.test(p)) return "light";
+  return "dark";
+};
+
 /** Tracked-caps kicker — small Archivo line above the hero ("THE PINK DROP"). */
-const Kicker: React.FC<{ text: string; scale: number; gold: string }> = ({
-  text, scale, gold,
+const Kicker: React.FC<{ text: string; scale: number; gold: string; color?: string }> = ({
+  text, scale, gold, color = "rgba(255,255,255,0.82)",
 }) => (
   <div
     style={{
@@ -357,7 +376,7 @@ const Kicker: React.FC<{ text: string; scale: number; gold: string }> = ({
         fontSize: Math.round(17 * scale),
         letterSpacing: "0.22em",
         textTransform: "uppercase" as const,
-        color: "rgba(255,255,255,0.82)",
+        color,
       }}
     >
       {text}
@@ -446,30 +465,39 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
 
   const hasText = Boolean(heroText);
 
+  // Tone — light templates get bright frosted panels + dark ink type.
+  const tone = toneFor(stylePreset);
+  const isLight = tone === "light";
+  const ink    = isLight ? "#1b1822" : "#FFFFFF";
+  const inkSub = isLight ? "rgba(27,24,34,0.78)" : "rgba(255,255,255,0.85)";
+  const inkTag = isLight ? "rgba(27,24,34,0.56)" : "rgba(255,255,255,0.62)";
+  const heroShadow = isLight ? "0 1px 2px rgba(0,0,0,0.06)" : undefined;
+
   // Hero type voice — from the selected poster style template, with a
   // layout-based fallback. One element, reused by every layout below.
   const voice = voiceFor(stylePreset, layout);
   const heroEl = (() => {
     switch (voice) {
       case "campaign":
-        return <CampaignHero text={heroText} size={Math.round((isHeroShort ? 80 : 52) * scale)} />;
+        return <CampaignHero text={heroText} size={Math.round((isHeroShort ? 80 : 52) * scale)} color={ink} shadow={heroShadow} />;
       case "echo":
         return <EchoHero text={heroText} size={Math.round((isHeroShort ? 72 : 50) * scale)} gold={brandGold} />;
       case "minimal":
-        return <MinimalHero text={heroText} size={Math.round((isHeroShort ? 46 : 34) * scale)} />;
+        return <MinimalHero text={heroText} size={Math.round((isHeroShort ? 46 : 34) * scale)} color={ink} shadow={heroShadow} />;
       case "spec":
-        return <SpecHero text={heroText} size={Math.round((isHeroShort ? 40 : 30) * scale)} scale={scale} />;
+        return <SpecHero text={heroText} size={Math.round((isHeroShort ? 40 : 30) * scale)} scale={scale} color={ink} line={isLight ? "rgba(27,24,34,0.45)" : "rgba(255,255,255,0.55)"} shadow={heroShadow} />;
       default:
         return (
           <SerifHero
             text={heroText}
             size={Math.round((isHeroShort ? (layout === "center" ? 98 : 92) : (layout === "center" ? 64 : 60)) * scale)}
             gold={brandGold}
+            color={ink}
             weight={layout === "center" ? 560 : 650}
             lineHeight={layout === "center" ? 1.04 : 1.06}
-            shadow={layout === "center"
+            shadow={heroShadow ?? (layout === "center"
               ? "0 2px 40px rgba(0,0,0,0.8), 0 0 80px rgba(0,0,0,0.4)"
-              : undefined}
+              : undefined)}
           />
         );
     }
@@ -483,7 +511,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
     fontSize: Math.round(21 * scale),
     letterSpacing: "0.18em",
     textTransform: "uppercase" as const,
-    color: "rgba(255,255,255,0.85)",
+    color: inkSub,
     lineHeight: 1.4,
   };
   const taglineStyle: React.CSSProperties = {
@@ -491,11 +519,18 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
     fontStyle: "italic",
     fontWeight: 400,
     fontSize: Math.round(23 * scale),
-    color: "rgba(255,255,255,0.62)",
+    color: inkTag,
     letterSpacing: "0.01em",
     lineHeight: 1.45,
     fontVariationSettings: '"SOFT" 60, "WONK" 0',
   };
+
+  // Tone-dependent surfaces.
+  const baseFill = isLight ? "#f6f4ef" : "#0a0a0c";
+  const fallbackBg = isLight
+    ? "radial-gradient(ellipse at 50% 35%, #ffffff 0%, #e9e4da 100%)"
+    : "radial-gradient(ellipse at 50% 35%, #2e2e36 0%, #080810 100%)";
+  const scrimRGB = isLight ? "248,246,241" : "8,6,12";
 
   // ── Background ──────────────────────────────────────────────────────────
   const heroBg = (
@@ -505,25 +540,28 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
           <Img src={bg} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         </AbsoluteFill>
       ) : (
+        <AbsoluteFill style={{ background: fallbackBg }} />
+      )}
+      {/* Corner vignette — dark tone only; vignettes muddy a high-key shot */}
+      {!isLight && (
         <AbsoluteFill
-          style={{ background: "radial-gradient(ellipse at 50% 35%, #2e2e36 0%, #080810 100%)" }}
+          style={{ background: "radial-gradient(ellipse at 50% 50%, transparent 40%, rgba(0,0,0,0.4) 100%)" }}
         />
       )}
-      {/* Corner vignette */}
-      <AbsoluteFill
-        style={{ background: "radial-gradient(ellipse at 50% 50%, transparent 40%, rgba(0,0,0,0.4) 100%)" }}
-      />
     </>
   );
 
   // ── Logo ────────────────────────────────────────────────────────────────
+  const logoShadow = isLight
+    ? "drop-shadow(0 2px 10px rgba(0,0,0,0.30))"
+    : "drop-shadow(0 3px 18px rgba(0,0,0,0.7)) drop-shadow(0 1px 4px rgba(0,0,0,0.5))";
   const logoEl = logo ? (
     <div style={{ position: "absolute", ...LOGO_POS[logoPosition], margin: inset, opacity: fadeInLate }}>
       <Img
         src={logo}
         style={{
           height: logoH, width: "auto", objectFit: "contain",
-          filter: "drop-shadow(0 3px 18px rgba(0,0,0,0.7)) drop-shadow(0 1px 4px rgba(0,0,0,0.5))",
+          filter: logoShadow,
         }}
       />
     </div>
@@ -534,11 +572,11 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   // ─────────────────────────────────────────────────────────────────────────
   if (layout === "bottom") {
     return (
-      <AbsoluteFill style={{ background: "#0a0a0c", overflow: "hidden" }}>
+      <AbsoluteFill style={{ background: baseFill, overflow: "hidden" }}>
         {heroBg}
-        {/* Bottom scrim */}
+        {/* Bottom scrim — frosted white panel on light tone, deep fade on dark */}
         <AbsoluteFill
-          style={{ background: "linear-gradient(180deg, transparent 35%, rgba(8,6,12,0.72) 60%, rgba(8,6,12,0.97) 100%)" }}
+          style={{ background: `linear-gradient(180deg, transparent 35%, rgba(${scrimRGB},0.72) 60%, rgba(${scrimRGB},0.97) 100%)` }}
         />
         {logoEl}
         {hasText && (
@@ -552,7 +590,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
             }}
           >
             {subText ? (
-              <Kicker text={subText} scale={scale} gold={brandGold} />
+              <Kicker text={subText} scale={scale} gold={brandGold} color={inkSub} />
             ) : (
               <AccentRule scale={scale} brandRed={brandRed} brandGold={brandGold} />
             )}
@@ -578,15 +616,15 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   // ─────────────────────────────────────────────────────────────────────────
   if (layout === "top") {
     return (
-      <AbsoluteFill style={{ background: "#0a0a0c", overflow: "hidden" }}>
+      <AbsoluteFill style={{ background: baseFill, overflow: "hidden" }}>
         {heroBg}
-        {/* Top scrim — darker at the very top, fades to transparent */}
+        {/* Top scrim — solid at the very top, fades to transparent */}
         <AbsoluteFill
-          style={{ background: "linear-gradient(180deg, rgba(6,4,10,0.97) 0%, rgba(6,4,10,0.72) 30%, transparent 58%)" }}
+          style={{ background: `linear-gradient(180deg, rgba(${scrimRGB},0.97) 0%, rgba(${scrimRGB},0.72) 30%, transparent 58%)` }}
         />
         {/* Subtle bottom fade so logo / bottom CTA read if present */}
         <AbsoluteFill
-          style={{ background: "linear-gradient(180deg, transparent 75%, rgba(6,4,10,0.55) 100%)" }}
+          style={{ background: `linear-gradient(180deg, transparent 75%, rgba(${scrimRGB},0.55) 100%)` }}
         />
         {/* Logo: mirror position to bottom when layout is top — keeps it away from the text */}
         {logo && (
@@ -597,7 +635,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
           }}>
             <Img src={logo} style={{
               height: logoH, width: "auto", objectFit: "contain",
-              filter: "drop-shadow(0 3px 18px rgba(0,0,0,0.7))",
+              filter: logoShadow,
             }} />
           </div>
         )}
@@ -641,14 +679,18 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   // ─────────────────────────────────────────────────────────────────────────
   const overlayOpacity = interpolate(frame, [0, 30], [0.2, 0.65], { extrapolateRight: "clamp" });
   return (
-    <AbsoluteFill style={{ background: "#0a0a0c", overflow: "hidden" }}>
+    <AbsoluteFill style={{ background: baseFill, overflow: "hidden" }}>
       {heroBg}
-      {/* Directional vignette — darker on left for text contrast */}
+      {/* Directional contrast wash — left-weighted so the text column reads */}
       <AbsoluteFill
-        style={{ background: "linear-gradient(105deg, rgba(0,0,0,0.62) 0%, transparent 55%, rgba(0,0,0,0.28) 100%)" }}
+        style={{ background: isLight
+          ? "linear-gradient(105deg, rgba(255,255,255,0.66) 0%, transparent 55%, rgba(255,255,255,0.3) 100%)"
+          : "linear-gradient(105deg, rgba(0,0,0,0.62) 0%, transparent 55%, rgba(0,0,0,0.28) 100%)" }}
       />
-      {/* Subtle full-frame darkening overlay that animates in */}
-      <AbsoluteFill style={{ background: `rgba(0,0,0,${overlayOpacity})` }} />
+      {/* Subtle full-frame wash that animates in */}
+      <AbsoluteFill style={{ background: isLight
+        ? `rgba(248,246,241,${overlayOpacity * 0.8})`
+        : `rgba(0,0,0,${overlayOpacity})` }} />
       {logoEl}
       {hasText && (
         <div
