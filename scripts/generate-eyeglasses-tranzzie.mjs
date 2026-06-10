@@ -296,8 +296,9 @@ for (const q of posters) {
   // Keep a `quote` fallback — the renderer's slugify() and generic gallery/
   // listing code key off `quote` for filenames/labels.
   q.quote = q.productLine;
-  // Showcase posters use a real product scene rather than a flat gradient.
-  q.useFlatBg = Math.random() < 0.08;
+  // A product showcase must ALWAYS show the product — never the flat-gradient
+  // treatment (that produced text-only posters with no eyeglasses in them).
+  q.useFlatBg = false;
   q.eyeglassesId = eyeglassesId;
   q.eyeglassesStyle = showcaseStyle;
   clean.push(q);

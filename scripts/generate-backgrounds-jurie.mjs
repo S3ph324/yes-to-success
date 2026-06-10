@@ -324,13 +324,17 @@ for (const { q, i } of targets) {
 
   // Build the eyeglasses placement + style modifier strings from the
   // dashboard-selected options. Fall back gracefully when not set.
+  // When a style reference image is present it OWNS the visual style — the
+  // style-key and model-shoot directives are dropped so the prompt doesn't
+  // fight the reference. Placement (standing/flat/floating) stays: it's about
+  // product orientation, not look.
   const placementNote = PLACEMENT_DIRECTIVE[ePlacement] || "";
-  const styleKeyNote  = STYLE_KEY_DIRECTIVE[eStyleKey]  || "";
-  const modelNote     = MODEL_STYLE_DIRECTIVE[eModelStyle] || "";
+  const styleKeyNote  = styleRefPart ? "" : (STYLE_KEY_DIRECTIVE[eStyleKey] || "");
+  const modelNote     = styleRefPart ? "" : (MODEL_STYLE_DIRECTIVE[eModelStyle] || "");
   // Combine placement + style key into a single modifier block (for showcase).
   const showcaseModifiers =
     [placementNote, styleKeyNote].filter(Boolean).join(" ") ||
-    "Choose the most impactful product placement for this scene.";
+    (styleRefPart ? "" : "Choose the most impactful product placement for this scene.");
 
   let guidance;
   if (eyeglassesMode && ePosterStyle === "model") {
@@ -361,10 +365,17 @@ for (const { q, i } of targets) {
       "ZERO faces, ZERO hands, ZERO skin, and ZERO human body parts of any kind. " +
       "If a person or any body part appears anywhere in the frame the output is " +
       "WRONG. Only the eyeglasses product and its background are allowed. ";
-    const varietyLine =
-      `VISUAL TREATMENT FOR THIS SPECIFIC POSTER (poster ${i + 1}): ` +
-      VARIETY_WHEEL[i % VARIETY_WHEEL.length] +
-      ". Apply this treatment — it must look different from the other posters in this batch. ";
+    // With a style reference the reference defines the look — variety comes
+    // from shot framing only, so the batch reads as one campaign. Without a
+    // reference, rotate through the generic treatment wheel as before.
+    const varietyLine = styleRefPart
+      ? `SHOT VARIATION FOR THIS POSTER (poster ${i + 1}): keep the exact visual ` +
+        `style of the style reference, but vary the camera angle, distance, and ` +
+        `product position so this reads as a different shot from the same campaign ` +
+        `as the other posters in this batch. `
+      : `VISUAL TREATMENT FOR THIS SPECIFIC POSTER (poster ${i + 1}): ` +
+        VARIETY_WHEEL[i % VARIETY_WHEEL.length] +
+        ". Apply this treatment — it must look different from the other posters in this batch. ";
     if (hasRef) {
       guidance =
         nopeopleLine +
@@ -422,15 +433,27 @@ for (const { q, i } of targets) {
       // Build the parts list: subject refs first, optional style ref, then guidance.
       // styleRefPart is included when the dashboard sends a style reference —
       // either a selected poster template preset or a user-uploaded override.
-      // In both cases it is a VISUAL STYLE GUIDE only, not a subject reference.
+      // Eyeglasses mode: the user explicitly chose this reference as the look
+      // they want, so the model must MATCH it — replicate its visual language,
+      // not just its "vibe". (The old soft wording told the model to ignore the
+      // reference's background/lighting/look, which made every template pick
+      // produce the same generic output.)
       const styleNote = styleRefPart
-        ? " The last image is a BRAND AESTHETIC REFERENCE — an example eyeglasses " +
-          "advertisement. Use it ONLY for general brand feel: production quality, " +
-          "premium/editorial/minimal tone, and compositional style. " +
-          "Do NOT copy its specific background colour, surface material, lighting setup, " +
-          "or overall look — the VISUAL TREATMENT directive above already defines those " +
-          "uniquely for this poster. The eyeglasses in this scene must come only from " +
-          "the product reference images above, not from this style reference."
+        ? eyeglassesMode
+          ? " The LAST image is the STYLE REFERENCE — a finished eyeglasses " +
+            "advertisement whose look this poster must MATCH. Replicate its visual " +
+            "identity faithfully: background treatment, colour palette, lighting " +
+            "style, compositional structure, prop and staging approach, level of " +
+            "drama, and overall mood. The finished image should look like another " +
+            "poster from the SAME campaign as the reference. Two exceptions only: " +
+            "(1) do NOT copy any text, lettering, or logos from the reference — " +
+            "this image must contain zero readable text; (2) do NOT copy the " +
+            "eyeglasses shown in the reference — the product must come ONLY from " +
+            "the product reference photos above."
+          : " The last image is a BRAND AESTHETIC REFERENCE. Use it for general " +
+            "brand feel: production quality, premium/editorial/minimal tone, and " +
+            "compositional style. The subject must come only from the reference " +
+            "images above, not from this style reference."
         : "";
       const allParts = [
         ...(hasRef ? refParts : []),
