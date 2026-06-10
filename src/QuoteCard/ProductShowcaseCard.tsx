@@ -262,26 +262,46 @@ const EchoHero: React.FC<{
   );
 };
 
-/** Minimal hero — restrained tracked caps, medium weight. For clean/minimal
- *  reference styles where the product owns the poster and type whispers. */
-const MinimalHero: React.FC<{ text: string; size: number; color?: string; shadow?: string }> = ({
-  text, size, color = "#FFFFFF", shadow,
-}) => (
-  <div
-    style={{
-      fontFamily: ARCHIVO,
-      fontWeight: 500,
-      fontSize: size,
-      letterSpacing: "0.3em",
-      textTransform: "uppercase" as const,
-      color,
-      lineHeight: 1.4,
-      textShadow: shadow ?? "0 2px 22px rgba(0,0,0,0.7)",
-    }}
-  >
-    {text}
-  </div>
-);
+/** Clean hero — big mixed-case grotesque with a gold marker-highlight swipe
+ *  behind the last word. Youthful clean editorial for minimal/fresh styles
+ *  (the old whisper-caps treatment read bland). */
+const CleanHero: React.FC<{ text: string; size: number; color?: string; gold: string; shadow?: string }> = ({
+  text, size, color = "#FFFFFF", gold, shadow,
+}) => {
+  const words = sentenceCase(text).split(/\s+/);
+  const accentIdx = words.length > 1 ? words.length - 1 : -1;
+  return (
+    <div
+      style={{
+        fontFamily: ARCHIVO,
+        fontWeight: 800,
+        fontSize: size,
+        letterSpacing: "-0.02em",
+        color,
+        lineHeight: 1.08,
+        textShadow: shadow ?? "0 2px 22px rgba(0,0,0,0.7)",
+      }}
+    >
+      {words.map((w, idx) => (
+        <span
+          key={idx}
+          style={
+            idx === accentIdx
+              ? {
+                  // marker swipe under the lower half of the word
+                  background: `linear-gradient(180deg, transparent 60%, ${gold} 60%, ${gold} 94%, transparent 94%)`,
+                  padding: "0 0.06em",
+                }
+              : undefined
+          }
+        >
+          {w}
+          {idx < words.length - 1 ? " " : ""}
+        </span>
+      ))}
+    </div>
+  );
+};
 
 /** Spec hero — tracked caps between hairline rules, technical spec-sheet
  *  aesthetic for the pedestal / glass-panel reference styles. */
@@ -290,21 +310,22 @@ const SpecHero: React.FC<{ text: string; size: number; scale: number; color?: st
 }) => (
   <div
     style={{
-      borderTop: `1px solid ${line}`,
+      // Spec-sheet rules: heavy double line above, hairline below.
+      borderTop: `4px double ${line}`,
       borderBottom: `1px solid ${line}`,
-      padding: `${Math.round(14 * scale)}px 0`,
+      padding: `${Math.round(16 * scale)}px 0`,
       display: "inline-block",
     }}
   >
     <div
       style={{
         fontFamily: ARCHIVO,
-        fontWeight: 600,
+        fontWeight: 700,
         fontSize: size,
-        letterSpacing: "0.2em",
+        letterSpacing: "0.18em",
         textTransform: "uppercase" as const,
         color,
-        lineHeight: 1.35,
+        lineHeight: 1.3,
         textShadow: shadow ?? "0 2px 18px rgba(0,0,0,0.7)",
       }}
     >
@@ -403,18 +424,25 @@ const Kicker: React.FC<{ text: string; scale: number; gold: string; color?: stri
 
 // ── Shared sub-components ─────────────────────────────────────────────────
 
-/** Accent rule — red→gold gradient, always spans the text column */
+/** Accent rule — short premium gold bar with a red tick. (The old full-width
+ *  red→gold gradient spanning the whole column read cheap.) */
 const AccentRule: React.FC<{ scale: number; brandRed: string; brandGold: string; mb?: number }> = ({
   scale, brandRed, brandGold, mb = 18,
 }) => (
-  <div
-    style={{
+  <div style={{ display: "flex", gap: Math.round(5 * scale), marginBottom: Math.round(mb * scale) }}>
+    <div style={{
+      width: Math.round(64 * scale),
       height: Math.round(4 * scale),
-      background: `linear-gradient(90deg, ${brandRed} 0%, ${brandGold} 55%, transparent 100%)`,
-      marginBottom: Math.round(mb * scale),
+      background: brandGold,
       borderRadius: 2,
-    }}
-  />
+    }} />
+    <div style={{
+      width: Math.round(12 * scale),
+      height: Math.round(4 * scale),
+      background: brandRed,
+      borderRadius: 2,
+    }} />
+  </div>
 );
 
 /** CTA chip — small tracked uppercase pill; the hero owns the hierarchy. */
@@ -507,9 +535,9 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
       case "echo":
         return <EchoHero text={heroText} size={Math.round((isHeroShort ? 72 : 50) * scale)} gold={brandGold} />;
       case "minimal":
-        return <MinimalHero text={heroText} size={Math.round((isHeroShort ? 46 : 34) * scale)} color={ink} shadow={heroShadow} />;
+        return <CleanHero text={heroText} size={Math.round((isHeroShort ? 74 : 50) * scale)} color={ink} gold={brandGold} shadow={heroShadow} />;
       case "spec":
-        return <SpecHero text={heroText} size={Math.round((isHeroShort ? 40 : 30) * scale)} scale={scale} color={ink} line={isLight ? "rgba(27,24,34,0.45)" : "rgba(255,255,255,0.55)"} shadow={heroShadow} />;
+        return <SpecHero text={heroText} size={Math.round((isHeroShort ? 46 : 34) * scale)} scale={scale} color={ink} line={isLight ? "rgba(27,24,34,0.5)" : "rgba(255,255,255,0.55)"} shadow={heroShadow} />;
       default:
         return (
           <SerifHero
@@ -579,8 +607,18 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   const logoShadow = isLight
     ? "drop-shadow(0 2px 10px rgba(0,0,0,0.30))"
     : "drop-shadow(0 3px 18px rgba(0,0,0,0.7)) drop-shadow(0 1px 4px rgba(0,0,0,0.5))";
+  // Light tone: the brand logo has white lettering, invisible on cream — sit
+  // it on a soft dark pill so it always reads.
+  const logoPillStyle: React.CSSProperties = isLight
+    ? {
+        background: "rgba(20,17,26,0.55)",
+        borderRadius: Math.round(14 * scale),
+        padding: `${Math.round(10 * scale)}px ${Math.round(16 * scale)}px`,
+        backdropFilter: "blur(4px)",
+      }
+    : {};
   const logoEl = logo ? (
-    <div style={{ position: "absolute", ...LOGO_POS[logoPosition], margin: inset, opacity: fadeInLate }}>
+    <div style={{ position: "absolute", ...LOGO_POS[logoPosition], margin: inset, opacity: fadeInLate, ...logoPillStyle }}>
       <Img
         src={logo}
         style={{
@@ -656,6 +694,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
             position: "absolute",
             bottom: 0, right: 0,
             margin: inset, opacity: fadeInLate,
+            ...logoPillStyle,
           }}>
             <Img src={logo} style={{
               height: logoH, width: "auto", objectFit: "contain",
