@@ -507,7 +507,10 @@ for (const { q, i } of targets) {
             "(2) do NOT copy any text, lettering, or logos from the reference — " +
             "this image must contain zero readable text. " +
             "(3) do NOT copy the eyeglasses shown in the reference — the product " +
-            "must come ONLY from the product reference photos above."
+            "must come ONLY from the product reference photos above. " +
+            "FINALLY: if the scene context above describes a DIFFERENT setting, " +
+            "backdrop, or palette than the reference, the REFERENCE WINS — " +
+            "restage the scene inside the reference's world."
           : " The last image is a BRAND AESTHETIC REFERENCE. Use it for general " +
             "brand feel: production quality, premium/editorial/minimal tone, and " +
             "compositional style. The subject must come only from the reference " +

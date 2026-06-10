@@ -69,6 +69,42 @@ const AI_HEADLINE = process.env.DASHBOARD_AI_HEADLINE === "1";
 
 const voiceProfile = await fs.readFile(client.voiceProfilePath, "utf-8");
 
+// ── Visual world per poster style template ──────────────────────────────────
+// The chosen template defines the photographic world EVERY scene in the batch
+// must live inside. Without this, the copy generator invented its own scene
+// settings (golden-hour streets, café windows) which then beat the style
+// reference image at generation time — output never matched the template.
+const STYLE_PRESET = process.env.DASHBOARD_STYLE_PRESET || "";
+const PRESET_WORLD = {
+  "01-dramatic-multiangle":
+    "a dark premium studio: deep charcoal backdrop, floating geometric glass/mirror fragments, hard spotlights, sculptural shadows",
+  "02-minimal-pedestal":
+    "a bright minimal gallery set: white/light-grey seamless backdrop, simple geometric pedestals and blocks, soft even daylight",
+  "03-type-overlay":
+    "a warm cream flat-lay world: soft warm paper or linen surface, gentle directional light, warm yellows and creams",
+  "04-editorial-props":
+    "an off-white editorial set with elegant geometric props (arches, columns, spheres), soft refined studio light, airy",
+  "05-glass-panel-spec":
+    "a frosted-glass/acrylic technical set: translucent panels, cool neutral light, precise minimal styling",
+  "model-01-bold-type-overlay":
+    "high-contrast urban editorial: city textures, hard directional light, bold shadows, streetwear energy",
+  "model-02-elegant-hold":
+    "a clean ivory/cream studio: flat warm-neutral backdrop, soft elegant light, the model HOLDING the frame up toward the camera in one hand, refined wardrobe in muted tones",
+  "model-03-earthy-editorial":
+    "an earthy editorial set: textured plaster or torn-paper backdrop in olive/sage/terracotta, dramatic close-up portrait, bold styling, a monochromatic colour story between wardrobe and backdrop",
+  "model-04-clean-fresh":
+    "a white seamless studio: bright high-key light, youthful minimal styling, fresh and airy",
+  "model-05-outdoor-cinematic":
+    "an outdoor cinematic world: natural light, open sky, quiet narrative framing, calm expansive backgrounds",
+};
+const worldNote = STYLE_PRESET && PRESET_WORLD[STYLE_PRESET]
+  ? `\nVISUAL WORLD — the user picked a reference style and EVERY bgPrompt in this ` +
+    `batch must stay inside this world: ${PRESET_WORLD[STYLE_PRESET]}. ` +
+    `Vary the moment, pose, and framing from poster to poster — NEVER the ` +
+    `setting, backdrop, palette, or lighting style. This overrides the archetype ` +
+    `list below.\n`
+  : "";
+
 // Resolve the featured frame (asset preset). May be empty — the dashboard
 // only lets the user pick from what exists in config/eyeglasses.json, and
 // that file starts empty until frames are added via the Eyeglasses tab.
@@ -193,7 +229,7 @@ GRAMMAR & COHERENCE — most important; reject anything that fails:
 - Vary structure and openers across the batch — no two entries should read
   alike, no duplicates, no template-filling feel.
 
-${showcaseStyle === "model"
+${worldNote}${showcaseStyle === "model"
   ? `bgPrompt — describe a MODEL-WORN fashion-campaign scene: a real person
 WEARING "${frameLabel}" (or holding it up to camera). NEVER a product-only
 still life — no pedestals, no flat-lays, no empty-set product staging in

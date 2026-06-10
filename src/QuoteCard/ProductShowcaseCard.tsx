@@ -680,9 +680,13 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
     return (
       <AbsoluteFill style={{ background: baseFill, overflow: "hidden" }}>
         {heroBg}
-        {/* Top scrim — solid at the very top, fades to transparent */}
+        {/* Top scrim — solid at the very top, fades to transparent. Light tone
+            gets a stronger, longer band so masthead type reads like it sits on
+            a clean wall (per the reference), not on the photo. */}
         <AbsoluteFill
-          style={{ background: `linear-gradient(180deg, rgba(${scrimRGB},0.97) 0%, rgba(${scrimRGB},0.72) 30%, transparent 58%)` }}
+          style={{ background: isLight
+            ? `linear-gradient(180deg, rgba(${scrimRGB},1) 0%, rgba(${scrimRGB},0.92) 32%, transparent 64%)`
+            : `linear-gradient(180deg, rgba(${scrimRGB},0.97) 0%, rgba(${scrimRGB},0.72) 30%, transparent 58%)` }}
         />
         {/* Subtle bottom fade so logo / bottom CTA read if present */}
         <AbsoluteFill
