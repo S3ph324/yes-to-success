@@ -366,12 +366,24 @@ for (const { q, i } of targets) {
       "If a person or any body part appears anywhere in the frame the output is " +
       "WRONG. Only the eyeglasses product and its background are allowed. ";
     // With a style reference the reference defines the look — variety comes
-    // from shot framing only, so the batch reads as one campaign. Without a
-    // reference, rotate through the generic treatment wheel as before.
+    // from shot framing, rotated through a concrete wheel so consecutive
+    // posters get genuinely different compositions (not all centered hero
+    // shots). Without a reference, rotate the generic treatment wheel.
+    const SHOT_WHEEL = [
+      "hero composition: product centered at a three-quarter angle, medium distance",
+      "extreme macro close-up: crop tight into the lens and frame-front detail so the product fills the frame edge to edge",
+      "rule-of-thirds: product anchored in the lower-left third of the frame, generous atmospheric negative space across the upper right",
+      "dramatic low camera angle looking slightly up at the product, deep perspective, long raking shadows",
+      "rule-of-thirds: product anchored in the lower-right third, the rest of the frame open and atmospheric",
+      "pulled-back wide shot: the product small but pin-sharp inside a vast, moody environment — monumental negative space",
+      "top-down flat-lay angle looking straight down at the product on the scene's surface",
+      "dynamic diagonal: the product tilted along a strong diagonal axis cutting through the frame",
+    ];
     const varietyLine = styleRefPart
-      ? `SHOT VARIATION FOR THIS POSTER (poster ${i + 1}): keep the exact visual ` +
-        `style of the style reference, but vary the camera angle, distance, and ` +
-        `product position so this reads as a different shot from the same campaign ` +
+      ? `SHOT VARIATION FOR THIS POSTER (poster ${i + 1}) — ` +
+        SHOT_WHEEL[i % SHOT_WHEEL.length] +
+        `. Keep the exact visual style of the style reference, but this framing ` +
+        `is mandatory — it must read as a different shot from the same campaign ` +
         `as the other posters in this batch. `
       : `VISUAL TREATMENT FOR THIS SPECIFIC POSTER (poster ${i + 1}): ` +
         VARIETY_WHEEL[i % VARIETY_WHEEL.length] +

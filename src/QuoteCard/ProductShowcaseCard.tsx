@@ -18,15 +18,19 @@ import {
 } from "./aspect";
 
 // ─────────────────────────────────────────────────────────────────────────
-// Product Showcase Card — 3 bold layout variants.
+// Product Showcase Card — 3 layout variants, each with its OWN type voice.
 //
-//  "bottom"  (default): deep gradient bottom panel, headline/tagline/CTA
-//  "top":    inverted — gradient at top, text block at top, photo hero below
-//  "center": magazine editorial — text block centered vertically, full overlay
+//  "bottom"  Editorial serif — mixed-case Fraunces, last word italic + gold,
+//            tracked-caps kicker above. Premium magazine feel.
+//  "top"     Campaign statement — ALL-CAPS expanded Archivo Black stacked
+//            tight, first word outlined. Fashion-billboard energy.
+//  "center"  Vogue editorial — large Fraunces with italic gold accent,
+//            left accent bar, small-caps descriptor.
 //
 // When a short `headline` prop is provided (2-5 words) it renders HUGE as the
 // typographic hero; `productLine` drops to a smaller descriptor below it.
-// Without `headline`, `productLine` is the headline at full 58px scale.
+// Fonts ship in public/fonts/ so Docker renders match local — without local
+// files, headless Chrome on Railway falls back to a monospace face.
 // ─────────────────────────────────────────────────────────────────────────
 
 export const productShowcaseCardSchema = z.object({
@@ -82,27 +86,30 @@ const LOGO_POS: Record<string, React.CSSProperties> = {
 };
 
 // ── Typography system ──────────────────────────────────────────────────────
-// Premium-eyewear pairing: high-contrast display serif for the hero line
-// (Playfair Display) + geometric sans for everything supporting (Montserrat).
-// Both load from public/fonts/ so the Docker render on Railway uses the same
-// faces as local — without this, headless Chrome fell back to a monospace
-// face and every poster looked typewriter-set.
-const SERIF = "'Playfair Display',Georgia,'Times New Roman',serif";
-const SANS  = "'Montserrat','Helvetica Neue',Arial,sans-serif";
+// Fraunces: characterful display serif (variable; SOFT/WONK axes give it the
+// hand-drawn warmth generic serifs lack). Archivo: variable-width grotesque —
+// stretches to a bold expanded statement face for campaign-style caps.
+const FRAUNCES = "'Fraunces',Georgia,serif";
+const ARCHIVO  = "'Archivo','Helvetica Neue',Arial,sans-serif";
 
 const useShowcaseFonts = () => {
   const [handle] = useState(() => delayRender("load-showcase-fonts"));
   useEffect(() => {
     const faces = [
       new FontFace(
-        "Playfair Display",
-        `url(${staticFile("fonts/PlayfairDisplay.ttf")}) format("truetype")`,
-        { weight: "400 900" },
+        "Fraunces",
+        `url(${staticFile("fonts/Fraunces.ttf")}) format("truetype")`,
+        { weight: "100 900", style: "normal" },
       ),
       new FontFace(
-        "Montserrat",
-        `url(${staticFile("fonts/Montserrat.ttf")}) format("truetype")`,
-        { weight: "100 900" },
+        "Fraunces",
+        `url(${staticFile("fonts/Fraunces-Italic.ttf")}) format("truetype")`,
+        { weight: "100 900", style: "italic" },
+      ),
+      new FontFace(
+        "Archivo",
+        `url(${staticFile("fonts/Archivo.ttf")}) format("truetype")`,
+        { weight: "100 900", stretch: "62% 125%" },
       ),
     ];
     Promise.all(
@@ -114,6 +121,133 @@ const useShowcaseFonts = () => {
       .catch(() => continueRender(handle));
   }, [handle]);
 };
+
+/** AI copy often arrives ALL CAPS — sentence-case it so the serif treatments
+ *  read editorial, not shouty. Mixed-case input passes through untouched. */
+const sentenceCase = (s: string) => {
+  const t = s.trim();
+  if (t !== t.toUpperCase()) return t; // already mixed case — author's intent
+  const lower = t.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+};
+
+/** Serif hero — last word italic + brand gold (Fraunces WONK for character).
+ *  Single-word headlines render plain; the accent needs a counterpart. */
+const SerifHero: React.FC<{
+  text: string;
+  size: number;
+  gold: string;
+  weight?: number;
+  lineHeight?: number;
+  shadow?: string;
+}> = ({ text, size, gold, weight = 700, lineHeight = 1.06, shadow }) => {
+  const words = sentenceCase(text).split(/\s+/);
+  const accentIdx = words.length > 1 ? words.length - 1 : -1;
+  return (
+    <div
+      style={{
+        fontFamily: FRAUNCES,
+        fontWeight: weight,
+        fontSize: size,
+        color: "#FFFFFF",
+        letterSpacing: "-0.01em",
+        lineHeight,
+        textShadow: shadow ?? "0 3px 28px rgba(0,0,0,0.75)",
+        fontVariationSettings: '"SOFT" 0, "WONK" 0',
+      }}
+    >
+      {words.map((w, idx) => (
+        <span
+          key={idx}
+          style={
+            idx === accentIdx
+              ? {
+                  fontStyle: "italic",
+                  color: gold,
+                  fontVariationSettings: '"SOFT" 40, "WONK" 1',
+                }
+              : undefined
+          }
+        >
+          {w}
+          {idx < words.length - 1 ? " " : ""}
+        </span>
+      ))}
+    </div>
+  );
+};
+
+/** Campaign hero — ALL-CAPS expanded Archivo Black, stacked tight, first
+ *  word outlined (transparent fill) for fashion-billboard contrast. */
+const CampaignHero: React.FC<{
+  text: string;
+  size: number;
+  shadow?: string;
+}> = ({ text, size, shadow }) => {
+  const words = text.trim().toUpperCase().split(/\s+/);
+  const stroke = Math.max(2, Math.round(size * 0.025));
+  return (
+    <div
+      style={{
+        fontFamily: ARCHIVO,
+        fontWeight: 900,
+        fontStretch: "125%",
+        fontSize: size,
+        lineHeight: 0.98,
+        letterSpacing: "0.01em",
+        color: "#FFFFFF",
+        textShadow: shadow ?? "0 4px 32px rgba(0,0,0,0.9)",
+      }}
+    >
+      {words.map((w, idx) => (
+        <span
+          key={idx}
+          style={
+            idx === 0 && words.length > 1
+              ? {
+                  display: "block",
+                  color: "transparent",
+                  WebkitTextStroke: `${stroke}px #FFFFFF`,
+                  textShadow: "none",
+                }
+              : { display: words.length > 2 ? "block" : "inline" }
+          }
+        >
+          {w}
+          {idx < words.length - 1 && words.length <= 2 ? " " : ""}
+        </span>
+      ))}
+    </div>
+  );
+};
+
+/** Tracked-caps kicker — small Archivo line above the hero ("THE PINK DROP"). */
+const Kicker: React.FC<{ text: string; scale: number; gold: string }> = ({
+  text, scale, gold,
+}) => (
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: Math.round(12 * scale),
+      marginBottom: Math.round(14 * scale),
+    }}
+  >
+    <div style={{ width: Math.round(34 * scale), height: 2, background: gold }} />
+    <div
+      style={{
+        fontFamily: ARCHIVO,
+        fontWeight: 600,
+        fontSize: Math.round(17 * scale),
+        letterSpacing: "0.22em",
+        textTransform: "uppercase" as const,
+        color: "rgba(255,255,255,0.82)",
+      }}
+    >
+      {text}
+    </div>
+  </div>
+);
 
 // ── Shared sub-components ─────────────────────────────────────────────────
 
@@ -131,8 +265,7 @@ const AccentRule: React.FC<{ scale: number; brandRed: string; brandGold: string;
   />
 );
 
-/** CTA chip — tracked-out uppercase kicker, sans, deliberately small so the
- *  serif headline owns the hierarchy (size jump ≥4×). */
+/** CTA chip — small tracked uppercase pill; the hero owns the hierarchy. */
 const CtaChip: React.FC<{ text: string; brandGold: string; scale: number; opacity: number }> = ({
   text, brandGold, scale, opacity,
 }) => (
@@ -144,7 +277,7 @@ const CtaChip: React.FC<{ text: string; brandGold: string; scale: number; opacit
       background: brandGold,
       color: "#15120a",
       borderRadius: 999,
-      fontFamily: SANS,
+      fontFamily: ARCHIVO,
       fontWeight: 700,
       fontSize: Math.round(15 * scale),
       letterSpacing: "0.16em",
@@ -194,43 +327,29 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   const extraTagline = headline ? tagline : "";
   const isHeroShort = heroText.length < 30; // short = can go bigger
 
-  // Hierarchy (per the optical-marketing design research): distinct size
-  // jumps — hero ≈84px, descriptor ≈0.36× hero, tagline differentiated by
-  // weight + muted colour rather than another size step.
-  const heroSize   = isHeroShort
-    ? Math.round(84 * scale)   // short hook → display-serif impact
-    : Math.round(56 * scale);  // longer line → still display, stays readable
-  const subSize    = Math.round(30 * scale);
-  const extraSize  = Math.round(21 * scale);
+  const hasText = Boolean(heroText);
 
-  // Shared text styles — serif hero, sans support.
-  const heroStyle: React.CSSProperties = {
-    fontFamily: SERIF,
-    fontWeight: 800,
-    fontSize: heroSize,
-    color: "#FFFFFF",
-    letterSpacing: "-0.012em", // serifs need air; never track tight like a sans
-    lineHeight: 1.06,
-    textShadow: "0 3px 28px rgba(0,0,0,0.75)",
-  };
-  const subStyle: React.CSSProperties = {
-    fontFamily: SANS,
-    fontWeight: 500,
-    fontSize: subSize,
+  // Supporting type — shared across layouts.
+  // Descriptor: tracked-caps Archivo. Tagline: italic Fraunces, muted.
+  const descriptorStyle: React.CSSProperties = {
+    fontFamily: ARCHIVO,
+    fontWeight: 600,
+    fontSize: Math.round(21 * scale),
+    letterSpacing: "0.18em",
+    textTransform: "uppercase" as const,
     color: "rgba(255,255,255,0.85)",
-    letterSpacing: "0.01em",
-    lineHeight: 1.35,
+    lineHeight: 1.4,
   };
   const taglineStyle: React.CSSProperties = {
-    fontFamily: SANS,
+    fontFamily: FRAUNCES,
+    fontStyle: "italic",
     fontWeight: 400,
-    fontSize: extraSize,
-    color: "rgba(255,255,255,0.58)",
-    letterSpacing: "0.02em",
+    fontSize: Math.round(23 * scale),
+    color: "rgba(255,255,255,0.62)",
+    letterSpacing: "0.01em",
     lineHeight: 1.45,
+    fontVariationSettings: '"SOFT" 60, "WONK" 0',
   };
-
-  const hasText = Boolean(heroText);
 
   // ── Background ──────────────────────────────────────────────────────────
   const heroBg = (
@@ -265,7 +384,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   ) : null;
 
   // ─────────────────────────────────────────────────────────────────────────
-  // LAYOUT: "bottom" — deep gradient panel at bottom (classic poster)
+  // LAYOUT: "bottom" — editorial serif over a deep gradient panel
   // ─────────────────────────────────────────────────────────────────────────
   if (layout === "bottom") {
     return (
@@ -286,17 +405,25 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
               transform: `translateY(${lift}px)`,
             }}
           >
-            <AccentRule scale={scale} brandRed={brandRed} brandGold={brandGold} />
-            {ctaTag && <CtaChip text={ctaTag} brandGold={brandGold} scale={scale} opacity={fadeInLate} />}
-            <div style={heroStyle}>{heroText}</div>
-            {subText && (
-              <div style={{ ...subStyle, marginTop: Math.round(12 * scale) }}>
-                {subText}
+            {subText ? (
+              <Kicker text={subText} scale={scale} gold={brandGold} />
+            ) : (
+              <AccentRule scale={scale} brandRed={brandRed} brandGold={brandGold} />
+            )}
+            <SerifHero
+              text={heroText}
+              size={isHeroShort ? Math.round(92 * scale) : Math.round(60 * scale)}
+              gold={brandGold}
+              weight={650}
+            />
+            {extraTagline && (
+              <div style={{ ...taglineStyle, marginTop: Math.round(10 * scale) }}>
+                {extraTagline}
               </div>
             )}
-            {extraTagline && (
-              <div style={{ ...taglineStyle, marginTop: Math.round(7 * scale) }}>
-                {extraTagline}
+            {ctaTag && (
+              <div style={{ marginTop: Math.round(20 * scale) }}>
+                <CtaChip text={ctaTag} brandGold={brandGold} scale={scale} opacity={fadeInLate} />
               </div>
             )}
           </div>
@@ -306,7 +433,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // LAYOUT: "top" — gradient panel at top, text above, photo hero below
+  // LAYOUT: "top" — campaign statement caps at top, photo hero below
   // ─────────────────────────────────────────────────────────────────────────
   if (layout === "top") {
     return (
@@ -343,19 +470,26 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
               transform: `translateY(${-lift}px)`,  // animate from above
             }}
           >
-            {ctaTag && <CtaChip text={ctaTag} brandGold={brandGold} scale={scale} opacity={fadeInLate} />}
-            <div style={{ ...heroStyle, textShadow: "0 4px 32px rgba(0,0,0,0.9)" }}>
-              {heroText}
+            <CampaignHero
+              text={heroText}
+              size={isHeroShort ? Math.round(80 * scale) : Math.round(52 * scale)}
+            />
+            <div style={{ marginTop: Math.round(14 * scale) }}>
+              <AccentRule scale={scale} brandRed={brandRed} brandGold={brandGold} mb={0} />
             </div>
-            <AccentRule scale={scale} brandRed={brandRed} brandGold={brandGold} mb={0} />
             {subText && (
-              <div style={{ ...subStyle, marginTop: Math.round(14 * scale) }}>
+              <div style={{ ...descriptorStyle, marginTop: Math.round(14 * scale) }}>
                 {subText}
               </div>
             )}
             {extraTagline && (
-              <div style={{ ...taglineStyle, marginTop: Math.round(7 * scale) }}>
+              <div style={{ ...taglineStyle, marginTop: Math.round(8 * scale) }}>
                 {extraTagline}
+              </div>
+            )}
+            {ctaTag && (
+              <div style={{ marginTop: Math.round(16 * scale) }}>
+                <CtaChip text={ctaTag} brandGold={brandGold} scale={scale} opacity={fadeInLate} />
               </div>
             )}
           </div>
@@ -365,9 +499,8 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // LAYOUT: "center" — magazine editorial, text centered vertically
+  // LAYOUT: "center" — vogue editorial, large serif centered vertically
   // ─────────────────────────────────────────────────────────────────────────
-  // Full-frame overlay at 50% + text block centered with a frosted strip.
   const overlayOpacity = interpolate(frame, [0, 30], [0.2, 0.65], { extrapolateRight: "clamp" });
   return (
     <AbsoluteFill style={{ background: "#0a0a0c", overflow: "hidden" }}>
@@ -406,7 +539,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
               border: `2px solid ${brandGold}`,
               color: brandGold,
               borderRadius: 999,
-              fontFamily: SANS,
+              fontFamily: ARCHIVO,
               fontWeight: 700,
               fontSize: Math.round(14 * scale),
               letterSpacing: "0.16em",
@@ -415,13 +548,14 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
               opacity: fadeInLate,
             }}>{ctaTag}</div>
           )}
-          <div style={{
-            ...heroStyle,
-            fontWeight: 900,
-            fontSize: isHeroShort ? Math.round(88 * scale) : Math.round(60 * scale),
-            lineHeight: 1.04,
-            textShadow: "0 2px 40px rgba(0,0,0,0.8), 0 0 80px rgba(0,0,0,0.4)",
-          }}>{heroText}</div>
+          <SerifHero
+            text={heroText}
+            size={isHeroShort ? Math.round(98 * scale) : Math.round(64 * scale)}
+            gold={brandGold}
+            weight={560}
+            lineHeight={1.04}
+            shadow="0 2px 40px rgba(0,0,0,0.8), 0 0 80px rgba(0,0,0,0.4)"
+          />
           {/* Gold accent rule below headline */}
           <div style={{
             height: Math.round(3 * scale),
@@ -431,7 +565,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
             marginBottom: Math.round(14 * scale),
             borderRadius: 2,
           }} />
-          {subText && <div style={subStyle}>{subText}</div>}
+          {subText && <div style={descriptorStyle}>{subText}</div>}
           {extraTagline && (
             <div style={{ ...taglineStyle, marginTop: Math.round(9 * scale) }}>
               {extraTagline}
