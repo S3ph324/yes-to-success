@@ -108,11 +108,18 @@ const briefBlock = TOPIC
   : `\n**Vary the angle across the batch** — style, comfort, durability, everyday wearability, the "main character energy" the frame gives, etc.\n`;
 
 const headlineNote = AI_HEADLINE
-  ? `\n- headline: A SHORT, PUNCHY typographic hook — 2 to 5 words MAX — that\n` +
-    `  will be rendered at LARGE DISPLAY SIZE (think billboard or magazine cover).\n` +
-    `  It must work as standalone big type: crisp, confident, no filler words.\n` +
-    `  Examples: "DEFINE YOUR LOOK", "Born for the Bold", "Your Frame. Your Story.",\n` +
-    `  "Effortless. Always.", "See Differently". Mix English and Taglish naturally.\n` +
+  ? `\n- headline: A SHORT typographic hook — 2 to 5 words MAX — rendered at\n` +
+    `  billboard size. It must have a HOOK: an idea, a twist, a wink — never a\n` +
+    `  generic compliment. Rotate these techniques across the batch (one each):\n` +
+    `    1. Taglish wordplay on eyes/vision/lakad: "Clear Vision, Clear Lakad",\n` +
+    `       "Bagong Mata, Bagong Ikaw"\n` +
+    `    2. Confident flex / main-character energy: "Anlakas Maka-Main Character",\n` +
+    `       "Suot Mo, Plot Twist Mo"\n` +
+    `    3. Contrast twist: "Mukhang Mahal. Hindi Naman.", "Pang-Selfie. Pang-Forever."\n` +
+    `    4. Conversational hook: "Your Face Called.", "Na-double Take Ka Na Naman?"\n` +
+    `    5. Specific detail of THIS frame (its colour, shape, material) turned\n` +
+    `       into attitude: "Pink, Pero Power", "Round Frames, Sharp Moves"\n` +
+    `  Each headline must use a DIFFERENT technique than the previous entry.\n` +
     `  This is SEPARATE from productLine — productLine becomes the supporting\n` +
     `  descriptor below the big headline. Make sure they complement each other.\n`
   : ``;
@@ -122,11 +129,13 @@ const styleNote =
     ? `\nFORMAT — CLEAN PRODUCT SHOWCASE:\n` +
       `This is a PRODUCT-PHOTOGRAPHY poster, NOT a quote graphic. The photo IS\n` +
       `the hero — copy stays clean and editorial, like a premium eyewear ad.\n` +
-      `- productLine: ONE short, polished line naming or describing\n` +
-      `  "${frameLabel}" (a product-style name + finish, or one crisp clause\n` +
-      `  about the look/fit/vibe). NO hook→payoff, no rhetorical question.\n` +
-      `- tagline: an OPTIONAL short supporting clause (one phrase, ≤8 words)\n` +
-      `  — understated, confident. Use "" when productLine stands alone.\n` +
+      `- productLine: ONE short line about "${frameLabel}" with a concrete\n` +
+      `  detail in it — the colour, the shape, the material, the fit, the\n` +
+      `  occasion it owns. "Transparent pink acetate, kilig included" beats\n` +
+      `  "The Pink Collection". NO hook→payoff, no rhetorical question.\n` +
+      `- tagline: an OPTIONAL short payoff (≤8 words) that adds NEW information\n` +
+      `  or a wink — a benefit, a use-case, a joke landing. Never a second\n` +
+      `  compliment. Use "" when productLine stands alone.\n` +
       `- ctaTag: a SHORT 1-3 word chip in ALL CAPS, e.g. "SHOP NOW",\n` +
       `  "VIEW THE DROP". Use "" on some posters — not every poster needs one.\n` +
       headlineNote
@@ -134,16 +143,39 @@ const styleNote =
       `- Same productLine/tagline/ctaTag shape, spotlighting "${frameLabel}".\n` +
       headlineNote;
 
+// Dead-phrase ban list — these are the words that make every eyewear ad on
+// the internet sound identical. Forcing the model away from them is the
+// single highest-leverage copy improvement.
+const COPY_RULES = `
+COPY CRAFT — the difference between an ad and wallpaper:
+- BANNED words/phrases (in any language, any casing): "elevate", "effortless",
+  "effortlessly", "timeless", "chic", "statement", "signature look",
+  "style that speaks", "stand out", "redefine", "unleash", "discover",
+  "experience", "seamless", "seamlessly", "perfect blend", "premium quality",
+  "elevate your look", "main character" used as a bare cliché (the Taglish
+  flex form "maka-main character" is fine — it has a voice).
+- Every line must contain something SPECIFIC: this frame's colour, shape,
+  material, price feel, or the exact moment it's worn (first date, big
+  presentation, payday selfie, video call). Specificity is personality.
+- Write like a sharp Manila creative director, not a template. If a line
+  could be pasted onto any other eyewear brand's poster unchanged, it FAILS —
+  rewrite it.
+- caption: first sentence must hook (a question, a scene, a confession —
+  not a description). Then one concrete benefit. Keep the comment-keyword
+  CTA mechanic if used.
+`;
+
 const systemInstruction = `${voiceProfile}${subjectBlock}${briefBlock}
 You are generating CLEAN PRODUCT-SHOWCASE poster entries for ${client.label}'s
 Facebook page, all featuring the same pair of eyeglasses: "${frameLabel}".
 Produce exactly ${COUNT} entries.${styleNote}
-
+${COPY_RULES}
 CRITICAL — this is NOT a Taglish hook→payoff quote poster (that's a different
 poster type entirely, used elsewhere). Do not write a rhetorical setup +
 emotional payoff, and do not invent colored word-emphasis — none of that
-renders here. Write the way a premium eyewear brand captions a product photo:
-brief, confident, a little stylish. The image does the talking.
+renders here. Write the way a sharp eyewear brand with a sense of humour
+captions a product photo: brief, confident, specific. The image does the
+talking — the copy does the flirting.
 
 GRAMMAR & COHERENCE — most important; reject anything that fails:
 - Every line must be a natural, grammatically correct Taglish or English
@@ -224,7 +256,9 @@ for (let attempt = 1; attempt <= 3; attempt++) {
               : ["productLine", "caption", "bgPrompt"],
           },
         },
-        temperature: 0.65,
+        // Higher than the quote pipeline — showcase copy needs creative range
+        // (wordplay, twists); the COPY_RULES ban-list keeps it on brand.
+        temperature: 0.9,
       },
     });
     break; // success
