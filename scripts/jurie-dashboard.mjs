@@ -3477,54 +3477,60 @@ async function viewBatches(){
     // Build flat lightbox items array across all rendered posters
     const bxItems=[];
     let lbGlobal=0;
-    const html=ALL.map(B=>{
+    // One poster cell: fixed-height thumb, status badge, hover copy/download,
+    // approve / decline / posted / delete actions.
+    const posterCell=(B,caps,i)=>{
+      const f=B.files[i];
+      const u='/posters/'+CLIENT+'/'+encodeURIComponent(B.stamp)+'/'+encodeURIComponent(f);
+      const imgU=u+'?e='+_SE; // per-page-load buster: never reuse a cached broken response
+      const st=(B.statuses&&B.statuses[f])||'pending';
+      const fn=encodeURIComponent(f);
+      const badge=st==='approved'?'<div class="ps-badge" style="background:var(--gold);color:#15120a">✓ Approved</div>'
+        :st==='posted'?'<div class="ps-badge" style="background:#3cb454;color:#fff">✓ Posted</div>'
+        :st==='declined'?'<div class="ps-badge" style="background:var(--red);color:#fff">✗ Declined</div>':'';
+      const myLb=lbGlobal++;
+      bxItems.push({url:imgU,caption:caps[i]||''});
+      return '<figure data-stamp="'+B.stamp+'" data-file="'+fn+'" style="opacity:'+(st==='declined'?'.4':'1')+';transition:opacity .2s">'
+       +badge
+       +'<div class="poster-thumb" style="cursor:zoom-in" onclick="openLb('+myLb+')">'
+       +'<img src="'+imgU+'" loading="lazy" alt="">'
+       +'</div>'
+       +'<button class="cp" data-c="'+b64(caps[i]||'')+'" title="Copy caption">📋</button>'
+       +'<a class="dl" href="'+u+'?dl=1" download>↓</a>'
+       +'<div class="ps-actions">'
+       +'<div class="ps-row">'
+       +'<button class="ps-btn ps-approve'+(st==='approved'?' ps-on-gold':'')+'" data-stamp="'+B.stamp+'" data-fn="'+fn+'" data-s="approved">'+(st==='approved'?'✓ Approved':'✓ Approve')+'</button>'
+       +'<button class="ps-btn ps-decline'+(st==='declined'?' ps-on-red':'')+'" data-stamp="'+B.stamp+'" data-fn="'+fn+'" data-s="declined">'+(st==='declined'?'✗ Declined':'✗ Decline')+'</button>'
+       +'</div>'
+       +'<div class="ps-row">'
+       +'<button class="ps-btn ps-btn-secondary ps-posted'+(st==='posted'?' ps-on-green':'')+'" style="flex:3" data-stamp="'+B.stamp+'" data-fn="'+fn+'" data-s="posted">'+(st==='posted'?'✓ Posted':'Already posted')+'</button>'
+       +'<button class="ps-btn ps-btn-secondary del-poster" style="flex:1" data-stamp="'+B.stamp+'" data-file="'+fn+'" title="Delete poster">🗑</button>'
+       +'</div>'
+       +'</div></figure>';
+    };
+    // One card per batch: header row (date, count, captions, zip, delete) + poster grid.
+    const batchCard=(B)=>{
       const caps=B.captions.split(/^#\\d+\\s*$/m).map(s=>s.trim()).filter(Boolean);
       const stampHit=B.stamp.toLowerCase().indexOf(q)>-1;
       const idx=B.files.map((_f,i)=>i).filter(i=>!q||stampHit||(caps[i]||'').toLowerCase().indexOf(q)>-1);
       if(!idx.length)return '';
       nb++;np+=idx.length;
       const allCaps=idx.map(i=>'#'+(i+1)+'\\n'+(caps[i]||'')).join('\\n\\n---\\n\\n');
-      return '<div class=”card” data-stamp=”'+B.stamp+'”><div class=”bx-row”><b>'+fmtStamp(B.stamp)+'</b>'
-       +'<span><span class=”pill”>'+idx.length+(idx.length!==B.count?(' / '+B.count):'')+' posters</span> '
-       +'<button class=”sec” data-cp-all=”'+b64(allCaps)+'”>📋 All captions</button> '
-       +'<a class=”sec” style=”text-decoration:none” href=”/api/batch-zip?client='+CLIENT+'&stamp='+encodeURIComponent(B.stamp)+'”>⬇ All (.zip)</a>'
-       +' <button class=”sec del-batch” data-stamp=”'+B.stamp+'” style=”color:var(--red);border-color:rgba(224,86,75,.35)” title=”Delete this entire batch”>🗑 Delete batch</button>'
+      return '<div class="card" data-stamp="'+B.stamp+'">'
+       +'<div class="bx-row"><b>'+fmtStamp(B.stamp)+'</b>'
+       +'<span>'
+       +'<span class="pill">'+idx.length+(idx.length!==B.count?(' / '+B.count):'')+' posters</span> '
+       +'<button class="sec" data-cp-all="'+b64(allCaps)+'">📋 All captions</button> '
+       +'<a class="sec" style="text-decoration:none" href="/api/batch-zip?client='+CLIENT+'&stamp='+encodeURIComponent(B.stamp)+'">⬇ All (.zip)</a> '
+       +'<button class="sec del-batch" data-stamp="'+B.stamp+'" style="color:var(--red);border-color:rgba(224,86,75,.35)" title="Delete this entire batch">🗑 Delete batch</button>'
        +'</span></div>'
-       +'<div class=”grid” style=”margin-top:14px”>'+idx.map(i=>{
-         const f=B.files[i],u='/posters/'+CLIENT+'/'+encodeURIComponent(B.stamp)+'/'+encodeURIComponent(f);
-         // imgU adds ?v=2 to bust any stale immutable browser-cache entries
-         // that were written with partial data in an older build. The download
-         // link keeps the clean u (server reads req.query.dl separately).
-         const imgU=u+'?e='+_SE;
-         const st=(B.statuses&&B.statuses[f])||'pending';
-         const badgeHtml=st==='approved'?'<div class=”ps-badge” style=”background:var(--gold);color:#15120a”>✓ Approved</div>'
-           :st==='posted'?'<div class=”ps-badge” style=”background:#3cb454;color:#fff”>✓ Posted</div>'
-           :st==='declined'?'<div class=”ps-badge” style=”background:var(--red);color:#fff”>✗ Declined</div>':'';
-         const myLb=lbGlobal++;
-         bxItems.push({url:imgU,caption:caps[i]||''});
-         return '<figure data-stamp=”'+B.stamp+'” data-file=”'+encodeURIComponent(f)+'” style=”opacity:'+(st==='declined'?'.4':'1')+';transition:opacity .2s”>'
-          +badgeHtml
-          +'<div class=”poster-thumb” style=”cursor:zoom-in” onclick=”openLb('+myLb+')”>'
-          +'<img src=”'+imgU+'” loading=”lazy”>'
-          +'</div>'
-          +'<button class=”cp” data-c=”'+b64(caps[i]||'')+'” title=”Copy caption”>📋</button>'
-          +'<a class=”dl” href=”'+u+'?dl=1” download>↓</a>'
-          +'<div class=”ps-actions”>'
-          // Row 1: primary approve/decline
-          +'<div class=”ps-row”>'
-          +'<button class=”ps-btn ps-approve'+(st==='approved'?' ps-on-gold':'')+'” data-stamp=”'+B.stamp+'” data-fn=”'+encodeURIComponent(f)+'” data-s=”approved”>'+(st==='approved'?'✓ Approved':'✓ Approve')+'</button>'
-          +'<button class=”ps-btn ps-decline'+(st==='declined'?' ps-on-red':'')+'” data-stamp=”'+B.stamp+'” data-fn=”'+encodeURIComponent(f)+'” data-s=”declined”>'+(st==='declined'?'✗ Declined':'✗ Decline')+'</button>'
-          +'</div>'
-          // Row 2: secondary — mark posted + delete
-          +'<div class=”ps-row”>'
-          +'<button class=”ps-btn ps-btn-secondary ps-posted'+(st==='posted'?' ps-on-green':'')+'” style=”flex:3” data-stamp=”'+B.stamp+'” data-fn=”'+encodeURIComponent(f)+'” data-s=”posted”>'+(st==='posted'?'✓ Posted':'Already posted')+'</button>'
-          +'<button class=”ps-btn ps-btn-secondary del-poster” style=”flex:1” data-stamp=”'+B.stamp+'” data-file=”'+encodeURIComponent(f)+'” title=”Delete poster”>🗑</button>'
-          +'</div>'
-          +'</div></figure>';}).join('')
-       +'</div></div>';}).join('');
+       +'<div class="grid" style="margin-top:14px">'+idx.map(i=>posterCell(B,caps,i)).join('')+'</div>'
+       +'</div>';
+    };
+    const html=ALL.map(batchCard).join('');
     window._lbItems=bxItems;
-    $('#bx_list').innerHTML=ALL.length?(html||'<p class=”muted”>No posters match “'+esc(q)+'”.</p>')
-      :'<p class=”muted”>No batches yet. Generate some on the Generate tab.</p>';
+    $('#bx_list').innerHTML=ALL.length?(html||'<p class="muted">No posters match “'+esc(q)+'”.</p>')
+      :'<p class="muted">No batches yet. Generate some on the Generate tab.</p>';
     $('#bx_meta').textContent=ALL.length
       ?(nb+' batch'+(nb===1?'':'es')+' · '+np+' poster'+(np===1?'':'s')+(q?' (filtered)':''))
       :'';
