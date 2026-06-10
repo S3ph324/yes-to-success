@@ -146,7 +146,17 @@ app.use(express.json());
 // This avoids calling getClient() on every image request — 171 simultaneous
 // reads from the Railway volume saturate I/O and return 400s for most images.
 // Local dev falls through to the per-client route further down.
+// SECURITY: EXPORT_BASE also holds _studio-data/ (client configs, queue files
+// with Buffer tokens). Only let through the exact poster URL shape —
+// /<clientId>/<stamp>/<file>.png — and nothing else.
 if (EXPORT_BASE) {
+  app.use("/posters", (req, res, next) => {
+    let p;
+    try { p = decodeURIComponent(req.path); } catch { return res.status(404).end(); }
+    if (!/^\/[a-z0-9_-]+\/[\w.\- ]+\/[\w.\- ]+\.png$/i.test(p) || p.includes("/_") || p.includes(".."))
+      return res.status(404).end();
+    next();
+  });
   app.use("/posters", express.static(EXPORT_BASE, { maxAge: 0, etag: true, dotfiles: "deny" }));
 }
 
@@ -199,8 +209,18 @@ const readCfg = async (name, fb) => {
     return fb;
   }
 };
-const writeCfg = (name, data) =>
-  fs.writeFile(path.join(cfgDir, name), JSON.stringify(data, null, 2));
+// Per-file write mutex (same pattern as writeQueue below): serialises
+// concurrent read-modify-write cycles so e.g. two simultaneous photo uploads
+// don't clobber each other's characters.json update.
+const _cfgWriteMutex = new Map();
+const writeCfg = (name, data) => {
+  const prev = _cfgWriteMutex.get(name) || Promise.resolve();
+  const next = prev.then(() =>
+    fs.writeFile(path.join(cfgDir, name), JSON.stringify(data, null, 2)),
+  );
+  _cfgWriteMutex.set(name, next.catch(() => {}));
+  return next;
+};
 
 // One-time migration: any eyeglasses reference photos uploaded BEFORE the
 // HEIC→JPEG conversion was wired into the upload route are still sitting on
@@ -244,7 +264,10 @@ const getClient = async (id) =>
   (await getClients()).find((c) => c.id === id) || null;
 
 // ── Queue helpers ─────────────────────────────────────────────────────────
-const queuePath  = (clientId) => path.join(cfgDir, `queue-${clientId}.json`);
+// clientId is sanitized here (not at each call site) so a hostile value like
+// "../../etc/x" can never escape cfgDir via the queue filename.
+const queuePath  = (clientId) =>
+  path.join(cfgDir, `queue-${String(clientId || "").replace(/[^a-z0-9_-]/gi, "")}.json`);
 const readQueue  = async (clientId) => {
   try { return JSON.parse(await fs.readFile(queuePath(clientId), "utf-8")); }
   catch { return []; }
@@ -352,11 +375,13 @@ app.get("/api/queue", async (req, res) => {
 
 app.post("/api/queue/review", async (req, res) => {
   const { client, queueId, decisions } = req.body || {};
+  const VALID_STATUS = ["approved", "declined", "posted", "pending"];
   const queue = await readQueue(client);
   const entry = queue.find(e => e.id === queueId);
   if (!entry) return res.status(404).json({ error: "Not found" });
   for (const { filename, status } of (decisions || [])) {
-    const p = entry.posters.find(x => x.filename === filename);
+    if (!VALID_STATUS.includes(status)) continue;
+    const p = (entry.posters || []).find(x => x.filename === filename);
     if (p) p.status = status;
   }
   await writeQueue(client, queue);
@@ -528,7 +553,11 @@ app.get("/api/charphoto", (req, res) => {
   const fp = path.join(publicDir, rel);
   if (!fp.startsWith(path.join(publicDir, "characters")))
     return res.status(400).end();
-  res.sendFile(fp, ASSET_CACHE);
+  res.sendFile(fp, ASSET_CACHE, (err) => {
+    // Missing file must be a plain 404 — without this callback Express
+    // emits an HTML 500 that browsers cache for 7 days (immutable).
+    if (err && !res.headersSent) res.status(404).end();
+  });
 });
 
 // Serve a brand-kit logo for preview.
@@ -539,7 +568,11 @@ app.get("/api/brandlogo", (req, res) => {
   const fp = path.join(publicDir, rel);
   if (!fp.startsWith(path.join(publicDir, "brand")))
     return res.status(400).end();
-  res.sendFile(fp, ASSET_CACHE);
+  res.sendFile(fp, ASSET_CACHE, (err) => {
+    // Missing file must be a plain 404 — without this callback Express
+    // emits an HTML 500 that browsers cache for 7 days (immutable).
+    if (err && !res.headersSent) res.status(404).end();
+  });
 });
 
 // ── Brand Kits (brand-presets.json, filtered to the client) ───────────────
@@ -630,9 +663,14 @@ app.delete("/api/characters/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Sanitize a client id before it's used as a path segment — anything that
+// isn't a plain slug becomes "misc" (blocks ../ traversal via ?client=).
+const safeClientSeg = (v) =>
+  /^[a-z0-9_-]+$/i.test(String(v || "")) ? String(v) : "misc";
+
 const photoStore = multer.diskStorage({
   destination: async (req, _f, cb) => {
-    const client = req.query.client || "misc";
+    const client = safeClientSeg(req.query.client);
     const d = path.join(publicDir, "characters", client);
     await fs.mkdir(d, { recursive: true });
     cb(null, d);
@@ -645,11 +683,20 @@ app.post(
   "/api/characters/photo",
   uploadPhoto.array("photo", 8),
   async (req, res) => {
-    const { client, charId } = req.query;
+    const { charId } = req.query;
+    const client = safeClientSeg(req.query.client);
     const files = req.files || [];
     if (!files.length) return res.status(400).json({ error: "no files" });
-    const paths = files.map((f) =>
-      path.posix.join("characters", client, f.filename),
+    // Convert any HEIC/HEIF uploads (iPhone default) to JPEG in place so
+    // previews render in every browser, not just Safari — same as eyeglasses.
+    const finalNames = await Promise.all(
+      files.map(async (f) => {
+        const converted = await convertHeicInPlace(f.path);
+        return path.basename(converted);
+      }),
+    );
+    const paths = finalNames.map((name) =>
+      path.posix.join("characters", client, name),
     );
     const all = await readCfg("characters.json", []);
     const ch = all.find((x) => x.id === charId);
@@ -717,7 +764,7 @@ app.delete("/api/eyeglasses/:id/photo", async (req, res) => {
 
 const glassPhotoStore = multer.diskStorage({
   destination: async (req, _f, cb) => {
-    const client = req.query.client || "misc";
+    const client = safeClientSeg(req.query.client);
     const d = path.join(publicDir, "eyeglasses", client);
     await fs.mkdir(d, { recursive: true });
     cb(null, d);
@@ -730,7 +777,8 @@ app.post(
   "/api/eyeglasses/photo",
   uploadGlassPhoto.array("photo", 8),
   async (req, res) => {
-    const { client, glassesId } = req.query;
+    const { glassesId } = req.query;
+    const client = safeClientSeg(req.query.client);
     const files = req.files || [];
     if (!files.length) return res.status(400).json({ error: "no files" });
     // Convert any HEIC/HEIF uploads (iPhone default) to JPEG in place so
@@ -763,7 +811,11 @@ app.get("/api/glassesphoto", (req, res) => {
   const fp = path.join(publicDir, rel);
   if (!fp.startsWith(path.join(publicDir, "eyeglasses")))
     return res.status(400).end();
-  res.sendFile(fp, ASSET_CACHE);
+  res.sendFile(fp, ASSET_CACHE, (err) => {
+    // Missing file must be a plain 404 — without this callback Express
+    // emits an HTML 500 that browsers cache for 7 days (immutable).
+    if (err && !res.headersSent) res.status(404).end();
+  });
 });
 
 const logoStore = multer.diskStorage({
@@ -1224,24 +1276,26 @@ app.post(
     ];
     if (characterId && characterId !== "none")
       args.push("--character", characterId);
+    let scriptFile = null;
     if (req.file) {
       args.push("--video", req.file.path);
     } else if (scriptText.length > 10) {
-      const sf = path.join(
+      scriptFile = path.join(
         projectRoot,
         "out",
         `broll-input-${Date.now()}.txt`,
       );
-      await fs.writeFile(sf, scriptText);
-      args.push("--script", sf);
+      await fs.writeFile(scriptFile, scriptText);
+      args.push("--script", scriptFile);
     } else {
       return res
         .status(400)
         .json({ error: "Provide a script (10+ chars) or a video file." });
     }
     if (!guard(req, res)) {
-      // Rate-limited after upload — clean up the temp file so disk doesn't fill up.
+      // Rate-limited after upload — clean up temp files so disk doesn't fill up.
       if (req.file) fs.unlink(req.file.path).catch(() => {});
+      if (scriptFile) fs.unlink(scriptFile).catch(() => {});
       return;
     }
     job = { running: true, client: "broll", log: [], code: null };
@@ -1340,7 +1394,11 @@ app.get("/broll-asset/:stamp/:file", (req, res) => {
     return res.status(400).end();
   if (req.query.dl)
     res.set("Content-Disposition", `attachment; filename="${file}"`);
-  res.sendFile(fp, ASSET_CACHE);
+  res.sendFile(fp, ASSET_CACHE, (err) => {
+    // Missing file must be a plain 404 — without this callback Express
+    // emits an HTML 500 that browsers cache for 7 days (immutable).
+    if (err && !res.headersSent) res.status(404).end();
+  });
 });
 
 app.post("/api/broll/pick", async (req, res) => {
@@ -1478,7 +1536,7 @@ app.listen(PORT, async () => {
 const PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Quote Poster Studio</title><style>
-:root{--gold:#E8B64A;--gold2:#ffe27a;--red:#E0564B;--bg:#0a0a0b;--panel:#121214;
+:root{--gold:#E8B64A;--gold2:#ffe27a;--red:#E0564B;--bg:#0a0a0b;--bg2:#0d0d10;--panel:#121214;
 --line:rgba(255,255,255,.07);--line2:rgba(255,255,255,.14);--txt:#ededee;--mut:#7f7f87}
 *{box-sizing:border-box}::selection{background:var(--gold);color:#15120a}
 body{margin:0;background:var(--bg);color:var(--txt);
@@ -1821,6 +1879,9 @@ transition:border-color .15s,background .15s;background:rgba(255,255,255,.015)}
 .ea-drop:hover,.ea-drop.over{border-color:var(--gold);background:rgba(232,182,74,.05)}
 .ea-drop b{font-size:14px;margin-bottom:2px}
 @keyframes spin{to{transform:rotate(360deg)}}
+.spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(232,182,74,.3);
+border-top-color:var(--gold);border-radius:50%;animation:spin .7s linear infinite;
+vertical-align:middle;margin-right:7px}
 /* Eyeglasses poster style cards */
 .esty-card{display:flex;flex-direction:column;gap:6px;padding:11px 13px;border-radius:10px;
 cursor:pointer;font-size:13px;transition:border-color .15s,background .15s;border:1px solid var(--line)}
@@ -3670,7 +3731,7 @@ async function viewBroll(){
     es.onmessage=ev=>{const line=JSON.parse(ev.data);
       L.textContent+=line+'\\n';L.scrollTop=L.scrollHeight;
       if(jobStarted&&(line.indexOf('✓ Done')>-1||line.indexOf('✗ Exited')>-1)){es.close();
-        $('#br_go').disabled=false;loadSets();}};
+        $('#br_go').disabled=false;_apiCache.delete('/api/broll/sets');loadSets();}};
     // Use XHR so we can show real upload progress for big videos.
     const fail=(msg)=>{alert(msg);L.textContent+='\\n✗ '+msg+'\\n';
       es&&es.close();$('#br_go').disabled=false;};
@@ -3695,7 +3756,7 @@ async function viewBroll(){
       fail(msg);};
     xhr.send(fd);
   };
-  $('#br_ref').onclick=loadSets;
+  $('#br_ref').onclick=()=>{_apiCache.delete('/api/broll/sets');loadSets();};
   async function loadSets(){
     const sets=await api('/api/broll/sets');
     if(!sets.length){$('#br_sets').innerHTML='<p class="muted">No b-roll sets yet.</p>';return;}
