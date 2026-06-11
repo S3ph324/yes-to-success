@@ -590,12 +590,15 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   // Compact: type-decor always (image carries the display type); otherwise
   // when the measured band is extremely busy.
   const compact = typeDecor || bandBusy > 0.82;
-  const cs = typeDecor ? 0.5 : compact ? 0.62 : 1; // hero size factor
+  const cs = typeDecor ? 0.68 : compact ? 0.62 : 1; // hero size factor
 
   // Tone — light templates get bright frosted panels + dark ink type.
   const tone = toneFor(stylePreset);
   const isLight = tone === "light";
-  const ink    = isLight ? "#1b1822" : "#FFFFFF";
+  // Compact lockups sit on a solid inverted plate (see heroBlock below), so
+  // their type colour inverts with it.
+  const inkBase = isLight ? "#1b1822" : "#FFFFFF";
+  const ink    = compact ? (isLight ? "#F7F3EC" : "#17151d") : inkBase;
   const inkSub = isLight ? "rgba(27,24,34,0.78)" : "rgba(255,255,255,0.85)";
   const inkTag = isLight ? "rgba(27,24,34,0.56)" : "rgba(255,255,255,0.62)";
   const heroShadow = isLight ? "0 1px 2px rgba(0,0,0,0.06)" : undefined;
@@ -632,6 +635,22 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
         );
     }
   })();
+
+  // Compact lockup plate — solid inverted block behind the small headline so
+  // it reads on ANY background without washing the art (bare small text over
+  // photos lacked contrast).
+  const heroBlock = compact ? (
+    <div
+      style={{
+        display: "inline-block",
+        background: isLight ? "#17151d" : "rgba(247,243,236,0.97)",
+        padding: `${Math.round(12 * scale)}px ${Math.round(18 * scale)}px`,
+        boxShadow: "0 6px 28px rgba(0,0,0,0.25)",
+      }}
+    >
+      {heroEl}
+    </div>
+  ) : heroEl;
 
   // Supporting type — shared across layouts.
   // Descriptor: tracked-caps Archivo. Tagline: italic Fraunces, muted.
@@ -730,7 +749,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
             ) : (
               <AccentRule scale={scale} brandRed={brandRed} brandGold={brandGold} />
             ))}
-            {heroEl}
+            {heroBlock}
             {!compact && extraTagline && (
               <div style={{ ...taglineStyle, marginTop: Math.round(10 * scale) }}>
                 {extraTagline}
@@ -803,7 +822,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
                 {extraTagline}
               </div>
             )}
-            {heroEl}
+            {heroBlock}
             {!masthead && !compact && (
               <div style={{ marginTop: Math.round(14 * scale) }}>
                 <AccentRule scale={scale} brandRed={brandRed} brandGold={brandGold} mb={0} />
@@ -894,7 +913,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
               {promoTag && <PromoBadge text={promoTag} brandRed={brandRed} scale={scale} opacity={fadeInLate} />}
             </div>
           )}
-          {heroEl}
+          {heroBlock}
           {/* Gold accent rule below headline */}
           <div style={{
             height: Math.round(3 * scale),
