@@ -204,6 +204,8 @@ for (const q of quotes) {
         // Selected poster style template — the card maps it to a matching
         // overlay type voice (e.g. 03-type-overlay → heavy gold echo caps).
         stylePreset: q.stylePreset || process.env.DASHBOARD_STYLE_PRESET || "",
+        // User promotion (verbatim badge) — never AI-invented.
+        promoTag: q.promo || process.env.DASHBOARD_PROMO || "",
         // Measured band busyness — drives adaptive scrims / placement / compact
         // overlay in the card. Omitted (defaults) when analysis fails.
         ...(bgStats ? { busyTop: bgStats.busyTop, busyBottom: bgStats.busyBottom } : {}),

@@ -919,6 +919,7 @@ app.post("/api/generate", extraRefUpload.fields([
     aspectDist,
     aiHeadline,
     stylePreset,
+    promo,
   } = req.body || {};
   const c = await getClient(client);
   if (!c) return res.status(400).json({ error: "Unknown client" });
@@ -979,6 +980,9 @@ app.post("/api/generate", extraRefUpload.fields([
   // renderer maps this to a matching overlay type voice. "custom" for manual
   // style-ref uploads; unset → layout-based rotation.
   if (stylePreset) env.DASHBOARD_STYLE_PRESET = String(stylePreset).slice(0, 64);
+  // User-entered promotion (e.g. "35% OFF until June 30") — rendered verbatim
+  // as a poster badge; the AI never invents promos on its own.
+  if (promo) env.DASHBOARD_PROMO = String(promo).slice(0, 40);
   if (aspectDist) env.DASHBOARD_ASPECT_DIST = String(aspectDist);
   env.JURIE_NO_OPEN = "1";
   const child = spawn(
@@ -2054,6 +2058,9 @@ async function viewGenerate(){
    +'<div id="g_topic_cell" style="flex:1"><input id="g_topic" placeholder="e.g. why regular eye check-ups matter" style="width:100%;font-size:15px;padding:14px 16px"></div>'
    // Headline idea — shown for Eyeglasses posters (optional)
    +'<div id="ea_headline_cell" style="flex:1;display:none"><input id="ea_headline" placeholder="Optional headline idea (e.g. See Clearly. Live Boldly.)" style="width:100%;font-size:15px;padding:14px 16px"></div>'
+   // Promotion — shown for Eyeglasses posters (optional); rendered verbatim
+   // as a badge on the poster, never invented by the AI.
+   +'<div id="ea_promo_cell" style="flex:1;display:none"><input id="ea_promo" maxlength="40" placeholder="Optional promo (e.g. 35% OFF until June 30)" style="width:100%;font-size:15px;padding:14px 16px"></div>'
    +'</div>'
    // ── Advanced toggle (hidden for eyeglasses — settings auto-expand instead) ──
    +'<button class="adv-toggle" id="adv-btn" onclick="toggleAdv()">'
@@ -2278,6 +2285,8 @@ async function viewGenerate(){
     if(secLbl)  secLbl.style.display  = isEye ? 'none' : '';
     if(topicCell) topicCell.style.display = isEye ? 'none' : '';
     if(hlCell)  hlCell.style.display   = isEye ? '' : 'none';
+    const promoCell=$('#ea_promo_cell');
+    if(promoCell) promoCell.style.display = isEye ? '' : 'none';
     // Brief + brand kit row
     const mainRow=$('#g_mainonly_row');
     if(mainRow) mainRow.style.display = isEye ? 'none' : '';
@@ -2354,6 +2363,7 @@ async function viewGenerate(){
       ptype:curPosterType(),
       topic:$('#g_topic')?$('#g_topic').value:'',
       headline:$('#ea_headline')?$('#ea_headline').value:'',
+      promo:$('#ea_promo')?$('#ea_promo').value:'',
       brief:$('#g_brief')?$('#g_brief').value:'',
       brand:$('#g_brand')?$('#g_brand').value:'',
       logoOn:$('#g_logo_on')?$('#g_logo_on').checked:true,
@@ -2379,6 +2389,7 @@ async function viewGenerate(){
     // Topic / headline
     if($('#g_topic')&&s.topic)$('#g_topic').value=s.topic;
     if($('#ea_headline')&&s.headline)$('#ea_headline').value=s.headline;
+    if($('#ea_promo')&&s.promo)$('#ea_promo').value=s.promo;
     // Brief / brand
     if($('#g_brief')&&s.brief)$('#g_brief').value=s.brief;
     if($('#g_brand')&&s.brand){$('#g_brand').value=s.brand;updLogo();}
@@ -2409,6 +2420,7 @@ async function viewGenerate(){
   // Wire remaining fields to save on change
   if($('#g_topic'))$('#g_topic').oninput=saveGenSettings;
   if($('#ea_headline'))$('#ea_headline').oninput=saveGenSettings;
+  if($('#ea_promo'))$('#ea_promo').oninput=saveGenSettings;
   if($('#g_logo_on'))$('#g_logo_on').onchange=saveGenSettings;
   if($('#g_cta_on'))$('#g_cta_on').onchange=saveGenSettings;
   if($('#g_ai_head'))$('#g_ai_head').onchange=saveGenSettings;
@@ -2570,6 +2582,8 @@ async function viewGenerate(){
     fd.append('brandPresetId',$('#g_brand').value);
     fd.append('posterType',posterType);
     if(posterType==='eyeglasses'){
+      const promoVal=$('#ea_promo')?$('#ea_promo').value.trim():'';
+      if(promoVal)fd.append('promo',promoVal);
       fd.append('eyeglassesId',$('#g_subject')?$('#g_subject').value:'');
       const er=document.querySelector('input[name="g_estyle"]:checked');
       const eStyleVal=er?er.value:'showcase';

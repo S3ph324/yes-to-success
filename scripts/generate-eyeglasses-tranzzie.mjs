@@ -188,11 +188,24 @@ const styleNote =
       `- Same productLine/tagline/ctaTag shape, spotlighting "${frameLabel}".\n` +
       headlineNote;
 
+// Active promotion — user-entered on the Generate tab; rendered VERBATIM as a
+// poster badge by the renderer. The AI must never invent its own promos.
+const PROMO = (process.env.DASHBOARD_PROMO || "").trim();
+const promoRule = PROMO
+  ? `- ACTIVE PROMOTION: "${PROMO}". This is real and will appear as a badge on
+  every poster. Mention it naturally in captions (once, near the CTA). Do not
+  alter its terms, numbers, or dates, and do not repeat it in headline,
+  productLine, or tagline — the badge already carries it.\n`
+  : `- NEVER invent promotions, discounts, sales, percentages, prices, "% OFF",
+  "SALE", free-shipping claims, or limited-time offers — in ANY field. There
+  is no active promotion unless one is explicitly provided.\n`;
+
 // Dead-phrase ban list — these are the words that make every eyewear ad on
 // the internet sound identical. Forcing the model away from them is the
 // single highest-leverage copy improvement.
 const COPY_RULES = `
 COPY CRAFT — the difference between an ad and wallpaper:
+${promoRule}
 - BANNED words/phrases (in any language, any casing): "elevate", "effortless",
   "effortlessly", "timeless", "chic", "statement", "signature look",
   "style that speaks", "stand out", "redefine", "unleash", "discover",
@@ -400,6 +413,8 @@ for (const q of posters) {
   // a matching overlay type voice so the on-poster text matches the visual
   // style of the reference (e.g. type-overlay → heavy gold echo type).
   q.stylePreset = process.env.DASHBOARD_STYLE_PRESET || "";
+  // User promotion — rendered verbatim as a badge by the renderer.
+  q.promo = PROMO;
   clean.push(q);
 }
 if (!clean.length) {

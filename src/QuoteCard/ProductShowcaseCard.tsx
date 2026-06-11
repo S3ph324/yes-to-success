@@ -48,6 +48,9 @@ export const productShowcaseCardSchema = z.object({
   // without analysis matches the previous full-scrim look.
   busyTop: z.number().min(0).max(1).default(0.75),
   busyBottom: z.number().min(0).max(1).default(0.75),
+  // User-entered promotion (e.g. "35% OFF until June 30") — rendered verbatim
+  // as a badge next to the CTA. Never AI-generated.
+  promoTag: z.string().default(""),
   bgSrc: z.string().default(""),
   aspectRatio: aspectRatioSchema,
   brandGold: z.string().default("#F5C13B"),
@@ -452,6 +455,33 @@ const AccentRule: React.FC<{ scale: number; brandRed: string; brandGold: string;
   </div>
 );
 
+/** Promo badge — user-entered promotion rendered verbatim. Red, bold, with a
+ *  slight tilt so it reads like a deliberate sticker, not body copy. */
+const PromoBadge: React.FC<{ text: string; brandRed: string; scale: number; opacity: number }> = ({
+  text, brandRed, scale, opacity,
+}) => (
+  <div
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      padding: `${Math.round(8 * scale)}px ${Math.round(18 * scale)}px`,
+      background: brandRed,
+      color: "#FFFFFF",
+      borderRadius: Math.round(9 * scale),
+      fontFamily: ARCHIVO,
+      fontWeight: 800,
+      fontSize: Math.round(17 * scale),
+      letterSpacing: "0.06em",
+      textTransform: "uppercase" as const,
+      transform: "rotate(-2deg)",
+      boxShadow: "0 4px 20px rgba(0,0,0,0.35)",
+      opacity,
+    }}
+  >
+    {text}
+  </div>
+);
+
 /** CTA chip — small tracked uppercase pill; the hero owns the hierarchy. */
 const CtaChip: React.FC<{ text: string; brandGold: string; scale: number; opacity: number }> = ({
   text, brandGold, scale, opacity,
@@ -487,6 +517,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   stylePreset,
   busyTop,
   busyBottom,
+  promoTag,
   bgSrc,
   brandGold,
   brandRed,
@@ -705,9 +736,10 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
                 {extraTagline}
               </div>
             )}
-            {ctaTag && (
-              <div style={{ marginTop: Math.round(20 * scale) }}>
-                <CtaChip text={ctaTag} brandGold={brandGold} scale={scale} opacity={fadeInLate} />
+            {(ctaTag || promoTag) && (
+              <div style={{ marginTop: Math.round(20 * scale), display: "flex", gap: Math.round(12 * scale), alignItems: "flex-start" }}>
+                {promoTag && <PromoBadge text={promoTag} brandRed={brandRed} scale={scale} opacity={fadeInLate} />}
+                {ctaTag && <CtaChip text={ctaTag} brandGold={brandGold} scale={scale} opacity={fadeInLate} />}
               </div>
             )}
           </div>
@@ -791,9 +823,10 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
                 {extraTagline}
               </div>
             )}
-            {ctaTag && (
-              <div style={{ marginTop: Math.round(16 * scale) }}>
-                <CtaChip text={ctaTag} brandGold={brandGold} scale={scale} opacity={fadeInLate} />
+            {(ctaTag || promoTag) && (
+              <div style={{ marginTop: Math.round(16 * scale), display: "flex", gap: Math.round(12 * scale), alignItems: "flex-start", justifyContent: masthead ? "center" : "flex-start" }}>
+                {promoTag && <PromoBadge text={promoTag} brandRed={brandRed} scale={scale} opacity={fadeInLate} />}
+                {ctaTag && <CtaChip text={ctaTag} brandGold={brandGold} scale={scale} opacity={fadeInLate} />}
               </div>
             )}
           </div>
@@ -841,21 +874,25 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
             top: 0,
             borderRadius: 3,
           }} />
-          {ctaTag && (
-            <div style={{
-              display: "inline-flex", alignItems: "center",
-              padding: `${Math.round(5 * scale)}px ${Math.round(16 * scale)}px`,
-              border: `2px solid ${brandGold}`,
-              color: brandGold,
-              borderRadius: 999,
-              fontFamily: ARCHIVO,
-              fontWeight: 700,
-              fontSize: Math.round(14 * scale),
-              letterSpacing: "0.16em",
-              textTransform: "uppercase" as const,
-              marginBottom: Math.round(18 * scale),
-              opacity: fadeInLate,
-            }}>{ctaTag}</div>
+          {(ctaTag || promoTag) && (
+            <div style={{ display: "flex", gap: Math.round(12 * scale), alignItems: "center", marginBottom: Math.round(18 * scale) }}>
+              {ctaTag && (
+                <div style={{
+                  display: "inline-flex", alignItems: "center",
+                  padding: `${Math.round(5 * scale)}px ${Math.round(16 * scale)}px`,
+                  border: `2px solid ${brandGold}`,
+                  color: brandGold,
+                  borderRadius: 999,
+                  fontFamily: ARCHIVO,
+                  fontWeight: 700,
+                  fontSize: Math.round(14 * scale),
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase" as const,
+                  opacity: fadeInLate,
+                }}>{ctaTag}</div>
+              )}
+              {promoTag && <PromoBadge text={promoTag} brandRed={brandRed} scale={scale} opacity={fadeInLate} />}
+            </div>
           )}
           {heroEl}
           {/* Gold accent rule below headline */}
