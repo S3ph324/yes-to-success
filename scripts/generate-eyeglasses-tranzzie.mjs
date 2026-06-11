@@ -87,7 +87,7 @@ const PRESET_WORLD = {
   "05-glass-panel-spec":
     "a frosted-glass/acrylic technical set: translucent panels, cool neutral light, precise minimal styling",
   "model-01-bold-type-overlay":
-    "high-contrast urban editorial: city textures, hard directional light, bold shadows, streetwear energy",
+    "a bright white/light-grey studio with OVERSIZED dark editorial letterforms as a graphic backdrop behind the model (huge cropped type shapes, never complete words), the model in dark high-contrast styling, fashion-poster energy",
   "model-02-elegant-hold":
     "a clean ivory/cream studio: flat warm-neutral backdrop, soft elegant light, the model HOLDING the frame up toward the camera in one hand, refined wardrobe in muted tones",
   "model-03-earthy-editorial":

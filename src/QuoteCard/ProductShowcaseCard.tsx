@@ -373,12 +373,13 @@ const voiceFor = (preset: string, layout: string): TypeVoice => {
 // Keep in sync with LIGHT_PRESETS in scripts/generate-backgrounds-jurie.mjs.
 const LIGHT_PRESETS = new Set([
   "02-minimal-pedestal", "03-type-overlay", "04-editorial-props",
-  "05-glass-panel-spec", "model-02-elegant-hold", "model-04-clean-fresh",
+  "05-glass-panel-spec", "model-01-bold-type-overlay",
+  "model-02-elegant-hold", "model-04-clean-fresh",
 ]);
 const toneFor = (preset: string): "light" | "dark" => {
   const p = preset.toLowerCase();
   if (LIGHT_PRESETS.has(p)) return "light";
-  if (/dark|cinematic|bold|earthy|dramatic/.test(p)) return "dark";
+  if (/dark|cinematic|earthy|dramatic/.test(p)) return "dark";
   if (/minimal|clean|pedestal|panel|spec|elegant|fresh|cream|white|overlay/.test(p)) return "light";
   return "dark";
 };
@@ -535,7 +536,13 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   const bandBusy = effLayout === "top" ? busyTop
     : effLayout === "bottom" ? busyBottom
     : (busyTop + busyBottom) / 2;
-  const scrimScale = 0.35 + 0.65 * Math.max(0, Math.min(1, bandBusy));
+  // Model-worn portraits: a "busy" band is usually the model's FACE, not
+  // clutter — never apply the full scrim over it.
+  const isPortrait = stylePreset.startsWith("model-");
+  const scrimScale = Math.min(
+    isPortrait ? 0.72 : 1,
+    0.35 + 0.65 * Math.max(0, Math.min(1, bandBusy)),
+  );
   const sa = (alpha: number) => +(alpha * scrimScale).toFixed(3);
   const compact = bandBusy > 0.82;
   const cs = compact ? 0.62 : 1; // hero size factor in compact mode
@@ -716,9 +723,10 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
             ? `linear-gradient(180deg, rgba(${scrimRGB},${sa(1)}) 0%, rgba(${scrimRGB},${sa(0.92)}) 32%, transparent 64%)`
             : `linear-gradient(180deg, rgba(${scrimRGB},${sa(0.97)}) 0%, rgba(${scrimRGB},${sa(0.72)}) 30%, transparent 58%)` }}
         />
-        {/* Subtle bottom fade so logo / bottom CTA read if present */}
+        {/* Subtle bottom fade so logo / bottom CTA read if present — gentler
+            on portraits so the model's chin/neck isn't swallowed */}
         <AbsoluteFill
-          style={{ background: `linear-gradient(180deg, transparent 75%, rgba(${scrimRGB},${sa(0.55)}) 100%)` }}
+          style={{ background: `linear-gradient(180deg, transparent ${isPortrait ? 82 : 75}%, rgba(${scrimRGB},${sa(isPortrait ? 0.38 : 0.55)}) 100%)` }}
         />
         {/* Logo: mirror position to bottom when layout is top — keeps it away from the text */}
         {logo && (

@@ -11,6 +11,7 @@
 import { GoogleGenAI } from "@google/genai";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { buildAspectPlan } from "./lib/aspect-plan.mjs";
 import {
   applyGcpEnv,
   projectRoot,
@@ -80,26 +81,44 @@ const eModelStyle     = process.env.DASHBOARD_EYEGLASSES_MODEL_STYLE || "outdoor
 const stylePresetKey = (process.env.DASHBOARD_STYLE_PRESET || "").toLowerCase();
 const LIGHT_PRESETS = new Set([
   "02-minimal-pedestal", "03-type-overlay", "04-editorial-props",
-  "05-glass-panel-spec", "model-02-elegant-hold", "model-04-clean-fresh",
+  "05-glass-panel-spec", "model-01-bold-type-overlay",
+  "model-02-elegant-hold", "model-04-clean-fresh",
 ]);
 const refTone = LIGHT_PRESETS.has(stylePresetKey)
   ? "light"
-  : /dark|cinematic|bold|earthy|dramatic/.test(stylePresetKey)
+  : /dark|cinematic|earthy|dramatic/.test(stylePresetKey)
     ? "dark"
     : /minimal|clean|pedestal|panel|spec|elegant|fresh|cream|white|overlay/.test(stylePresetKey)
       ? "light"
       : "dark";
+// Type-as-graphic presets: their visual identity IS oversized type in the
+// image (the references show it), so the blanket "zero readable text" rule
+// is replaced with cropped-letterform decoration.
+const TYPE_DECOR = new Set(["03-type-overlay", "model-01-bold-type-overlay"]);
+const typeDecorNote = TYPE_DECOR.has(stylePresetKey)
+  ? ` EXCEPTION — TYPE-AS-GRAPHIC (this style requires it): include OVERSIZED ` +
+    `letterform shapes as a graphic backdrop element behind/around the subject, ` +
+    `exactly like the style reference — letters cropped by the frame edge or by ` +
+    `the subject so NO complete readable word ever forms. Big abstract type ` +
+    `shapes only: no small text, no logos, no brand names, no slogans.`
+  : "";
 // Negative-space directive appended to every eyeglasses guidance prompt —
-// tone-aware so light references stay bright instead of being forced dark.
-const NEG_SPACE = refTone === "light"
-  ? `Vertical 4:5 portrait composition. HIGH-KEY and bright: keep the top ` +
+// tone-aware and aspect-aware (the composition wording must match the ratio
+// the renderer will actually output, or crops look accidental).
+const ASPECT_WORD = {
+  "1:1": "Square 1:1 composition",
+  "9:16": "Tall vertical 9:16 composition",
+  "4:5": "Vertical 4:5 portrait composition",
+};
+const NEG_SPACE = (aspect) => (refTone === "light"
+  ? `${ASPECT_WORD[aspect] || ASPECT_WORD["4:5"]}. HIGH-KEY and bright: keep the top ` +
     `~30% and bottom ~35% of the frame bright, airy and low-detail (clean ` +
     `seamless backdrop or soft gradient — negative space for a text overlay ` +
     `added later). No heavy vignettes, no moody darkness. The photo must ` +
     `contain zero readable text.`
-  : `Vertical 4:5 portrait composition. Keep the top ~30% and bottom ~35% ` +
+  : `${ASPECT_WORD[aspect] || ASPECT_WORD["4:5"]}. Keep the top ~30% and bottom ~35% ` +
     `darker and visually simple (clean negative space for a text overlay ` +
-    `added later). The photo must contain zero readable text.`;
+    `added later). The photo must contain zero readable text.`) + typeDecorNote;
 
 // ── Placement directives ──────────────────────────────────────────────────────
 const PLACEMENT_DIRECTIVE = {
@@ -343,9 +362,15 @@ console.log(
     ` in ${location}…`,
 );
 
+// Same deterministic aspect plan the renderer will use — backgrounds get
+// COMPOSED for the ratio they'll be rendered at, instead of always 4:5 and
+// then cropped (which made mixed-ratio batches look accidental).
+const ASPECT_PLAN = buildAspectPlan(process.env.DASHBOARD_ASPECT_DIST, quotes.length);
+
 for (const { q, i } of targets) {
   const fname = `bg-${String(i + 1).padStart(2, "0")}.png`;
   const outPath = path.join(bgDir, fname);
+  const targetAspect = ASPECT_PLAN ? ASPECT_PLAN[i] : (q.aspectRatio || "4:5");
   // Eyeglasses-showcase entries carry a `tagline` (the vibe/feeling — e.g.
   // "Your everyday pair, elevated.") which steers the SCENE mood better than
   // `quote` (a clean product-name line meant for on-poster type, not imagery).
@@ -373,7 +398,7 @@ for (const { q, i } of targets) {
     // which produced product-only pedestal shots in "model" batches.
     const MODEL_SHOT_WHEEL = [
       "classic head-and-shoulders portrait, model facing camera, the frames front and center",
-      "tight beauty crop: eyes and frames fill the frame, cheekbones up",
+      "close beauty crop: eyes and frames prominent, generous clean headroom above",
       "the model holding the frame up toward the camera with one hand, product in sharp focus, face soft behind it",
       "three-quarter profile portrait, model looking off-frame, the temple line of the glasses catching the light",
       "waist-up fashion stance, model mid-gesture, relaxed confident energy",
@@ -401,8 +426,11 @@ for (const { q, i } of targets) {
       `Scene context: ${q.bgPrompt}. ` +
       `The overall mood must clearly evoke: "${sceneVibe}". ` +
       `The model should look natural and aspirational — NOT staged or stiff. ` +
+      `FRAMING FOR TEXT: compose with generous clean headroom — the model's ` +
+      `face sits in the central band of the frame, NEVER crowding or cropped ` +
+      `by the top edge; the area above the head stays simple negative space. ` +
       `No text, logos, or watermarks anywhere in the image. ` +
-      NEG_SPACE;
+      NEG_SPACE(targetAspect);
   } else if (eyeglassesMode) {
     // ── Product Showcase ───────────────────────────────────────────────────
     // Hard constraints + per-poster variety directive printed first.
@@ -448,7 +476,7 @@ for (const { q, i } of targets) {
         `The scene must clearly visually evoke this feeling: "${sceneVibe}". ` +
         `No props that obscure the frame. ` +
         `No text, logos, or watermarks anywhere in the image. ` +
-        NEG_SPACE;
+        NEG_SPACE(targetAspect);
     } else {
       guidance =
         nopeopleLine +
@@ -461,7 +489,7 @@ for (const { q, i } of targets) {
         `main focal point. ` +
         `The scene must clearly visually evoke this feeling: "${sceneVibe}". ` +
         `No text, logos, or watermarks anywhere in the image. ` +
-        NEG_SPACE;
+        NEG_SPACE(targetAspect);
     }
   } else if (hasRef) {
     // ── Character (Jurie / other) with reference photos ────────────────────

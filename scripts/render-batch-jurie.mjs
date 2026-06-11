@@ -13,6 +13,7 @@ import { renderStill, selectComposition } from "@remotion/renderer";
 import fs from "node:fs/promises";
 import path from "node:path";
 import pngjs from "pngjs";
+import { buildAspectPlan } from "./lib/aspect-plan.mjs";
 import {
   projectRoot,
   resolveClient,
@@ -115,49 +116,8 @@ const POSTER_STYLES = ["cinematic"];
 // ── Aspect-ratio distribution ─────────────────────────────────────────────
 // Dashboard "Aspect ratio mix" lets the user pick e.g. 1:1 25% / 4:5 50% /
 // 9:16 25% and have the batch split that way instead of being all 4:5.
-// DASHBOARD_ASPECT_DIST is a JSON string like {"1:1":25,"4:5":50,"9:16":25}.
-// Builds a length-N array of ratios, proportionally rounded (largest-
-// remainder method) and interleaved so same-ratio posters don't cluster.
-const ASPECT_RATIOS = ["1:1", "4:5", "9:16"];
-function buildAspectPlan(distRaw, n) {
-  let dist = null;
-  try {
-    dist = JSON.parse(distRaw || "");
-  } catch {
-    /* not set / malformed — fall through to null */
-  }
-  if (!dist || typeof dist !== "object") return null;
-  const entries = Object.entries(dist).filter(
-    ([k, v]) => ASPECT_RATIOS.includes(k) && Number(v) > 0,
-  );
-  if (!entries.length) return null;
-  const total = entries.reduce((a, [, v]) => a + Number(v), 0);
-  if (total <= 0) return null;
-  const raw = entries.map(([k, v]) => [k, (Number(v) / total) * n]);
-  const buckets = raw.map(([k, r]) => ({ k, count: Math.floor(r), rem: r - Math.floor(r) }));
-  let assigned = buckets.reduce((a, b) => a + b.count, 0);
-  buckets
-    .slice()
-    .sort((a, b) => b.rem - a.rem)
-    .forEach((b) => {
-      if (assigned < n) {
-        b.count += 1;
-        assigned += 1;
-      }
-    });
-  // Interleave: always pull from whichever bucket has the most remaining,
-  // so a 25/50/25 split reads roughly 4:5,1:1,4:5,9:16,4:5,1:1,4:5,9:16…
-  const out = [];
-  const live = buckets.map((b) => ({ k: b.k, remaining: b.count }));
-  for (let i = 0; i < n; i++) {
-    live.sort((a, b) => b.remaining - a.remaining);
-    const pick = live.find((b) => b.remaining > 0);
-    if (!pick) break;
-    pick.remaining -= 1;
-    out.push(pick.k);
-  }
-  return out;
-}
+// Shared with generate-backgrounds-jurie.mjs (scripts/lib/aspect-plan.mjs)
+// so backgrounds are COMPOSED for the same ratio this step renders at.
 const ASPECT_PLAN = buildAspectPlan(process.env.DASHBOARD_ASPECT_DIST, quotes.length);
 if (ASPECT_PLAN) {
   const tally = {};
