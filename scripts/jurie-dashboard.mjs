@@ -985,6 +985,20 @@ app.post("/api/generate", extraRefUpload.fields([
   if (promo) env.DASHBOARD_PROMO = String(promo).slice(0, 40);
   if (aspectDist) env.DASHBOARD_ASPECT_DIST = String(aspectDist);
   env.JURIE_NO_OPEN = "1";
+  // Free volume space before the run (ENOSPC mid-render kills posters) and
+  // surface what's left so low-disk failures stop being a mystery.
+  if (EXPORT_BASE) {
+    const pruned = await pruneOldBatches(c);
+    if (pruned)
+      log(`🧹 Pruned ${pruned} old batch folder(s) — keeping the ${KEEP_BATCHES} newest.`);
+    try {
+      const st = await fs.statfs(EXPORT_BASE);
+      const freeGB = (Number(st.bavail) * Number(st.bsize)) / 1e9;
+      log(`💾 Volume free space: ${freeGB.toFixed(2)} GB`);
+      if (freeGB < 0.75)
+        log("⚠ Low disk space — delete old batches in the Batches tab if renders fail.");
+    } catch { /* statfs unsupported on this platform — skip the report */ }
+  }
   const child = spawn(
     "node",
     isEyeglasses
@@ -1057,6 +1071,29 @@ app.post("/api/generate", extraRefUpload.fields([
 const safeStamp = (s) => /^[0-9T:\-]+$/.test(s);
 const clientExportDir = (c) =>
   EXPORT_BASE ? path.join(EXPORT_BASE, c.id) : c.exportDir;
+
+// ── Volume retention ───────────────────────────────────────────────────────
+// Every batch lands in <exportDir>/<stamp>/ and used to stay forever — big
+// test batches eventually filled the Railway volume and renders died with
+// ENOSPC mid-write. Before each generate run, keep only the newest N batch
+// folders per client. The queue auto-prunes entries whose folder is gone.
+const KEEP_BATCHES = Math.max(1, parseInt(process.env.STUDIO_KEEP_BATCHES || "12", 10));
+async function pruneOldBatches(clientCfg) {
+  try {
+    const base = clientExportDir(clientCfg);
+    const stamps = (await fs.readdir(base))
+      .filter(safeStamp)
+      .sort()
+      .reverse();
+    const doomed = stamps.slice(KEEP_BATCHES);
+    for (const name of doomed) {
+      await fs.rm(path.join(base, name), { recursive: true, force: true }).catch(() => {});
+    }
+    return doomed.length;
+  } catch {
+    return 0; // export dir may not exist yet — nothing to prune
+  }
+}
 
 app.get("/api/batches", async (req, res) => {
   const c = await getClient(req.query.client);

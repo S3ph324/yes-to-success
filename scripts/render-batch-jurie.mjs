@@ -336,3 +336,7 @@ try {
   }
 } catch { /* ignore */ }
 console.log("Cleanup done.");
+// Exit explicitly — after a render error (e.g. ENOSPC) Remotion's headless
+// browser can keep the event loop alive, hanging the job until the
+// dashboard's 12-minute kill timer fires. Non-zero only if NOTHING rendered.
+process.exit(failed > 0 && failed >= quotes.length ? 1 : 0);
