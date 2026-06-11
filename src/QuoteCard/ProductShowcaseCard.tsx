@@ -103,6 +103,9 @@ const LOGO_POS: Record<string, React.CSSProperties> = {
 // stretches to a bold expanded statement face for campaign-style caps.
 const FRAUNCES = "'Fraunces',Georgia,serif";
 const ARCHIVO  = "'Archivo','Helvetica Neue',Arial,sans-serif";
+// High-contrast didone for masthead headlines — the "elevate your VISION"
+// reference face. Fraunces stays for the warmer editorial layouts.
+const BODONI   = "'Bodoni Moda','Fraunces',Georgia,serif";
 
 const useShowcaseFonts = () => {
   const [handle] = useState(() => delayRender("load-showcase-fonts"));
@@ -117,6 +120,16 @@ const useShowcaseFonts = () => {
         "Fraunces",
         `url(${staticFile("fonts/Fraunces-Italic.ttf")}) format("truetype")`,
         { weight: "100 900", style: "italic" },
+      ),
+      new FontFace(
+        "Bodoni Moda",
+        `url(${staticFile("fonts/BodoniModa.ttf")}) format("truetype")`,
+        { weight: "400 900", style: "normal" },
+      ),
+      new FontFace(
+        "Bodoni Moda",
+        `url(${staticFile("fonts/BodoniModa-Italic.ttf")}) format("truetype")`,
+        { weight: "400 900", style: "italic" },
       ),
       new FontFace(
         "Archivo",
@@ -153,20 +166,22 @@ const SerifHero: React.FC<{
   lineHeight?: number;
   shadow?: string;
   color?: string;
-}> = ({ text, size, gold, weight = 700, lineHeight = 1.06, shadow, color = "#FFFFFF" }) => {
+  font?: string;
+}> = ({ text, size, gold, weight = 700, lineHeight = 1.06, shadow, color = "#FFFFFF", font = FRAUNCES }) => {
   const words = sentenceCase(text).split(/\s+/);
   const accentIdx = words.length > 1 ? words.length - 1 : -1;
+  const isFraunces = font === FRAUNCES;
   return (
     <div
       style={{
-        fontFamily: FRAUNCES,
+        fontFamily: font,
         fontWeight: weight,
         fontSize: size,
         color,
         letterSpacing: "-0.01em",
         lineHeight,
         textShadow: shadow ?? "0 3px 28px rgba(0,0,0,0.75)",
-        fontVariationSettings: '"SOFT" 0, "WONK" 0',
+        ...(isFraunces ? { fontVariationSettings: '"SOFT" 0, "WONK" 0' } : {}),
       }}
     >
       {words.map((w, idx) => (
@@ -177,7 +192,7 @@ const SerifHero: React.FC<{
               ? {
                   fontStyle: "italic",
                   color: gold,
-                  fontVariationSettings: '"SOFT" 40, "WONK" 1',
+                  ...(isFraunces ? { fontVariationSettings: '"SOFT" 40, "WONK" 1' } : {}),
                 }
               : undefined
           }
@@ -623,11 +638,12 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
         return (
           <SerifHero
             text={heroText}
-            size={Math.round((isHeroShort ? (masthead ? 110 : effLayout === "center" ? 98 : 92) : (effLayout === "center" || masthead ? 64 : 60)) * cs * scale)}
+            size={Math.round((isHeroShort ? (masthead ? 112 : effLayout === "center" ? 98 : 92) : (effLayout === "center" || masthead ? 64 : 60)) * cs * scale)}
             gold={brandGold}
             color={ink}
-            weight={effLayout === "center" ? 560 : masthead ? 600 : 650}
-            lineHeight={effLayout === "center" || masthead ? 1.04 : 1.06}
+            font={masthead ? BODONI : FRAUNCES}
+            weight={effLayout === "center" ? 560 : masthead ? 700 : 650}
+            lineHeight={effLayout === "center" || masthead ? 1.02 : 1.06}
             shadow={heroShadow ?? (effLayout === "center"
               ? "0 2px 40px rgba(0,0,0,0.8), 0 0 80px rgba(0,0,0,0.4)"
               : undefined)}
@@ -780,7 +796,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
             band's measured busyness — clean art keeps showing through. */}
         <AbsoluteFill
           style={{ background: isLight
-            ? `linear-gradient(180deg, rgba(${scrimRGB},${sa(1)}) 0%, rgba(${scrimRGB},${sa(0.92)}) 32%, transparent 64%)`
+            ? `linear-gradient(180deg, rgba(${scrimRGB},${sa(0.97)}) 0%, rgba(${scrimRGB},${sa(0.82)}) 24%, transparent 48%)`
             : `linear-gradient(180deg, rgba(${scrimRGB},${sa(0.97)}) 0%, rgba(${scrimRGB},${sa(0.72)}) 30%, transparent 58%)` }}
         />
         {/* Subtle bottom fade so logo / bottom CTA read if present — gentler
