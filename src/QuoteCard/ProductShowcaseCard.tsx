@@ -519,13 +519,19 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
 
   const hasText = Boolean(heroText);
 
+  // Type-decor templates: the generated image carries its own oversized type,
+  // so the overlay must get out of the way — small bottom lockup, no big
+  // headline competing with the art, near-zero scrim.
+  const typeDecor = /type-overlay/.test(stylePreset);
+
   // Effective layout — the chosen template's signature placement wins over
   // the copy generator's rotation. Without a template, the rotation's pick
   // flips to the measurably cleaner band so text never sits on the busiest
   // part of the art.
   const presetForced = Boolean(PRESET_LAYOUT[stylePreset]);
   let effLayout = PRESET_LAYOUT[stylePreset] || layout;
-  if (!presetForced && effLayout === "bottom" && busyBottom - busyTop > 0.22) effLayout = "top";
+  if (typeDecor) effLayout = "bottom"; // references keep their own type up top
+  else if (!presetForced && effLayout === "bottom" && busyBottom - busyTop > 0.22) effLayout = "top";
   else if (!presetForced && effLayout === "top" && busyTop - busyBottom > 0.22) effLayout = "bottom";
 
   // Busyness of the band the text actually occupies → adaptive overlay:
@@ -536,16 +542,24 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   const bandBusy = effLayout === "top" ? busyTop
     : effLayout === "bottom" ? busyBottom
     : (busyTop + busyBottom) / 2;
-  // Model-worn portraits: a "busy" band is usually the model's FACE, not
-  // clutter — never apply the full scrim over it.
+  // Scrim ceilings: portraits ("busy" band = the model's FACE, not clutter),
+  // light tone in general (heavy white washes erase clean art), and
+  // type-decor templates (the image IS the design — barely touch it).
   const isPortrait = stylePreset.startsWith("model-");
+  const tone2 = toneFor(stylePreset); // needed before sa(); isLight defined below
+  const scrimCeiling = typeDecor ? 0.42
+    : isPortrait ? 0.72
+    : tone2 === "light" ? 0.85
+    : 1;
   const scrimScale = Math.min(
-    isPortrait ? 0.72 : 1,
+    scrimCeiling,
     0.35 + 0.65 * Math.max(0, Math.min(1, bandBusy)),
   );
   const sa = (alpha: number) => +(alpha * scrimScale).toFixed(3);
-  const compact = bandBusy > 0.82;
-  const cs = compact ? 0.62 : 1; // hero size factor in compact mode
+  // Compact: type-decor always (image carries the display type); otherwise
+  // when the measured band is extremely busy.
+  const compact = typeDecor || bandBusy > 0.82;
+  const cs = typeDecor ? 0.5 : compact ? 0.62 : 1; // hero size factor
 
   // Tone — light templates get bright frosted panels + dark ink type.
   const tone = toneFor(stylePreset);
@@ -638,21 +652,16 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   );
 
   // ── Logo ────────────────────────────────────────────────────────────────
+  // Light tone: the logo's white lettering vanishes on cream, and a pill box
+  // behind it read as a pasted-on sticker. Instead, ink-stamp it: render the
+  // whole mark as a dark monochrome silhouette at slightly reduced opacity —
+  // it sits IN the design like a printed mark.
   const logoShadow = isLight
-    ? "drop-shadow(0 2px 10px rgba(0,0,0,0.30))"
+    ? "brightness(0)"
     : "drop-shadow(0 3px 18px rgba(0,0,0,0.7)) drop-shadow(0 1px 4px rgba(0,0,0,0.5))";
-  // Light tone: the brand logo has white lettering, invisible on cream — sit
-  // it on a soft dark pill so it always reads.
-  const logoPillStyle: React.CSSProperties = isLight
-    ? {
-        background: "rgba(20,17,26,0.55)",
-        borderRadius: Math.round(14 * scale),
-        padding: `${Math.round(10 * scale)}px ${Math.round(16 * scale)}px`,
-        backdropFilter: "blur(4px)",
-      }
-    : {};
+  const logoAlpha = isLight ? 0.72 : 1;
   const logoEl = logo ? (
-    <div style={{ position: "absolute", ...LOGO_POS[logoPosition], margin: inset, opacity: fadeInLate, ...logoPillStyle }}>
+    <div style={{ position: "absolute", ...LOGO_POS[logoPosition], margin: inset, opacity: fadeInLate * logoAlpha }}>
       <Img
         src={logo}
         style={{
@@ -733,8 +742,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
           <div style={{
             position: "absolute",
             bottom: 0, right: 0,
-            margin: inset, opacity: fadeInLate,
-            ...logoPillStyle,
+            margin: inset, opacity: fadeInLate * logoAlpha,
           }}>
             <Img src={logo} style={{
               height: logoH, width: "auto", objectFit: "contain",

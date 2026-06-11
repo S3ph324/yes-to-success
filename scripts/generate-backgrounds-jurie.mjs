@@ -99,8 +99,11 @@ const typeDecorNote = TYPE_DECOR.has(stylePresetKey)
   ? ` EXCEPTION — TYPE-AS-GRAPHIC (this style requires it): include OVERSIZED ` +
     `letterform shapes as a graphic backdrop element behind/around the subject, ` +
     `exactly like the style reference — letters cropped by the frame edge or by ` +
-    `the subject so NO complete readable word ever forms. Big abstract type ` +
-    `shapes only: no small text, no logos, no brand names, no slogans.`
+    `the subject so NO complete readable word ever forms. The letterforms are ` +
+    `abstract background decoration ONLY: do NOT lay out a complete poster ` +
+    `title block, headline, slogan, badge, price, percentage tag, discount ` +
+    `sticker, or any number anywhere in the image. No small text, no logos, ` +
+    `no brand names.`
   : "";
 // Negative-space directive appended to every eyeglasses guidance prompt —
 // tone-aware and aspect-aware (the composition wording must match the ratio
