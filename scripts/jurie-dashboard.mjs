@@ -480,6 +480,7 @@ app.post("/api/queue/send", async (req, res) => {
   let sent = 0, failed = 0;
   const bufferPostIds = [];
   const sentFiles = [];
+  const errors = [];
 
   for (let i = 0; i < approved.length; i++) {
     const p = approved[i];
@@ -491,6 +492,9 @@ app.post("/api/queue/send", async (req, res) => {
       sent++;
     } catch (err) {
       console.warn(`Buffer send failed ${p.filename}:`, err.message);
+      // Surface WHY in the response — failures were invisible outside
+      // Railway logs, so a broken key/channel looked like a silent shrug.
+      errors.push({ filename: p.filename, error: String(err.message || err).slice(0, 300) });
       failed++;
     }
     if (i < approved.length - 1) await new Promise(r => setTimeout(r, 400));
@@ -508,7 +512,7 @@ app.post("/api/queue/send", async (req, res) => {
     entry.bufferPostIds = bufferPostIds;
     return queue;
   });
-  res.json({ ok: true, sent, failed, timestamps, bufferPostIds });
+  res.json({ ok: true, sent, failed, errors, timestamps, bufferPostIds });
 });
 
 app.delete("/api/queue/:queueId", async (req, res) => {
