@@ -285,6 +285,27 @@ const writeQueue = (clientId, data) => {
   return next;
 };
 
+// Serialises the WHOLE read-modify-write cycle per client. The write-only
+// mutex above prevents corrupted files but not lost updates: two interleaved
+// handlers (a fast approve tap racing the job-completion auto-queue, or the
+// retention prune) could both read, then the second write discarded the
+// first's change. The mutator gets the current queue; return the new queue
+// to persist it, or undefined to skip the write. Returns the mutator result.
+const _qUpdateLocks = new Map();
+const updateQueue = (clientId, mutator) => {
+  const key = String(clientId || "");
+  const run = async () => {
+    const queue = await readQueue(key);
+    const out = await mutator(queue);
+    if (out !== undefined) await writeQueue(key, out);
+    return out;
+  };
+  const prev = _qUpdateLocks.get(key) || Promise.resolve();
+  const next = prev.then(run, run);
+  _qUpdateLocks.set(key, next.then(() => {}, () => {}));
+  return next;
+};
+
 async function addBatchToQueue(clientId, batchDir, stamp) {
   try {
     const pngs = (await fs.readdir(batchDir)).filter(f => f.endsWith(".png")).sort();
@@ -309,16 +330,17 @@ async function addBatchToQueue(clientId, batchDir, stamp) {
         : (capList[i] || "");
       return { filename, caption, status: "pending" };
     });
-    const queue = await readQueue(clientId);
     const entry = {
       id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       stamp, clientId,
       createdAt: new Date().toISOString(),
       posters, sentAt: null, scheduledStart: null, spacingMinutes: 60,
     };
-    queue.unshift(entry);
-    if (queue.length > 30) queue.splice(30);
-    await writeQueue(clientId, queue);
+    await updateQueue(clientId, (queue) => {
+      queue.unshift(entry);
+      if (queue.length > 30) queue.splice(30);
+      return queue;
+    });
     return entry;
   } catch (err) {
     console.warn("addBatchToQueue error:", err.message);
@@ -390,15 +412,17 @@ app.get("/api/queue", async (req, res) => {
 app.post("/api/queue/review", async (req, res) => {
   const { client, queueId, decisions } = req.body || {};
   const VALID_STATUS = ["approved", "declined", "posted", "pending"];
-  const queue = await readQueue(client);
-  const entry = queue.find(e => e.id === queueId);
-  if (!entry) return res.status(404).json({ error: "Not found" });
-  for (const { filename, status } of (decisions || [])) {
-    if (!VALID_STATUS.includes(status)) continue;
-    const p = (entry.posters || []).find(x => x.filename === filename);
-    if (p) p.status = status;
-  }
-  await writeQueue(client, queue);
+  const found = await updateQueue(client, (queue) => {
+    const entry = queue.find(e => e.id === queueId);
+    if (!entry) return undefined; // no write
+    for (const { filename, status } of (decisions || [])) {
+      if (!VALID_STATUS.includes(status)) continue;
+      const p = (entry.posters || []).find(x => x.filename === filename);
+      if (p) p.status = status;
+    }
+    return queue;
+  });
+  if (!found) return res.status(404).json({ error: "Not found" });
   res.json({ ok: true });
 });
 
@@ -440,10 +464,13 @@ app.post("/api/queue/send", async (req, res) => {
   const channelId = BUFFER_CHANNEL[client]?.();
   if (!channelId) return res.status(500).json({ error: `No Buffer channel for ${client}` });
 
-  const queue = await readQueue(client);
-  const entry = queue.find(e => e.id === queueId);
-  if (!entry) return res.status(404).json({ error: "Queue entry not found" });
-  const approved = entry.posters.filter(p => p.status === "approved");
+  // Snapshot read — the slow Buffer calls must NOT hold the queue lock
+  // (approve taps would stall behind them). Results are merged onto the
+  // freshest queue in a short locked update afterwards.
+  const queue0 = await readQueue(client);
+  const entry0 = queue0.find(e => e.id === queueId);
+  if (!entry0) return res.status(404).json({ error: "Queue entry not found" });
+  const approved = entry0.posters.filter(p => p.status === "approved");
   if (!approved.length) return res.status(400).json({ error: "No approved posters to send" });
 
   // Build the schedule using strategy slots
@@ -452,13 +479,14 @@ app.post("/api/queue/send", async (req, res) => {
   const studioUrl = STUDIO_URL();
   let sent = 0, failed = 0;
   const bufferPostIds = [];
+  const sentFiles = [];
 
   for (let i = 0; i < approved.length; i++) {
     const p = approved[i];
-    const imageUrl = `${studioUrl}/posters/${client}/${encodeURIComponent(entry.stamp)}/${encodeURIComponent(p.filename)}`;
+    const imageUrl = `${studioUrl}/posters/${client}/${encodeURIComponent(entry0.stamp)}/${encodeURIComponent(p.filename)}`;
     try {
       const post = await bufferPost(channelId, imageUrl, p.caption, timestamps[i]);
-      p.status = "sent";
+      sentFiles.push(p.filename);
       if (post?.id) bufferPostIds.push(post.id);
       sent++;
     } catch (err) {
@@ -467,19 +495,27 @@ app.post("/api/queue/send", async (req, res) => {
     }
     if (i < approved.length - 1) await new Promise(r => setTimeout(r, 400));
   }
-  entry.sentAt = new Date().toISOString();
-  entry.strategy = strategy || "standard";
-  entry.startDate = sd;
-  entry.bufferPostIds = bufferPostIds;
-  await writeQueue(client, queue);
+  await updateQueue(client, (queue) => {
+    const entry = queue.find(e => e.id === queueId);
+    if (!entry) return undefined; // entry pruned mid-send — nothing to record
+    for (const fn of sentFiles) {
+      const p = (entry.posters || []).find(x => x.filename === fn);
+      if (p) p.status = "sent";
+    }
+    entry.sentAt = new Date().toISOString();
+    entry.strategy = strategy || "standard";
+    entry.startDate = sd;
+    entry.bufferPostIds = bufferPostIds;
+    return queue;
+  });
   res.json({ ok: true, sent, failed, timestamps, bufferPostIds });
 });
 
 app.delete("/api/queue/:queueId", async (req, res) => {
   const { client } = req.query;
-  const queue = await readQueue(client);
-  const filtered = queue.filter(e => e.id !== req.params.queueId);
-  await writeQueue(client, filtered);
+  await updateQueue(client, (queue) =>
+    queue.filter(e => e.id !== req.params.queueId),
+  );
   res.json({ ok: true });
 });
 
@@ -488,10 +524,12 @@ app.post("/api/queue/cancel", async (req, res) => {
   const { client, queueId } = req.body || {};
   const apiKey = process.env.BUFFER_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "BUFFER_API_KEY not configured" });
-  const queue = await readQueue(client);
-  const entry = queue.find(e => e.id === queueId);
-  if (!entry) return res.status(404).json({ error: "Queue entry not found" });
-  const postIds = entry.bufferPostIds || [];
+  // Snapshot read — slow Buffer deletes run unlocked; status reset merges in
+  // a short locked update afterwards.
+  const queue0 = await readQueue(client);
+  const entry0 = queue0.find(e => e.id === queueId);
+  if (!entry0) return res.status(404).json({ error: "Queue entry not found" });
+  const postIds = entry0.bufferPostIds || [];
   if (!postIds.length) return res.status(400).json({ error: "No Buffer post IDs stored — cannot cancel" });
 
   let cancelled = 0, failed = 0;
@@ -515,12 +553,16 @@ app.post("/api/queue/cancel", async (req, res) => {
     await new Promise(r => setTimeout(r, 200));
   }
   // Reset poster statuses back to approved so user can re-send
-  for (const p of entry.posters) {
-    if (p.status === "sent") p.status = "approved";
-  }
-  entry.sentAt = null;
-  entry.bufferPostIds = [];
-  await writeQueue(client, queue);
+  await updateQueue(client, (queue) => {
+    const entry = queue.find(e => e.id === queueId);
+    if (!entry) return undefined;
+    for (const p of (entry.posters || [])) {
+      if (p.status === "sent") p.status = "approved";
+    }
+    entry.sentAt = null;
+    entry.bufferPostIds = [];
+    return queue;
+  });
   res.json({ ok: true, cancelled, failed });
 });
 
@@ -1108,9 +1150,10 @@ async function pruneOldBatches(clientCfg) {
     // image URL no longer resolves.
     if (doomed.length) {
       const doomedSet = new Set(doomed);
-      const queue = await readQueue(clientCfg.id);
-      const kept = queue.filter((e) => !doomedSet.has(e.stamp));
-      if (kept.length !== queue.length) await writeQueue(clientCfg.id, kept);
+      await updateQueue(clientCfg.id, (queue) => {
+        const kept = queue.filter((e) => !doomedSet.has(e.stamp));
+        return kept.length !== queue.length ? kept : undefined;
+      });
     }
     return doomed.length;
   } catch {
@@ -1184,50 +1227,54 @@ app.post("/api/poster/tag", async (req, res) => {
   const clientCfg = await getClient(client);
   if (!clientCfg) return res.status(400).json({ error: "Unknown client" });
 
-  const queue = await readQueue(client);
-  let entry = queue.find(e => e.stamp === stamp);
-  if (!entry) {
-    // Create a queue entry for this batch on the fly.
-    try {
-      const batchDir = path.join(clientExportDir(clientCfg), stamp);
-      const pngs = (await fs.readdir(batchDir)).filter(f => f.endsWith(".png")).sort();
-      let captText = "";
-      try { captText = await fs.readFile(path.join(batchDir, "captions.txt"), "utf-8"); } catch {}
-      // Index-based caption mapping — same as addBatchToQueue (positional zip
-      // shifted captions after any failed/deleted poster).
-      const capByIdx = {};
-      const capList = [];
-      for (const block of captText.split(/^-{20,}\s*$/m)) {
-        const m = block.match(/^\s*#(\d+)\s*([\s\S]*)$/);
-        const text = (m ? m[2] : block).trim();
-        if (!text) continue;
-        capList.push(text);
-        if (m) capByIdx[parseInt(m[1], 10)] = text;
+  let fsErr = null;
+  await updateQueue(client, async (queue) => {
+    let entry = queue.find(e => e.stamp === stamp);
+    if (!entry) {
+      // Create a queue entry for this batch on the fly.
+      try {
+        const batchDir = path.join(clientExportDir(clientCfg), stamp);
+        const pngs = (await fs.readdir(batchDir)).filter(f => f.endsWith(".png")).sort();
+        let captText = "";
+        try { captText = await fs.readFile(path.join(batchDir, "captions.txt"), "utf-8"); } catch {}
+        // Index-based caption mapping — same as addBatchToQueue (positional zip
+        // shifted captions after any failed/deleted poster).
+        const capByIdx = {};
+        const capList = [];
+        for (const block of captText.split(/^-{20,}\s*$/m)) {
+          const m = block.match(/^\s*#(\d+)\s*([\s\S]*)$/);
+          const text = (m ? m[2] : block).trim();
+          if (!text) continue;
+          capList.push(text);
+          if (m) capByIdx[parseInt(m[1], 10)] = text;
+        }
+        entry = {
+          id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          stamp, clientId: client,
+          createdAt: new Date().toISOString(),
+          posters: pngs.map((fn, i) => {
+            const fm = fn.match(/^[a-z0-9_]+-(\d+)-/i);
+            const caption = fm ? (capByIdx[parseInt(fm[1], 10)] || "") : (capList[i] || "");
+            return { filename: fn, caption, status: "pending" };
+          }),
+          sentAt: null, scheduledStart: null, spacingMinutes: 60,
+        };
+        queue.unshift(entry);
+      } catch (err) {
+        fsErr = err;
+        return undefined; // no write
       }
-      entry = {
-        id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        stamp, clientId: client,
-        createdAt: new Date().toISOString(),
-        posters: pngs.map((fn, i) => {
-          const fm = fn.match(/^[a-z0-9_]+-(\d+)-/i);
-          const caption = fm ? (capByIdx[parseInt(fm[1], 10)] || "") : (capList[i] || "");
-          return { filename: fn, caption, status: "pending" };
-        }),
-        sentAt: null, scheduledStart: null, spacingMinutes: 60,
-      };
-      queue.unshift(entry);
-    } catch (err) {
-      return res.status(500).json({ error: "Could not read batch: " + err.message });
     }
-  }
-  let poster = entry.posters.find(p => p.filename === filename);
-  if (!poster) {
-    poster = { filename, caption: "", status };
-    entry.posters.push(poster);
-  } else {
-    poster.status = status;
-  }
-  await writeQueue(client, queue);
+    let poster = entry.posters.find(p => p.filename === filename);
+    if (!poster) {
+      poster = { filename, caption: "", status };
+      entry.posters.push(poster);
+    } else {
+      poster.status = status;
+    }
+    return queue;
+  });
+  if (fsErr) return res.status(500).json({ error: "Could not read batch: " + fsErr.message });
   res.json({ ok: true, status });
 });
 app.get("/posters/:client/:stamp/:file", async (req, res) => {
@@ -1276,9 +1323,10 @@ app.delete("/api/batch", async (req, res) => {
     // Remove any queue entry that references this stamp so the Queue tab
     // doesn't show broken image links after the batch folder is gone.
     try {
-      const queue = await readQueue(c.id);
-      const pruned = queue.filter(e => e.stamp !== stamp);
-      if (pruned.length !== queue.length) await writeQueue(c.id, pruned);
+      await updateQueue(c.id, (queue) => {
+        const pruned = queue.filter(e => e.stamp !== stamp);
+        return pruned.length !== queue.length ? pruned : undefined;
+      });
     } catch { /* queue cleanup is best-effort */ }
     res.json({ ok: true });
   } catch { res.status(404).json({ error: "Batch not found" }); }
