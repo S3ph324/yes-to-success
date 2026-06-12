@@ -152,7 +152,7 @@ const briefBlock = HEADLINE_IDEA
     ? `\n**SINGLE ANGLE — every poster in this batch must spotlight this angle of the product:** "${TOPIC}"\n`
     : `\n**Vary the angle across the batch** — style, comfort, durability, everyday wearability, the "main character energy" the frame gives, etc.\n`;
 
-const headlineNote = AI_HEADLINE
+const headlineNote = AI_HEADLINE && !HEADLINE_IDEA
   ? `\n- headline: A SHORT typographic hook — 2 to 5 words MAX — rendered at\n` +
     `  billboard size. It must have a HOOK: an idea, a twist, a wink — never a\n` +
     `  generic compliment. Rotate these techniques across the batch (one each):\n` +
@@ -397,7 +397,7 @@ for (const q of posters) {
     q.headline = q.headline.trim();
     // Trim to 5 words max — anything longer defeats the big-type treatment.
     const words = q.headline.split(/\s+/);
-    if (words.length > 6) q.headline = words.slice(0, 5).join(" ");
+    if (words.length > 5) q.headline = words.slice(0, 5).join(" ");
   } else {
     q.headline = "";
   }

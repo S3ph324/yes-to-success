@@ -290,11 +290,25 @@ async function addBatchToQueue(clientId, batchDir, stamp) {
     const pngs = (await fs.readdir(batchDir)).filter(f => f.endsWith(".png")).sort();
     let captText = "";
     try { captText = await fs.readFile(path.join(batchDir, "captions.txt"), "utf-8"); } catch {}
-    const captions = captText.split(/^-{20,}\s*$/m)
-      .map(s => s.replace(/^#\d+\s*/m, "").trim()).filter(Boolean);
-    const posters = pngs.map((filename, i) => ({
-      filename, caption: captions[i] || "", status: "pending",
-    }));
+    // Map captions by their #N index, and posters by the NN in the filename
+    // (client-NN-slug.png) — positional zip silently shifted every caption
+    // after a failed/deleted poster onto the wrong image.
+    const capByIdx = {};
+    const capList = [];
+    for (const block of captText.split(/^-{20,}\s*$/m)) {
+      const m = block.match(/^\s*#(\d+)\s*([\s\S]*)$/);
+      const text = (m ? m[2] : block).trim();
+      if (!text) continue;
+      capList.push(text);
+      if (m) capByIdx[parseInt(m[1], 10)] = text;
+    }
+    const posters = pngs.map((filename, i) => {
+      const fm = filename.match(/^[a-z0-9_]+-(\d+)-/i);
+      const caption = fm
+        ? (capByIdx[parseInt(fm[1], 10)] || "")
+        : (capList[i] || "");
+      return { filename, caption, status: "pending" };
+    });
     const queue = await readQueue(clientId);
     const entry = {
       id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -1089,6 +1103,15 @@ async function pruneOldBatches(clientCfg) {
     for (const name of doomed) {
       await fs.rm(path.join(base, name), { recursive: true, force: true }).catch(() => {});
     }
+    // Drop queue entries that pointed at the deleted batches — otherwise the
+    // Queue tab shows 404 images and "Send to Buffer" schedules posts whose
+    // image URL no longer resolves.
+    if (doomed.length) {
+      const doomedSet = new Set(doomed);
+      const queue = await readQueue(clientCfg.id);
+      const kept = queue.filter((e) => !doomedSet.has(e.stamp));
+      if (kept.length !== queue.length) await writeQueue(clientCfg.id, kept);
+    }
     return doomed.length;
   } catch {
     return 0; // export dir may not exist yet — nothing to prune
@@ -1170,13 +1193,26 @@ app.post("/api/poster/tag", async (req, res) => {
       const pngs = (await fs.readdir(batchDir)).filter(f => f.endsWith(".png")).sort();
       let captText = "";
       try { captText = await fs.readFile(path.join(batchDir, "captions.txt"), "utf-8"); } catch {}
-      const captions = captText.split(/^-{20,}\s*$/m)
-        .map(s => s.replace(/^#\d+\s*/m, "").trim()).filter(Boolean);
+      // Index-based caption mapping — same as addBatchToQueue (positional zip
+      // shifted captions after any failed/deleted poster).
+      const capByIdx = {};
+      const capList = [];
+      for (const block of captText.split(/^-{20,}\s*$/m)) {
+        const m = block.match(/^\s*#(\d+)\s*([\s\S]*)$/);
+        const text = (m ? m[2] : block).trim();
+        if (!text) continue;
+        capList.push(text);
+        if (m) capByIdx[parseInt(m[1], 10)] = text;
+      }
       entry = {
         id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         stamp, clientId: client,
         createdAt: new Date().toISOString(),
-        posters: pngs.map((fn, i) => ({ filename: fn, caption: captions[i] || "", status: "pending" })),
+        posters: pngs.map((fn, i) => {
+          const fm = fn.match(/^[a-z0-9_]+-(\d+)-/i);
+          const caption = fm ? (capByIdx[parseInt(fm[1], 10)] || "") : (capList[i] || "");
+          return { filename: fn, caption, status: "pending" };
+        }),
         sentAt: null, scheduledStart: null, spacingMinutes: 60,
       };
       queue.unshift(entry);
@@ -2192,7 +2228,7 @@ async function viewGenerate(){
    +'<p class="muted" style="margin:0 0 10px;font-size:11px">Pick a reference poster — the AI generates a scene with a model wearing your frame that matches this visual style.</p>'
    +(()=>{
      const MS=[
-       {v:'model-01-bold-type-overlay', label:'Bold type overlay',   desc:'Oversized headline behind model, high contrast, urban energy'},
+       {v:'model-01-bold-type-overlay', label:'Bold type overlay',   desc:'Giant cropped type behind model, bright studio, high contrast'},
        {v:'model-02-elegant-hold',      label:'Elegant product hold', desc:'Clean bg, model holding frame up, serif headline, cream palette'},
        {v:'model-03-earthy-editorial',  label:'Earthy editorial',     desc:'Textured background, dramatic close-up, earthy tones'},
        {v:'model-04-clean-fresh',       label:'Clean & fresh',        desc:'White bg, minimal, youthful model-worn editorial'},

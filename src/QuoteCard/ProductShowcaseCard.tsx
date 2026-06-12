@@ -256,7 +256,8 @@ const EchoHero: React.FC<{
   text: string;
   size: number;
   gold: string;
-}> = ({ text, size, gold }) => {
+  echoes?: boolean; // off on compact plates — they'd bleed past the plate
+}> = ({ text, size, gold, echoes = true }) => {
   const t = text.trim().toUpperCase();
   const stroke = Math.max(1.5, Math.round(size * 0.02));
   const base: React.CSSProperties = {
@@ -277,9 +278,13 @@ const EchoHero: React.FC<{
   };
   return (
     <div style={{ position: "relative" }}>
-      <div aria-hidden style={{ ...echo, top: 0, transform: "translateY(-82%)", opacity: 0.32 }}>{t}</div>
-      <div aria-hidden style={{ ...echo, top: 0, transform: "translateY(82%)", opacity: 0.18 }}>{t}</div>
-      <div style={{ ...base, position: "relative", color: gold, textShadow: "0 3px 24px rgba(0,0,0,0.55)" }}>
+      {echoes && (
+        <>
+          <div aria-hidden style={{ ...echo, top: 0, transform: "translateY(-82%)", opacity: 0.32 }}>{t}</div>
+          <div aria-hidden style={{ ...echo, top: 0, transform: "translateY(82%)", opacity: 0.18 }}>{t}</div>
+        </>
+      )}
+      <div style={{ ...base, position: "relative", color: gold, textShadow: echoes ? "0 3px 24px rgba(0,0,0,0.55)" : "none" }}>
         {t}
       </div>
     </div>
@@ -607,6 +612,15 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   const compact = typeDecor || bandBusy > 0.82;
   const cs = typeDecor ? 0.68 : compact ? 0.62 : 1; // hero size factor
 
+  // Logo placement follows the EFFECTIVE layout. render-batch used to decide
+  // from the copy generator's rotation layout — when a template override
+  // moved the text, the logo landed inside the text block.
+  const effLogoPos = effLayout === "top"
+    ? "bottom-right"
+    : (logoPosition || "top-right").startsWith("bottom")
+      ? "top-right"
+      : logoPosition;
+
   // Tone — light templates get bright frosted panels + dark ink type.
   const tone = toneFor(stylePreset);
   const isLight = tone === "light";
@@ -616,7 +630,13 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   const ink    = compact ? (isLight ? "#F7F3EC" : "#17151d") : inkBase;
   const inkSub = isLight ? "rgba(27,24,34,0.78)" : "rgba(255,255,255,0.85)";
   const inkTag = isLight ? "rgba(27,24,34,0.56)" : "rgba(255,255,255,0.62)";
-  const heroShadow = isLight ? "0 1px 2px rgba(0,0,0,0.06)" : undefined;
+  // On a plate the contrast is guaranteed — a glow would just smudge the type
+  // (dark ink + heavy black halo on a cream plate looked dirty).
+  const heroShadow = compact
+    ? "none"
+    : isLight
+      ? "0 1px 2px rgba(0,0,0,0.06)"
+      : undefined;
 
   // Hero type voice — from the selected poster style template, with a
   // layout-based fallback. One element, reused by every layout below.
@@ -629,7 +649,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
       case "campaign":
         return <CampaignHero text={heroText} size={Math.round((isHeroShort ? 80 : 52) * cs * scale)} color={ink} shadow={heroShadow} />;
       case "echo":
-        return <EchoHero text={heroText} size={Math.round((isHeroShort ? 72 : 50) * cs * scale)} gold={brandGold} />;
+        return <EchoHero text={heroText} size={Math.round((isHeroShort ? 72 : 50) * cs * scale)} gold={brandGold} echoes={!compact} />;
       case "minimal":
         return <CleanHero text={heroText} size={Math.round((isHeroShort ? 74 : 50) * cs * scale)} color={ink} gold={brandGold} shadow={heroShadow} />;
       case "spec":
@@ -727,7 +747,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
     : "drop-shadow(0 3px 18px rgba(0,0,0,0.7)) drop-shadow(0 1px 4px rgba(0,0,0,0.5))";
   const logoAlpha = isLight ? 0.72 : 1;
   const logoEl = logo ? (
-    <div style={{ position: "absolute", ...LOGO_POS[logoPosition], margin: inset, opacity: fadeInLate * logoAlpha }}>
+    <div style={{ position: "absolute", ...LOGO_POS[effLogoPos], margin: inset, opacity: fadeInLate * logoAlpha }}>
       <Img
         src={logo}
         style={{

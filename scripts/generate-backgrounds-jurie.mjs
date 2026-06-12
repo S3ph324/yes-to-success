@@ -328,10 +328,12 @@ try {
 const ai = new GoogleGenAI({ vertexai: true, project, location });
 const REF_MODEL = process.env.REF_MODEL || "gemini-2.5-flash-image";
 
-const STYLE =
+// Aspect-aware (same plan the renderer uses) so mixed-ratio batches are
+// composed for their target crop instead of always 4:5.
+const STYLE = (aspect) =>
   "Cinematic candid documentary photograph, natural available light, " +
   "shallow depth of field, realistic, photojournalistic. Subject NOT " +
-  "looking at the camera. Vertical 4:5 portrait composition. Keep the top " +
+  `looking at the camera. ${ASPECT_WORD[aspect] || ASPECT_WORD["4:5"]}. Keep the top ` +
   "~30% and bottom ~35% darker and visually simple (clean negative space " +
   "for a text overlay that is added later). " +
   "ABSOLUTELY NO text anywhere in the image: no letters, words, numbers, " +
@@ -501,13 +503,13 @@ for (const { q, i } of targets) {
       `keep their face, hair, and identity perfectly consistent and clearly ` +
       `recognizable. Place them in this scene: ${q.bgPrompt}. ` +
       `The scene must clearly visually express this message so a viewer ` +
-      `instantly gets it: "${q.quote}". ${STYLE}`;
+      `instantly gets it: "${q.quote}". ${STYLE(targetAspect)}`;
   } else {
     // ── Scene-only (no character, no eyeglasses) ───────────────────────────
     guidance =
       `Create a photograph of this scene: ${q.bgPrompt}. ` +
       `It must clearly visually express this message so a viewer instantly ` +
-      `gets it: "${q.quote}". ${STYLE}`;
+      `gets it: "${q.quote}". ${STYLE(targetAspect)}`;
   }
   const t0 = Date.now();
   let buf = null;

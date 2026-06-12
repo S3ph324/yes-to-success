@@ -214,14 +214,12 @@ for (const q of quotes) {
         brandGold: brand.brandGold,
         brandRed: brand.brandRed,
         logoSrc: brand.logoSrc,
-        // For "top" layout the logo is repositioned server-side (bottom-right)
-        // to avoid clashing with the top-panel text. For others, respect the
-        // brand kit setting but keep it to a corner position.
-        logoPosition: q.layout === "top"
-          ? "bottom-right"
-          : (brand.logoPosition && brand.logoPosition.includes("right")
-            ? brand.logoPosition
-            : "top-right"),
+        // The card repositions the logo itself based on its EFFECTIVE layout
+        // (template overrides can change placement after this point) — just
+        // pass the brand preference, kept to a right-side corner.
+        logoPosition: brand.logoPosition && brand.logoPosition.includes("right")
+          ? brand.logoPosition
+          : "top-right",
         logoSize: Math.min(brand.logoSize, 0.1),
       }
     : {
@@ -324,16 +322,18 @@ try {
   }
 } catch { /* ignore */ }
 
-// Delete the quotes JSON file (it lives in out/ and is no longer needed)
-fs.rm(quotesPath, { force: true }).catch(() => {});
+// Delete the quotes JSON file (it lives in out/ and is no longer needed).
+// Awaited — the explicit process.exit below would cancel a floating promise.
+await fs.rm(quotesPath, { force: true }).catch(() => {});
 
 // Sweep any old JSON files from out/ (from previous crashed runs)
 try {
   const outFiles = await fs.readdir(path.join(projectRoot, "out"));
-  for (const f of outFiles) {
-    if (f.endsWith(".json") || f.endsWith(".txt"))
-      fs.rm(path.join(projectRoot, "out", f), { force: true }).catch(() => {});
-  }
+  await Promise.allSettled(
+    outFiles
+      .filter((f) => f.endsWith(".json") || f.endsWith(".txt"))
+      .map((f) => fs.rm(path.join(projectRoot, "out", f), { force: true })),
+  );
 } catch { /* ignore */ }
 console.log("Cleanup done.");
 // Exit explicitly — after a render error (e.g. ENOSPC) Remotion's headless
