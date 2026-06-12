@@ -364,7 +364,7 @@ const STUDIO_URL = () =>
 //   new required: schedulingType, mode, assets: []
 //   response: inline fragment ... on PostActionSuccess
 async function bufferPost(channelId, imageUrl, text, dueAt) {
-  const r = await fetch("https://graph.buffer.com", {
+  const r = await fetch("https://api.buffer.com", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${process.env.BUFFER_API_KEY}`,
@@ -539,7 +539,7 @@ app.post("/api/queue/cancel", async (req, res) => {
   let cancelled = 0, failed = 0;
   for (const postId of postIds) {
     try {
-      const r = await fetch("https://graph.buffer.com", {
+      const r = await fetch("https://api.buffer.com", {
         method: "POST",
         headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
