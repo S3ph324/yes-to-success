@@ -897,12 +897,29 @@ let job = null;
 let jobTimer = null; // auto-kill timer — prevents permanent lock on hung Gemini calls
 const JOB_TIMEOUT_MS = 12 * 60 * 1000; // 12 minutes max per job
 
-// Force-clear a stuck lock (called by the UI "Unlock" button).
+// ── Generation queue ────────────────────────────────────────────────────────
+// Generate requests submitted while a batch is running wait here and start
+// automatically (FIFO) when the current job finishes — fire-and-forget
+// batching from the Generate tab.
+const GEN_QUEUE_MAX = 5;
+const genQueue = []; // [{ id, label, spec }]
+
+// Force-clear a stuck lock (called by the UI "Unlock" button). Also drops any
+// queued generations — "Unlock" means "full reset".
 app.post("/api/clear-job", (_q, res) => {
   if (jobTimer) { clearTimeout(jobTimer); jobTimer = null; }
   if (job?.child) { try { job.child.kill("SIGTERM"); } catch {} }
   if (job) { job.running = false; job.code = -99; }
+  genQueue.length = 0;
   res.json({ ok: true });
+});
+
+// Drop all queued (not-yet-started) generations. The running batch continues.
+app.post("/api/genqueue/clear", (_q, res) => {
+  const dropped = genQueue.length;
+  genQueue.length = 0;
+  if (dropped) log(`🗑 Cleared ${dropped} queued generation(s).`);
+  res.json({ ok: true, dropped });
 });
 
 const sse = new Set();
@@ -931,6 +948,8 @@ app.get("/api/status", (_q, res) =>
     running: !!job?.running,
     client: job?.client || "",
     code: job?.code ?? null,
+    queued: genQueue.length,
+    queuedLabels: genQueue.map((q) => q.label),
   }),
 );
 // Per-batch one-off reference photos uploaded from the Generate tab.
@@ -956,8 +975,6 @@ app.post("/api/generate", extraRefUpload.fields([
   { name: "extraRef", maxCount: 8 },
   { name: "styleRef", maxCount: 1 },
 ]), async (req, res) => {
-  if (job?.running)
-    return res.status(409).json({ error: "A batch is already running." });
   const {
     client,
     topic,
@@ -1000,14 +1017,12 @@ app.post("/api/generate", extraRefUpload.fields([
   const glassesId = String(eyeglassesId || "");
   const glassesStyle = String(eyeglassesStyle || "showcase");
 
-  job = { running: true, client, log: [], code: null };
-  log(
+  const header =
     `▶ [${c.label}] ${n} ${isEyeglasses ? "eyeglasses showcase " : ""}poster(s) about "${t}"` +
-      (isEyeglasses ? ` · frame ${glassesId || "(none selected)"}` : "") +
-      (extraRefPaths.length ? ` · ${extraRefPaths.length} extra ref(s)` : "") +
-      (useLogo === "1" ? " · with logo" : " · no logo") +
-      "…",
-  );
+    (isEyeglasses ? ` · frame ${glassesId || "(none selected)"}` : "") +
+    (extraRefPaths.length ? ` · ${extraRefPaths.length} extra ref(s)` : "") +
+    (useLogo === "1" ? " · with logo" : " · no logo") +
+    "…";
   const env = { ...process.env };
   // Pass the persistent-data base path so child scripts read config from the
   // Railway volume (PERSIST_BASE/config/) instead of the Docker-image snapshot.
@@ -1041,10 +1056,40 @@ app.post("/api/generate", extraRefUpload.fields([
   if (promo) env.DASHBOARD_PROMO = String(promo).slice(0, 40);
   if (aspectDist) env.DASHBOARD_ASPECT_DIST = String(aspectDist);
   env.JURIE_NO_OPEN = "1";
+  const spec = {
+    client,
+    clientCfg: c,
+    header,
+    args: isEyeglasses
+      ? ["scripts/batch-eyeglasses-tranzzie.mjs", String(n), t]
+      : ["scripts/batch-jurie.mjs", "--client", client, String(n), t],
+    env,
+  };
+  const label = `${c.label} · ${n} poster(s)` + (t ? ` · "${t.slice(0, 40)}"` : "");
+  // Busy → queue the request instead of rejecting it; it starts automatically
+  // when the current batch finishes.
+  if (job?.running) {
+    if (genQueue.length >= GEN_QUEUE_MAX)
+      return res.status(429).json({ error: `Generation queue is full (${GEN_QUEUE_MAX} waiting). Try again later.` });
+    genQueue.push({ id: `g-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, label, spec });
+    log(`⏳ Queued: ${label} — position ${genQueue.length} in line.`);
+    return res.json({ ok: true, queued: true, position: genQueue.length });
+  }
+  startGenJob(spec);
+  res.json({ ok: true, queued: false });
+});
+
+// Spawn one generation batch and wire its lifecycle. When it exits, the next
+// queued spec (if any) starts automatically.
+function startGenJob(spec) {
+  const { client, clientCfg, header, args, env } = spec;
+  job = { running: true, client, log: [], code: null };
+  log(header);
   // Free volume space before the run (ENOSPC mid-render kills posters) and
   // surface what's left so low-disk failures stop being a mystery.
-  if (EXPORT_BASE) {
-    const pruned = await pruneOldBatches(c);
+  const preflight = (async () => {
+    if (!EXPORT_BASE) return;
+    const pruned = await pruneOldBatches(clientCfg);
     if (pruned)
       log(`🧹 Pruned ${pruned} old batch folder(s) — keeping the ${KEEP_BATCHES} newest.`);
     try {
@@ -1054,74 +1099,71 @@ app.post("/api/generate", extraRefUpload.fields([
       if (freeGB < 0.75)
         log("⚠ Low disk space — delete old batches in the Batches tab if renders fail.");
     } catch { /* statfs unsupported on this platform — skip the report */ }
-  }
-  const child = spawn(
-    "node",
-    isEyeglasses
-      ? ["scripts/batch-eyeglasses-tranzzie.mjs", String(n), t]
-      : ["scripts/batch-jurie.mjs", "--client", client, String(n), t],
-    { cwd: projectRoot, env },
-  );
-  job.child = child;
-  const onData = (b) =>
-    String(b)
-      .split(/\r?\n/)
-      .filter(Boolean)
-      .forEach(log);
-  child.stdout.on("data", onData);
-  child.stderr.on("data", onData);
-  // Auto-kill if job hangs for more than 12 minutes (e.g. stalled Gemini call).
-  if (jobTimer) clearTimeout(jobTimer);
-  jobTimer = setTimeout(() => {
-    if (job?.running) {
-      log("⚠ Job timed out after 12 min — killing process. You can generate again.");
-      try { child.kill("SIGTERM"); } catch {}
+  })();
+  preflight.catch(() => {}).then(() => {
+    if (!job?.running) return; // cleared while pruning
+    const child = spawn("node", args, { cwd: projectRoot, env });
+    job.child = child;
+    const onData = (b) =>
+      String(b)
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .forEach(log);
+    child.stdout.on("data", onData);
+    child.stderr.on("data", onData);
+    // Auto-kill if job hangs for more than 12 minutes (e.g. stalled Gemini call).
+    if (jobTimer) clearTimeout(jobTimer);
+    jobTimer = setTimeout(() => {
+      if (job?.running) {
+        log("⚠ Job timed out after 12 min — killing process. You can generate again.");
+        try { child.kill("SIGTERM"); } catch {}
+        job.running = false;
+        job.code = -1;
+        jobTimer = null;
+      }
+    }, JOB_TIMEOUT_MS);
+    child.on("exit", async (code) => {
+      if (jobTimer) { clearTimeout(jobTimer); jobTimer = null; }
       job.running = false;
-      job.code = -1;
-      jobTimer = null;
-    }
-  }, JOB_TIMEOUT_MS);
-  child.on("exit", async (code) => {
-    if (jobTimer) { clearTimeout(jobTimer); jobTimer = null; }
-    job.running = false;
-    job.code = code;
-    if (code === 0) {
-      // Verify files were actually written — batch can exit 0 on silent Gemini failures.
-      let written = 0;
-      try {
-        const clientCfg = await getClient(client);
-        if (clientCfg) {
+      job.code = code;
+      if (code === 0) {
+        // Verify files were actually written — batch can exit 0 on silent Gemini failures.
+        let written = 0;
+        try {
           const expDir = clientExportDir(clientCfg);
           const stamps = (await fs.readdir(expDir)).filter(safeStamp).sort().reverse();
           if (stamps[0]) {
             written = (await fs.readdir(path.join(expDir, stamps[0])))
               .filter((f) => f.endsWith(".png")).length;
           }
-        }
-      } catch { /* filesystem unavailable — still show done */ }
-      if (written > 0) {
-        log(`✓ Done — ${written} poster(s) ready. Added to Queue for review.`);
-        // Auto-add to queue for approval before posting.
-        try {
-          const clientCfg = await getClient(client);
-          if (clientCfg) {
+        } catch { /* filesystem unavailable — still show done */ }
+        if (written > 0) {
+          log(`✓ Done — ${written} poster(s) ready. Added to Queue for review.`);
+          // Auto-add to queue for approval before posting.
+          try {
             const expDir = clientExportDir(clientCfg);
             const stamps2 = (await fs.readdir(expDir)).filter(safeStamp).sort().reverse();
             if (stamps2[0]) {
               await addBatchToQueue(client, path.join(expDir, stamps2[0]), stamps2[0]);
               log("📋 Batch added to Queue tab — review and schedule from there.");
             }
-          }
-        } catch (qErr) { console.warn("Queue add error:", qErr.message); }
+          } catch (qErr) { console.warn("Queue add error:", qErr.message); }
+        } else {
+          log("✓ Done. Check Batches tab (no PNGs found — Gemini may have had an error above).");
+        }
       } else {
-        log("✓ Done. Check Batches tab (no PNGs found — Gemini may have had an error above).");
+        log(`✗ Exited (${code}). Check the log above for the error.`);
       }
-    } else {
-      log(`✗ Exited (${code}). Check the log above for the error.`);
-    }
+      // Chain the next queued generation (regardless of this one's outcome).
+      const nxt = genQueue.shift();
+      if (nxt) {
+        log(`▶ Starting queued batch: ${nxt.label} (${genQueue.length} more waiting)…`);
+        try { startGenJob(nxt.spec); }
+        catch (e) { log(`✗ Queued batch failed to start: ${e.message}`); }
+      }
+    });
   });
-  res.json({ ok: true });
-});
+}
 
 // ── Batches / posters (per client export dir) ─────────────────────────────
 const safeStamp = (s) => /^[0-9T:\-]+$/.test(s);
@@ -2330,6 +2372,9 @@ async function viewGenerate(){
    +'<div style="margin:14px 0 0;display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap">'
    +'<div style="flex:0 0 110px"><label style="font-size:11px;display:block;margin-bottom:5px">Number of posters</label><input id="g_count" type="number" min="1" max="200" value="8" style="width:100%;text-align:center;font-size:15px;padding:12px 8px"></div>'
    +'<button class="go" id="g_go" style="align-self:flex-end">Generate posters</button>'
+   +'<span id="g_qinfo" style="display:none;align-items:center;gap:8px">'
+   +'<span class="pill" id="g_qcount" style="background:rgba(232,182,74,.15);color:var(--gold)">⏳ 0 queued</span>'
+   +'<button class="sec" id="g_qclear" style="font-size:11px;padding:5px 10px">🗑 Clear queue</button></span>'
    +'<span id="g_unlock" style="display:none"><button class="sec" id="g_unlock_btn" style="border-color:var(--red);color:var(--red)">⚠ Unlock stuck job</button>'
    +'<span class="muted" style="font-size:12px">Another job appears stuck. Click to force-clear the lock.</span></span>'
    +'</div>'
@@ -2677,14 +2722,30 @@ async function viewGenerate(){
       if(phase==='render')return 62+35*(i/n);}
     if(line.indexOf('✓ Done')>-1)return 100;
     return -1;}
-  // Check if a job is already running (e.g. user refreshed mid-job or lock is stuck).
+  // Generation-queue badge: shows "⏳ N queued" + a clear button while
+  // batches are waiting behind the running one.
+  function updateQInfo(s){
+    const el=$('#g_qinfo');if(!el)return;
+    const n=(s&&s.queued)||0;
+    el.style.display=n>0?'inline-flex':'none';
+    if(n>0)$('#g_qcount').textContent='⏳ '+n+' queued';
+  }
+  // Check if a job is already running (e.g. user refreshed mid-job or lock is
+  // stuck). The button stays ENABLED — pressing it queues another batch.
   api('/api/status').then(s=>{
-    if(s.running){$('#g_go').disabled=true;$('#g_unlock').style.display='inline-flex';$('#g_unlock').style.gap='10px';$('#g_unlock').style.alignItems='center';}
+    if(s.running){$('#g_unlock').style.display='inline-flex';$('#g_unlock').style.gap='10px';$('#g_unlock').style.alignItems='center';}
+    updateQInfo(s);
   });
   $('#g_unlock_btn').onclick=async()=>{
     await fetch('/api/clear-job',{method:'POST'});
-    $('#g_go').disabled=false;$('#g_unlock').style.display='none';
+    $('#g_go').disabled=false;$('#g_unlock').style.display='none';updateQInfo({queued:0});
     toast('Lock cleared — you can generate again.');
+  };
+  $('#g_qclear').onclick=async()=>{
+    const r=await fetch('/api/genqueue/clear',{method:'POST'});
+    const d=await r.json().catch(()=>({}));
+    updateQInfo({queued:0});
+    toast('Cleared '+(d.dropped||0)+' queued batch(es). The running batch continues.');
   };
   $('#g_go').onclick=async()=>{
     saveGenSettings();
@@ -2761,43 +2822,79 @@ async function viewGenerate(){
         }catch(e){console.warn('Could not fetch poster preset:',e);}
       }
     }
-    $('#g_go').disabled=true;phase='';
+    $('#g_go').disabled=true; // brief — re-enabled as soon as the server answers
+    const r=await fetch('/api/generate',{method:'POST',body:fd});
+    const d=await r.json().catch(()=>({}));
+    $('#g_go').disabled=false;
+    if(!r.ok){
+      const err=d.error||'Failed to start';
+      toast(err,true);
+      return;
+    }
+    if(d.queued){
+      // A batch is already running — this one waits its turn. Don't touch the
+      // running batch's log/progress; just surface the queue state. If the
+      // page isn't following the running job (e.g. after a refresh), attach.
+      toast('⏳ Added to generation queue — position '+d.position);
+      updateQInfo({queued:d.position});
+      if(!es)connectGenSSE(false);
+      return;
+    }
+    // Started now — reset the job UI and attach a fresh SSE.
+    phase='';
     $('#g_log').style.display='block';$('#g_log').textContent='';
     $('#g_prog').style.display='block';
     const gr=$('#g_result');if(gr){gr.style.display='none';gr.innerHTML='';}
     $('#g_bar').style.background='linear-gradient(90deg,var(--gold),#ffe27a)';setProg(2,false);
-    // Close any previous SSE before firing the request. We open the NEW SSE
-    // only after the server confirms the job started — prevents the server
-    // replaying the previous job's "✗ Exited" log to a pre-connected SSE,
-    // which was re-enabling the Generate button before the new job ran
-    // (root cause of the stuck-lock / 409 loop).
-    es&&es.close();es=null;
-    const r=await fetch('/api/generate',{method:'POST',body:fd});
-    if(!r.ok){
-      const err=(await r.json().catch(()=>({}))).error||'Failed to start';
-      toast(err,true);$('#g_go').disabled=false;$('#g_prog').style.display='none';
-      if(err.indexOf('already running')>-1){$('#g_unlock').style.display='inline-flex';$('#g_unlock').style.gap='10px';$('#g_unlock').style.alignItems='center';}
-      return;
-    }
-    // Job confirmed started — NOW connect SSE. Server log is fresh/empty so
-    // no stale exit line can fire and prematurely re-enable the button.
+    connectGenSSE(true);
+  };
+  // SSE wiring for the generation log. fresh=true closes any previous stream
+  // first (new job, clean log); fresh=false attaches to a stream already in
+  // progress (queued submit after a page refresh).
+  function connectGenSSE(fresh){
+    if(fresh){es&&es.close();es=null;}
+    if(es)return;
+    $('#g_log').style.display='block';$('#g_prog').style.display='block';
     es=new EventSource('/api/log');
     let _sseErrCount=0;
     es.onerror=()=>{
       _sseErrCount++;
       if(_sseErrCount>=3){
-        api('/api/status').then(s=>{if(s&&!s.running){es&&es.close();es=null;$('#g_go').disabled=false;$('#g_unlock').style.display='none';}});
+        api('/api/status').then(s=>{if(s&&!s.running&&!(s.queued>0)){es&&es.close();es=null;$('#g_unlock').style.display='none';updateQInfo(s);}});
       }
     };
-    es.onmessage=ev=>{_sseErrCount=0;const line=JSON.parse(ev.data),L=$('#g_log');
+    es.onmessage=async ev=>{_sseErrCount=0;const line=JSON.parse(ev.data),L=$('#g_log');
       L.textContent+=line+'\\n';L.scrollTop=L.scrollHeight;
-      if(line.indexOf('✗ Exited')>-1||line.indexOf('⚠ Job timed out')>-1){setProg(100,true);es.close();es=null;$('#g_go').disabled=false;$('#g_unlock').style.display='none';return;}
+      if(line.indexOf('⏳ Queued:')>-1||line.indexOf('Cleared ')>-1){api('/api/status').then(updateQInfo);return;}
+      if(line.indexOf('▶ Starting queued batch')>-1){
+        // Next batch begins — reset progress for it, keep streaming.
+        phase='';setProg(2,false);
+        $('#g_bar').style.background='linear-gradient(90deg,var(--gold),#ffe27a)';
+        api('/api/status').then(updateQInfo);
+        return;
+      }
+      if(line.indexOf('✗ Exited')>-1||line.indexOf('⚠ Job timed out')>-1){
+        setProg(100,true);
+        const s=await api('/api/status').catch(()=>null);
+        updateQInfo(s);
+        if(s&&(s.running||s.queued>0)){toast('Batch failed ✗ — continuing with the queued batch',true);return;}
+        es&&es.close();es=null;$('#g_unlock').style.display='none';return;
+      }
       const p=progFrom(line);if(p>=0)setProg(p,false);
-      if(line.indexOf('✓ Done')>-1){es.close();es=null;$('#g_go').disabled=false;$('#g_unlock').style.display='none';
+      if(line.indexOf('✓ Done')>-1){
         const bad=line.indexOf('no PNGs found')>-1;
+        const s=await api('/api/status').catch(()=>null);
+        updateQInfo(s);
+        if(s&&(s.running||s.queued>0)){
+          // More batches behind this one — stay on the stream, no tab switch.
+          toast(bad?'⚠ Done but no posters found — next batch starting':'Batch complete \\u2713 — next queued batch starting…',bad);
+          if(!bad)showLatestBatch();
+          return;
+        }
+        es&&es.close();es=null;$('#g_unlock').style.display='none';
         toast(bad?'⚠ Done but no posters found — check log':'Batch complete \\u2713 — check Queue tab',bad);
         if(!bad){showLatestBatch();setTimeout(()=>{TAB='queue';render();},2500);}}};
-  };
+  }
 }
 async function showLatestBatch(){
   const wrap=$('#g_result');if(!wrap)return;
