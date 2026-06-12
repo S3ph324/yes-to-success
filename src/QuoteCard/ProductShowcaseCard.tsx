@@ -51,6 +51,11 @@ export const productShowcaseCardSchema = z.object({
   // User-entered promotion (e.g. "35% OFF until June 30") — rendered verbatim
   // as a badge next to the CTA. Never AI-generated.
   promoTag: z.string().default(""),
+  // Editorial furniture — brand label + poster index ("Nº 03 — 08") rendered
+  // as a hairline header device on spec/minimal/masthead posters.
+  brandTag: z.string().default(""),
+  posterIndex: z.number().int().min(0).default(0),
+  posterTotal: z.number().int().min(0).default(0),
   bgSrc: z.string().default(""),
   aspectRatio: aspectRatioSchema,
   brandGold: z.string().default("#F5C13B"),
@@ -349,12 +354,14 @@ const SpecHero: React.FC<{ text: string; size: number; scale: number; color?: st
     <div
       style={{
         fontFamily: ARCHIVO,
-        fontWeight: 700,
+        fontWeight: 800,
         fontSize: size,
-        letterSpacing: "0.18em",
+        // Large caps need far less tracking than small caps — 0.18em at
+        // headline scale read airy and flat.
+        letterSpacing: "0.06em",
         textTransform: "uppercase" as const,
         color,
-        lineHeight: 1.3,
+        lineHeight: 1.12,
         textShadow: shadow ?? "0 2px 18px rgba(0,0,0,0.7)",
       }}
     >
@@ -423,6 +430,55 @@ const PRESET_LAYOUT: Record<string, "bottom" | "top" | "center"> = {
   "model-04-clean-fresh":        "top",
   "model-05-outdoor-cinematic":  "bottom",
 };
+
+/** Editorial furniture — hairline header row: tracked brand label left,
+ *  "Nº 03 — 08" index right. The kind of technical-depth device editorial
+ *  design uses to make a layout read considered instead of generated. */
+const Furniture: React.FC<{
+  brandTag: string;
+  idx: number;
+  total: number;
+  scale: number;
+  color: string;
+  line: string;
+}> = ({ brandTag, idx, total, scale, color, line }) => (
+  <div
+    style={{
+      borderBottom: `1px solid ${line}`,
+      paddingBottom: Math.round(9 * scale),
+      marginBottom: Math.round(20 * scale),
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "baseline",
+      gap: Math.round(12 * scale),
+    }}
+  >
+    <span style={{
+      fontFamily: ARCHIVO,
+      fontWeight: 600,
+      fontSize: Math.round(13 * scale),
+      letterSpacing: "0.32em",
+      textTransform: "uppercase" as const,
+      color,
+      whiteSpace: "nowrap" as const,
+      overflow: "hidden",
+    }}>
+      {brandTag}
+    </span>
+    {idx > 0 && (
+      <span style={{
+        fontFamily: ARCHIVO,
+        fontWeight: 600,
+        fontSize: Math.round(13 * scale),
+        letterSpacing: "0.18em",
+        color,
+        whiteSpace: "nowrap" as const,
+      }}>
+        {`Nº ${String(idx).padStart(2, "0")}${total ? ` — ${String(total).padStart(2, "0")}` : ""}`}
+      </span>
+    )}
+  </div>
+);
 
 /** Tracked-caps kicker — small Archivo line above the hero ("THE PINK DROP"). */
 const Kicker: React.FC<{ text: string; scale: number; gold: string; color?: string }> = ({
@@ -538,6 +594,9 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   busyTop,
   busyBottom,
   promoTag,
+  brandTag,
+  posterIndex,
+  posterTotal,
   bgSrc,
   brandGold,
   brandRed,
@@ -653,7 +712,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
       case "minimal":
         return <CleanHero text={heroText} size={Math.round((isHeroShort ? 74 : 50) * cs * scale)} color={ink} gold={brandGold} shadow={heroShadow} />;
       case "spec":
-        return <SpecHero text={heroText} size={Math.round((isHeroShort ? 46 : 34) * cs * scale)} scale={scale} color={ink} line={isLight ? "rgba(27,24,34,0.5)" : "rgba(255,255,255,0.55)"} shadow={heroShadow} />;
+        return <SpecHero text={heroText} size={Math.round((isHeroShort ? 64 : 44) * cs * scale)} scale={scale} color={ink} line={isLight ? "rgba(27,24,34,0.5)" : "rgba(255,255,255,0.55)"} shadow={heroShadow} />;
       default:
         return (
           <SerifHero
@@ -671,6 +730,24 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
         );
     }
   })();
+
+  // Editorial furniture — shown on the considered, light-on-type voices
+  // (spec / minimal / masthead) where the layout benefits from a header
+  // device. Never in compact mode (the plate is the whole lockup there).
+  const showFurniture =
+    !compact &&
+    (voice === "spec" || voice === "minimal" || masthead) &&
+    Boolean((brandTag && brandTag.trim()) || posterIndex > 0);
+  const furnitureEl = showFurniture ? (
+    <Furniture
+      brandTag={(brandTag || "").toUpperCase()}
+      idx={posterIndex}
+      total={posterTotal}
+      scale={scale}
+      color={inkTag}
+      line={isLight ? "rgba(27,24,34,0.35)" : "rgba(255,255,255,0.4)"}
+    />
+  ) : null;
 
   // Compact lockup plate — solid inverted block behind the small headline so
   // it reads on ANY background without washing the art (bare small text over
@@ -690,14 +767,16 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
 
   // Supporting type — shared across layouts.
   // Descriptor: tracked-caps Archivo. Tagline: italic Fraunces, muted.
+  // Smaller + wider-tracked than before: the descriptor was nearly headline-
+  // weight, flattening the hierarchy. Micro-caps step well below the hero.
   const descriptorStyle: React.CSSProperties = {
     fontFamily: ARCHIVO,
     fontWeight: 600,
-    fontSize: Math.round(21 * scale),
-    letterSpacing: "0.18em",
+    fontSize: Math.round(17 * scale),
+    letterSpacing: "0.24em",
     textTransform: "uppercase" as const,
     color: inkSub,
-    lineHeight: 1.4,
+    lineHeight: 1.5,
   };
   const taglineStyle: React.CSSProperties = {
     fontFamily: FRAUNCES,
@@ -780,6 +859,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
               transform: `translateY(${lift}px)`,
             }}
           >
+            {furnitureEl}
             {!compact && (subText ? (
               <Kicker text={subText} scale={scale} gold={brandGold} color={inkSub} />
             ) : (
@@ -848,6 +928,7 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
               textAlign: masthead ? ("center" as const) : ("left" as const),
             }}
           >
+            {furnitureEl}
             {/* Masthead eyebrow — small italic serif line above the big type */}
             {masthead && !compact && extraTagline && (
               <div style={{

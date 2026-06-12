@@ -206,6 +206,10 @@ for (const q of quotes) {
         stylePreset: q.stylePreset || process.env.DASHBOARD_STYLE_PRESET || "",
         // User promotion (verbatim badge) — never AI-invented.
         promoTag: q.promo || process.env.DASHBOARD_PROMO || "",
+        // Editorial furniture: brand label + "Nº 03 — 08" index device.
+        brandTag: client.label || "",
+        posterIndex: i,
+        posterTotal: quotes.length,
         // Measured band busyness — drives adaptive scrims / placement / compact
         // overlay in the card. Omitted (defaults) when analysis fails.
         ...(bgStats ? { busyTop: bgStats.busyTop, busyBottom: bgStats.busyBottom } : {}),

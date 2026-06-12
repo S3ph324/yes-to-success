@@ -113,7 +113,15 @@ const ASPECT_WORD = {
   "9:16": "Tall vertical 9:16 composition",
   "4:5": "Vertical 4:5 portrait composition",
 };
-const NEG_SPACE = (aspect) => (refTone === "light"
+// Product-anatomy guard — Gemini sometimes draws a third temple arm or
+// merged/duplicated hinges. Appended to every eyeglasses guidance prompt.
+const ANATOMY_RULE =
+  " PRODUCT ANATOMY (critical): the eyeglasses must be physically correct — " +
+  "exactly TWO temple arms (one per side), ONE bridge, TWO lenses. Never " +
+  "three or more arms, never duplicated, crossed, or merged temples; hinges " +
+  "exist only at the two outer corners of the front frame. If any extra arm " +
+  "or limb appears the image is WRONG.";
+const NEG_SPACE = (aspect) => ANATOMY_RULE + " " + (refTone === "light"
   ? `${ASPECT_WORD[aspect] || ASPECT_WORD["4:5"]}. HIGH-KEY and bright: keep the top ` +
     `~30% and bottom ~35% of the frame bright, airy and low-detail (clean ` +
     `seamless backdrop or soft gradient — negative space for a text overlay ` +
