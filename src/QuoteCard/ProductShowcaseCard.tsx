@@ -817,14 +817,14 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   );
 
   // ── Logo ────────────────────────────────────────────────────────────────
-  // Light tone: the logo's white lettering vanishes on cream, and a pill box
-  // behind it read as a pasted-on sticker. Instead, ink-stamp it: render the
-  // whole mark as a dark monochrome silhouette at slightly reduced opacity —
-  // it sits IN the design like a printed mark.
+  // ALWAYS full colour (the gold mark is the brand — never recolour/monochrome
+  // it). On light tone the logo's white lettering would vanish on cream, so a
+  // tight dark edge-shadow gives the white type a crisp outline without
+  // touching its colour; dark tone keeps the soft glow it already had.
   const logoShadow = isLight
-    ? "brightness(0)"
+    ? "drop-shadow(0 0 1px rgba(0,0,0,0.7)) drop-shadow(0 0 2px rgba(0,0,0,0.55)) drop-shadow(0 1px 3px rgba(0,0,0,0.4)) drop-shadow(0 2px 12px rgba(0,0,0,0.16))"
     : "drop-shadow(0 3px 18px rgba(0,0,0,0.7)) drop-shadow(0 1px 4px rgba(0,0,0,0.5))";
-  const logoAlpha = isLight ? 0.72 : 1;
+  const logoAlpha = 1;
   const logoEl = logo ? (
     <div style={{ position: "absolute", ...LOGO_POS[effLogoPos], margin: inset, opacity: fadeInLate * logoAlpha }}>
       <Img

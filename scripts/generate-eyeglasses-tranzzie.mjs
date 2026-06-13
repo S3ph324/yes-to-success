@@ -153,20 +153,29 @@ const briefBlock = HEADLINE_IDEA
     : `\n**Vary the angle across the batch** — style, comfort, durability, everyday wearability, the "main character energy" the frame gives, etc.\n`;
 
 const headlineNote = AI_HEADLINE && !HEADLINE_IDEA
-  ? `\n- headline: A SHORT typographic hook — 2 to 5 words MAX — rendered at\n` +
-    `  billboard size. It must have a HOOK: an idea, a twist, a wink — never a\n` +
-    `  generic compliment. Rotate these techniques across the batch (one each):\n` +
-    `    1. Taglish wordplay on eyes/vision/lakad: "Clear Vision, Clear Lakad",\n` +
-    `       "Bagong Mata, Bagong Ikaw"\n` +
-    `    2. Confident flex / main-character energy: "Anlakas Maka-Main Character",\n` +
-    `       "Suot Mo, Plot Twist Mo"\n` +
-    `    3. Contrast twist: "Mukhang Mahal. Hindi Naman.", "Pang-Selfie. Pang-Forever."\n` +
-    `    4. Conversational hook: "Your Face Called.", "Na-double Take Ka Na Naman?"\n` +
-    `    5. Specific detail of THIS frame (its colour, shape, material) turned\n` +
-    `       into attitude: "Pink, Pero Power", "Round Frames, Sharp Moves"\n` +
-    `  Each headline must use a DIFFERENT technique than the previous entry.\n` +
-    `  This is SEPARATE from productLine — productLine becomes the supporting\n` +
-    `  descriptor below the big headline. Make sure they complement each other.\n`
+  ? `\n- headline: a SHORT typographic hook — 2 to 5 words MAX — rendered at\n` +
+    `  billboard size. It must carry a HOOK: an idea, a twist, a wink — never a\n` +
+    `  generic compliment. Build each from a DIFFERENT mechanism (do not repeat\n` +
+    `  a mechanism within the batch):\n` +
+    `    • Taglish wordplay on a vision/eyes word (mata, tingin, fokus, lakad)\n` +
+    `    • a confident flex stated plainly, no template\n` +
+    `    • a small contrast or expectation flip\n` +
+    `    • a line of overheard conversation / a direct address to the reader\n` +
+    `    • a concrete physical detail of THIS frame turned into attitude\n` +
+    `  BANNED HEADLINE PATTERNS — these are worn out from overuse; if a headline\n` +
+    `  matches any of these shapes, REWRITE it from a fresh angle:\n` +
+    `    – "Anlakas Maka-___" / "Maka-___" anything\n` +
+    `    – "___, Pero ___" (e.g. "Pink, Pero Power")\n` +
+    `    – "Mukhang ___. Hindi ___." or any "X. Hindi X." mirror\n` +
+    `    – "Sharp ___, Sharp ___" / "Clear ___, Clear ___" / "Bagong ___, Bagong ___"\n` +
+    `      and every other "WORD ___, WORD ___" twin-clause echo\n` +
+    `    – "Suot Mo, ___ Mo" / "___ Mo, ___ Mo"\n` +
+    `    – "Your ___ Called." / "___ Called."\n` +
+    `  No two posters in the batch may share a sentence shape, opening word, or\n` +
+    `  rhyme trick. If the line feels like a slogan you've seen on an eyewear ad,\n` +
+    `  it is too safe — write a sharper, more surprising one.\n` +
+    `  This is SEPARATE from productLine — productLine is the supporting\n` +
+    `  descriptor below the big headline; make them complement each other.\n`
   : ``;
 
 const styleNote =
