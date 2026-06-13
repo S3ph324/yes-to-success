@@ -978,6 +978,7 @@ const extraRefUpload = multer({
 app.post("/api/generate", extraRefUpload.fields([
   { name: "extraRef", maxCount: 8 },
   { name: "styleRef", maxCount: 1 },
+  { name: "shopPhoto", maxCount: 10 },
 ]), async (req, res) => {
   const {
     client,
@@ -997,6 +998,12 @@ app.post("/api/generate", extraRefUpload.fields([
     aiHeadline,
     stylePreset,
     promo,
+    // TikTok Shop product listing
+    shopSpecs,
+    shopProduct,
+    shopColor,
+    shopMaterial,
+    shopAspect,
   } = req.body || {};
   const c = await getClient(client);
   if (!c) return res.status(400).json({ error: "Unknown client" });
@@ -1004,15 +1011,27 @@ app.post("/api/generate", extraRefUpload.fields([
   let n = parseInt(count, 10);
   if (!Number.isFinite(n)) n = 8;
   n = Math.max(1, Math.min(200, n));
+  const filesMap = req.files || {};
+  // TikTok Shop product listing — Tranzzie-only; uploads product photos and
+  // composites brand cards (no AI image gen, no topic).
+  const isShop = client === "tranzzie" && posterType === "shop";
   // Topic is required for main/quote posters; optional for eyeglasses showcase
-  // (the eyeglasses content generator uses its own product-copy templates).
+  // and shop (those use product inputs instead of a topic).
   const isEyeglassesBatch = client === "tranzzie" && posterType === "eyeglasses";
-  if (!t && !isEyeglassesBatch) return res.status(400).json({ error: "Topic is required." });
+  if (!t && !isEyeglassesBatch && !isShop) return res.status(400).json({ error: "Topic is required." });
+  if (isShop && !(filesMap.shopPhoto || []).length)
+    return res.status(400).json({ error: "Upload at least one product photo." });
   if (!guard(req, res)) return;
 
-  const filesMap = req.files || {};
   const extraRefPaths = (filesMap.extraRef || []).map((f) => f.path);
   const styleRefPath  = (filesMap.styleRef  || [])[0]?.path || "";
+  // Shop product photos — convert any HEIC (iPhone) to JPEG so Remotion reads them.
+  let shopPhotoPaths = [];
+  if (isShop) {
+    shopPhotoPaths = await Promise.all(
+      (filesMap.shopPhoto || []).map((f) => convertHeicInPlace(f.path).catch(() => f.path)),
+    );
+  }
 
   // Eyeglasses showcase batches are Tranzzie-only and run a separate
   // orchestrator (different content-gen voice + reference-asset source) that
@@ -1021,12 +1040,13 @@ app.post("/api/generate", extraRefUpload.fields([
   const glassesId = String(eyeglassesId || "");
   const glassesStyle = String(eyeglassesStyle || "showcase");
 
-  const header =
-    `▶ [${c.label}] ${n} ${isEyeglasses ? "eyeglasses showcase " : ""}poster(s) about "${t}"` +
-    (isEyeglasses ? ` · frame ${glassesId || "(none selected)"}` : "") +
-    (extraRefPaths.length ? ` · ${extraRefPaths.length} extra ref(s)` : "") +
-    (useLogo === "1" ? " · with logo" : " · no logo") +
-    "…";
+  const header = isShop
+    ? `▶ [${c.label}] TikTok Shop cards for "${String(shopProduct || "product").slice(0, 40)}" · ${shopPhotoPaths.length} photo(s)…`
+    : `▶ [${c.label}] ${n} ${isEyeglasses ? "eyeglasses showcase " : ""}poster(s) about "${t}"` +
+      (isEyeglasses ? ` · frame ${glassesId || "(none selected)"}` : "") +
+      (extraRefPaths.length ? ` · ${extraRefPaths.length} extra ref(s)` : "") +
+      (useLogo === "1" ? " · with logo" : " · no logo") +
+      "…";
   const env = { ...process.env };
   // Pass the persistent-data base path so child scripts read config from the
   // Railway volume (PERSIST_BASE/config/) instead of the Docker-image snapshot.
@@ -1059,17 +1079,33 @@ app.post("/api/generate", extraRefUpload.fields([
   // as a poster badge; the AI never invents promos on its own.
   if (promo) env.DASHBOARD_PROMO = String(promo).slice(0, 40);
   if (aspectDist) env.DASHBOARD_ASPECT_DIST = String(aspectDist);
+  // TikTok Shop product-listing inputs for render-shop-tranzzie.mjs.
+  if (isShop) {
+    env.DASHBOARD_SHOP_PHOTOS = JSON.stringify(shopPhotoPaths);
+    let specArr = [];
+    try { specArr = JSON.parse(shopSpecs || "[]"); } catch {}
+    if (!Array.isArray(specArr)) specArr = String(shopSpecs || "").split(",").filter(Boolean);
+    env.DASHBOARD_SHOP_SPECS = JSON.stringify(specArr);
+    if (shopProduct) env.DASHBOARD_SHOP_PRODUCT = String(shopProduct).slice(0, 40);
+    if (shopColor) env.DASHBOARD_SHOP_COLOR = String(shopColor).slice(0, 30);
+    if (shopMaterial) env.DASHBOARD_SHOP_MATERIAL = String(shopMaterial).slice(0, 30);
+    env.DASHBOARD_SHOP_ASPECT = ["1:1", "4:5", "9:16"].includes(shopAspect) ? shopAspect : "1:1";
+  }
   env.JURIE_NO_OPEN = "1";
   const spec = {
     client,
     clientCfg: c,
     header,
-    args: isEyeglasses
-      ? ["scripts/batch-eyeglasses-tranzzie.mjs", String(n), t]
-      : ["scripts/batch-jurie.mjs", "--client", client, String(n), t],
+    args: isShop
+      ? ["scripts/render-shop-tranzzie.mjs"]
+      : isEyeglasses
+        ? ["scripts/batch-eyeglasses-tranzzie.mjs", String(n), t]
+        : ["scripts/batch-jurie.mjs", "--client", client, String(n), t],
     env,
   };
-  const label = `${c.label} · ${n} poster(s)` + (t ? ` · "${t.slice(0, 40)}"` : "");
+  const label = isShop
+    ? `${c.label} · Shop · "${String(shopProduct || "product").slice(0, 30)}"`
+    : `${c.label} · ${n} poster(s)` + (t ? ` · "${t.slice(0, 40)}"` : "");
   // Busy → queue the request instead of rejecting it; it starts automatically
   // when the current batch finishes.
   if (job?.running) {
@@ -2216,6 +2252,9 @@ async function viewGenerate(){
        +'<label class="ptype-card" data-pt="eyeglasses" style="flex:1;display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:12px 14px;border:1px solid var(--line);border-radius:10px;transition:border-color .15s,background .15s">'
        +'<input type="radio" name="g_ptype" value="eyeglasses" style="width:auto;margin:3px 0 0">'
        +'<span><b>\\ud83d\\udd76\\ufe0f Eyeglasses showcase</b><br><span class="muted" style="font-size:11px">Product-first posters built around a frame</span></span></label>'
+       +'<label class="ptype-card" data-pt="shop" style="flex:1;display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:12px 14px;border:1px solid var(--line);border-radius:10px;transition:border-color .15s,background .15s">'
+       +'<input type="radio" name="g_ptype" value="shop" style="width:auto;margin:3px 0 0">'
+       +'<span><b>\\ud83d\\udecd\\ufe0f TikTok Shop</b><br><span class="muted" style="font-size:11px">Upload product photos \\u2192 a set of listing cards</span></span></label>'
        +'</div>')
      :'')
    // ── Primary form ──
@@ -2228,6 +2267,29 @@ async function viewGenerate(){
    // Promotion — shown for Eyeglasses posters (optional); rendered verbatim
    // as a badge on the poster, never invented by the AI.
    +'<div id="ea_promo_cell" style="flex:1;display:none"><input id="ea_promo" maxlength="40" placeholder="Optional promo (e.g. 35% OFF until June 30)" style="width:100%;font-size:15px;padding:14px 16px"></div>'
+   +'</div>'
+   // ── TikTok Shop panel (shown when poster type = shop) ─────────────────────
+   +'<div id="shop_box" style="display:none;margin-bottom:18px;padding:16px 18px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:12px">'
+   +'<div class="section-label" style="margin:0 0 6px">Product photos</div>'
+   +'<p class="muted" style="margin:0 0 10px;font-size:11px">Upload 1\\u20135 clean photos of ONE product. We composite Tranzzie-branded listing cards over your real photos \\u2014 no AI redraw.</p>'
+   +'<label class="ea-drop" id="shop_drop" style="padding:22px 14px;display:block;text-align:center;border:1.5px dashed var(--line2);border-radius:10px;cursor:pointer;position:relative">'
+   +'<input type="file" id="shop_photos" accept="image/*" multiple style="position:absolute;inset:0;opacity:0;cursor:pointer">'
+   +'<span id="shop_photos_lbl" class="muted" style="font-size:13px">Click or drop product photos here</span></label>'
+   +'<div id="shop_thumbs" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px"></div>'
+   +'<div class="row" style="gap:12px;margin-top:16px">'
+   +'<div style="flex:1"><label style="font-size:11px;display:block;margin-bottom:5px">Product / model name</label><input id="shop_product" maxlength="40" placeholder="e.g. Aria" style="width:100%;padding:12px 14px"></div>'
+   +'<div style="flex:1"><label style="font-size:11px;display:block;margin-bottom:5px">Colour label</label><input id="shop_color" maxlength="30" placeholder="e.g. Black / Gold" style="width:100%;padding:12px 14px"></div>'
+   +'<div style="flex:1"><label style="font-size:11px;display:block;margin-bottom:5px">Material / finish</label><input id="shop_material" maxlength="30" placeholder="e.g. Lightweight Metal" style="width:100%;padding:12px 14px"></div>'
+   +'</div>'
+   +'<div class="section-label" style="margin:16px 0 8px">Lens specs <span class="muted" style="font-size:11px;text-transform:none;letter-spacing:0">(shown as feature icons + a spec card)</span></div>'
+   +'<div id="shop_specs" style="display:flex;flex-wrap:wrap;gap:8px">'
+   +[['anti_rad','Anti-Radiation / Blue Light'],['uv400','UV400 / UV Protection'],['photochromic','Photochromic'],['polarized','Polarized'],['anti_glare','Anti-Glare'],['anti_scratch','Anti-Scratch']]
+       .map(s=>'<label class="spec-chip" style="display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border:1px solid var(--line2);border-radius:999px;cursor:pointer;font-size:13px"><input type="checkbox" name="shop_spec" value="'+s[0]+'" style="width:auto;margin:0;accent-color:var(--gold)"> '+s[1]+'</label>').join('')
+   +'</div>'
+   +'<div class="row" style="gap:12px;margin-top:16px;align-items:flex-end">'
+   +'<div style="flex:0 0 200px"><label style="font-size:11px;display:block;margin-bottom:5px">Card aspect</label>'
+   +'<select id="shop_aspect" style="width:100%;padding:11px 12px"><option value="1:1">Square 1:1 (TikTok Shop)</option><option value="4:5">Portrait 4:5</option><option value="9:16">Vertical 9:16</option></select></div>'
+   +'</div>'
    +'</div>'
    // ── Advanced toggle (hidden for eyeglasses — settings auto-expand instead) ──
    +'<button class="adv-toggle" id="adv-btn" onclick="toggleAdv()">'
@@ -2449,20 +2511,25 @@ async function viewGenerate(){
       el.style.borderColor=r.checked?'var(--gold)':'var(--line)';
       el.style.background=r.checked?'rgba(232,182,74,.04)':'transparent';
     });
-    const isEye = curPosterType() === 'eyeglasses';
-    // Topic vs headline
+    const pt = curPosterType();
+    const isEye = pt === 'eyeglasses';
+    const isShop = pt === 'shop';
+    // Topic vs headline — both hidden in shop mode (product inputs instead).
     const secLbl=$('#g_section_label'), topicCell=$('#g_topic_cell'), hlCell=$('#ea_headline_cell');
-    if(secLbl)  secLbl.style.display  = isEye ? 'none' : '';
-    if(topicCell) topicCell.style.display = isEye ? 'none' : '';
+    if(secLbl)  secLbl.style.display  = (isEye||isShop) ? 'none' : '';
+    if(topicCell) topicCell.style.display = (isEye||isShop) ? 'none' : '';
     if(hlCell)  hlCell.style.display   = isEye ? '' : 'none';
     const promoCell=$('#ea_promo_cell');
     if(promoCell) promoCell.style.display = isEye ? '' : 'none';
-    // Brief + brand kit row
+    // Shop panel
+    const shopBox=$('#shop_box');
+    if(shopBox) shopBox.style.display = isShop ? 'block' : 'none';
+    // Brief + brand kit row — hidden for eyeglasses & shop
     const mainRow=$('#g_mainonly_row');
-    if(mainRow) mainRow.style.display = isEye ? 'none' : '';
-    // Advanced toggle button — hidden for eyeglasses; adv-body auto-opens
+    if(mainRow) mainRow.style.display = (isEye||isShop) ? 'none' : '';
+    // Advanced toggle — hidden for eyeglasses (auto-opens) & shop (not used)
     const advBtn=$('#adv-btn'), advBody=$('#adv-body');
-    if(advBtn) advBtn.style.display = isEye ? 'none' : '';
+    if(advBtn) advBtn.style.display = (isEye||isShop) ? 'none' : '';
     if(advBody) { if(isEye) advBody.classList.add('open'); else advBody.classList.remove('open'); }
     // Eyeglasses style box
     const ebox=$('#g_estyle_box');
@@ -2470,12 +2537,31 @@ async function viewGenerate(){
     // AI headline toggle — only relevant for eyeglasses showcase posters
     const aihlLbl=$('#g_aihead_label');
     if(aihlLbl) aihlLbl.style.display = isEye ? '' : 'none';
+    // Count field is irrelevant for shop (fixed 5-card set)
+    const countCell=$('#g_count')?$('#g_count').closest('div'):null;
+    if(countCell) countCell.style.opacity = isShop ? '0.4' : '1';
   }
   document.querySelectorAll('input[name="g_ptype"]').forEach(r=>{
     r.onchange=()=>{syncPtypeCards();paintSubject();saveGenSettings();};
   });
   syncPtypeCards();
   paintSubject();
+  // ── TikTok Shop photo preview + spec chips ───────────────────────────────
+  if($('#shop_photos')){
+    $('#shop_photos').onchange=()=>{
+      const fs=Array.from($('#shop_photos').files||[]).slice(0,5);
+      $('#shop_photos_lbl').textContent=fs.length?fs.length+' photo(s) selected':'Click or drop product photos here';
+      const tw=$('#shop_thumbs');tw.innerHTML='';
+      fs.forEach(f=>{const u=URL.createObjectURL(f);const d=document.createElement('div');
+        d.style.cssText='width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--line2);background:#0d0d0f';
+        d.innerHTML='<img src="'+u+'" style="width:100%;height:100%;object-fit:cover">';tw.appendChild(d);});
+    };
+  }
+  document.querySelectorAll('input[name="shop_spec"]').forEach(c=>{
+    const paint=()=>{c.closest('.spec-chip').style.borderColor=c.checked?'var(--gold)':'var(--line2)';
+      c.closest('.spec-chip').style.background=c.checked?'rgba(232,182,74,.08)':'transparent';};
+    c.onchange=paint;paint();
+  });
   // ── Eyeglasses poster-style card wiring ──────────────────────────────────
   function syncPspCards() {
     document.querySelectorAll('#ea_psp_grid .esty-img-card').forEach(el => {
@@ -2720,10 +2806,13 @@ async function viewGenerate(){
     if(/✓\\s+\\d+\\s+.*quotes in/.test(line))return 15;
     if(line.indexOf('Step 2')>-1){phase='bg';return 16;}
     if(line.indexOf('Step 3')>-1){phase='render';return 62;}
+    if(line.indexOf('Tranzzie shop card')>-1){phase='shop';return 6;}
+    if(line.indexOf('Bundling Remotion')>-1)return 12;
     const m=line.match(/\\[(\\d+)\\/(\\d+)\\]/);
     if(m){const i=+m[1],n=+m[2]||1;
       if(phase==='bg'||/\\bbg-/.test(line))return 16+44*(i/n);
-      if(phase==='render')return 62+35*(i/n);}
+      if(phase==='render')return 62+35*(i/n);
+      if(phase==='shop')return 15+80*(i/n);}
     if(line.indexOf('✓ Done')>-1)return 100;
     return -1;}
   // Generation-queue badge: shows "⏳ N queued" + a clear button while
@@ -2755,11 +2844,14 @@ async function viewGenerate(){
     saveGenSettings();
     const posterType=showEyeglasses?curPosterType():'main';
     const isEyePoster = posterType === 'eyeglasses';
+    const isShopPoster = posterType === 'shop';
+    const shopFiles = isShopPoster && $('#shop_photos') ? Array.from($('#shop_photos').files||[]).slice(0,5) : [];
+    if(isShopPoster && !shopFiles.length) return toast('Upload at least one product photo',true);
     // For eyeglasses: topic is optional headline idea; for main: required topic
     const topic = isEyePoster
       ? ($('#ea_headline')&&$('#ea_headline').value.trim() || '')
-      : ($('#g_topic').value.trim());
-    if(!isEyePoster && !topic) return toast('Enter a topic first',true);
+      : (isShopPoster ? '' : $('#g_topic').value.trim());
+    if(!isEyePoster && !isShopPoster && !topic) return toast('Enter a topic first',true);
     const fd=new FormData();
     fd.append('client',CLIENT);
     fd.append('topic',topic);
@@ -2767,7 +2859,16 @@ async function viewGenerate(){
     fd.append('briefId',$('#g_brief').value);
     fd.append('brandPresetId',$('#g_brand').value);
     fd.append('posterType',posterType);
-    if(posterType==='eyeglasses'){
+    if(posterType==='shop'){
+      shopFiles.forEach(f=>fd.append('shopPhoto',f));
+      const specs=Array.from(document.querySelectorAll('input[name="shop_spec"]:checked')).map(c=>c.value);
+      fd.append('shopSpecs',JSON.stringify(specs));
+      fd.append('shopProduct',($('#shop_product')||{}).value||'');
+      fd.append('shopColor',($('#shop_color')||{}).value||'');
+      fd.append('shopMaterial',($('#shop_material')||{}).value||'');
+      fd.append('shopAspect',($('#shop_aspect')||{}).value||'1:1');
+      fd.append('characterId','');
+    }else if(posterType==='eyeglasses'){
       const promoVal=$('#ea_promo')?$('#ea_promo').value.trim():'';
       if(promoVal)fd.append('promo',promoVal);
       fd.append('eyeglassesId',$('#g_subject')?$('#g_subject').value:'');
