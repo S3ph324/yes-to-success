@@ -480,34 +480,6 @@ const Furniture: React.FC<{
   </div>
 );
 
-/** Tracked-caps kicker — small Archivo line above the hero ("THE PINK DROP"). */
-const Kicker: React.FC<{ text: string; scale: number; gold: string; color?: string }> = ({
-  text, scale, gold, color = "rgba(255,255,255,0.82)",
-}) => (
-  <div
-    style={{
-      display: "flex",
-      alignItems: "center",
-      gap: Math.round(12 * scale),
-      marginBottom: Math.round(14 * scale),
-    }}
-  >
-    <div style={{ width: Math.round(34 * scale), height: 2, background: gold }} />
-    <div
-      style={{
-        fontFamily: ARCHIVO,
-        fontWeight: 600,
-        fontSize: Math.round(17 * scale),
-        letterSpacing: "0.22em",
-        textTransform: "uppercase" as const,
-        color,
-      }}
-    >
-      {text}
-    </div>
-  </div>
-);
-
 // ── Shared sub-components ─────────────────────────────────────────────────
 
 /** Accent rule — short premium gold bar with a red tick. (The old full-width
@@ -623,8 +595,12 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   // When a short creative headline is provided, it becomes the HERO type.
   // productLine drops to a descriptor sub-line.
   const heroText = headline || productLine;
-  const subText  = headline ? productLine : tagline;
-  const extraTagline = headline ? tagline : "";
+  // ONE supporting line only — the old lockup stacked a caps descriptor AND an
+  // italic tagline under the headline, which buried the product. Prefer the
+  // human tagline; fall back to the product line so something always supports
+  // the hook. (Short, quiet — the photo is the focus, not the copy.)
+  const subText  = (headline ? (tagline || productLine) : tagline).trim();
+  const subLine  = subText;
   const isHeroShort = heroText.length < 30; // short = can go bigger
 
   const hasText = Boolean(heroText);
@@ -765,29 +741,30 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
     </div>
   ) : heroEl;
 
-  // Supporting type — shared across layouts.
-  // Descriptor: tracked-caps Archivo. Tagline: italic Fraunces, muted.
-  // Smaller + wider-tracked than before: the descriptor was nearly headline-
-  // weight, flattening the hierarchy. Micro-caps step well below the hero.
-  const descriptorStyle: React.CSSProperties = {
-    fontFamily: ARCHIVO,
-    fontWeight: 600,
-    fontSize: Math.round(17 * scale),
-    letterSpacing: "0.24em",
-    textTransform: "uppercase" as const,
-    color: inkSub,
-    lineHeight: 1.5,
-  };
-  const taglineStyle: React.CSSProperties = {
-    fontFamily: FRAUNCES,
-    fontStyle: "italic",
-    fontWeight: 400,
-    fontSize: Math.round(23 * scale),
-    color: inkTag,
-    letterSpacing: "0.01em",
-    lineHeight: 1.45,
-    fontVariationSettings: '"SOFT" 60, "WONK" 0',
-  };
+  // The single supporting line — quiet by design so the product stays the
+  // hero. Soft italic serif for the human tagline; if it's the all-caps
+  // product line instead, drop the italic so it doesn't look broken.
+  const subLineIsCaps = subLine === subLine.toUpperCase() && /[A-Z]/.test(subLine);
+  const subLineStyle: React.CSSProperties = subLineIsCaps
+    ? {
+        fontFamily: ARCHIVO,
+        fontWeight: 600,
+        fontSize: Math.round(16 * scale),
+        letterSpacing: "0.22em",
+        textTransform: "uppercase" as const,
+        color: inkSub,
+        lineHeight: 1.5,
+      }
+    : {
+        fontFamily: FRAUNCES,
+        fontStyle: "italic",
+        fontWeight: 400,
+        fontSize: Math.round(22 * scale),
+        color: inkTag,
+        letterSpacing: "0.01em",
+        lineHeight: 1.45,
+        fontVariationSettings: '"SOFT" 60, "WONK" 0',
+      };
 
   // Tone-dependent surfaces.
   const baseFill = isLight ? "#f6f4ef" : "#0a0a0c";
@@ -860,15 +837,13 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
             }}
           >
             {furnitureEl}
-            {!compact && (subText ? (
-              <Kicker text={subText} scale={scale} gold={brandGold} color={inkSub} />
-            ) : (
+            {!compact && !subLine && (
               <AccentRule scale={scale} brandRed={brandRed} brandGold={brandGold} />
-            ))}
+            )}
             {heroBlock}
-            {!compact && extraTagline && (
-              <div style={{ ...taglineStyle, marginTop: Math.round(10 * scale) }}>
-                {extraTagline}
+            {!compact && subLine && (
+              <div style={{ ...subLineStyle, marginTop: Math.round(12 * scale) }}>
+                {subLine}
               </div>
             )}
             {(ctaTag || promoTag) && (
@@ -929,14 +904,19 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
             }}
           >
             {furnitureEl}
-            {/* Masthead eyebrow — small italic serif line above the big type */}
-            {masthead && !compact && extraTagline && (
+            {/* Masthead eyebrow — the single support line sits ABOVE the big
+                type as a small italic serif (the "elevate your VISION" look). */}
+            {masthead && !compact && subLine && (
               <div style={{
-                ...taglineStyle,
-                fontSize: Math.round(27 * scale),
+                fontFamily: FRAUNCES,
+                fontStyle: "italic",
+                fontWeight: 400,
+                fontSize: Math.round(26 * scale),
+                color: inkTag,
                 marginBottom: Math.round(2 * scale),
+                fontVariationSettings: '"SOFT" 60, "WONK" 0',
               }}>
-                {extraTagline}
+                {subLine}
               </div>
             )}
             {heroBlock}
@@ -945,18 +925,10 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
                 <AccentRule scale={scale} brandRed={brandRed} brandGold={brandGold} mb={0} />
               </div>
             )}
-            {!compact && subText && (
-              <div style={{
-                ...descriptorStyle,
-                marginTop: Math.round(masthead ? 18 : 14) * scale,
-                ...(masthead ? { fontSize: Math.round(16 * scale), letterSpacing: "0.26em" } : {}),
-              }}>
-                {subText}
-              </div>
-            )}
-            {!masthead && !compact && extraTagline && (
-              <div style={{ ...taglineStyle, marginTop: Math.round(8 * scale) }}>
-                {extraTagline}
+            {/* Non-masthead top: single quiet support line below the hero. */}
+            {!masthead && !compact && subLine && (
+              <div style={{ ...subLineStyle, marginTop: Math.round(14 * scale) }}>
+                {subLine}
               </div>
             )}
             {(ctaTag || promoTag) && (
@@ -1031,19 +1003,11 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
             </div>
           )}
           {heroBlock}
-          {/* Gold accent rule below headline */}
-          <div style={{
-            height: Math.round(3 * scale),
-            width: "45%",
-            background: `linear-gradient(90deg, ${brandGold} 0%, transparent 100%)`,
-            marginTop: Math.round(16 * scale),
-            marginBottom: Math.round(14 * scale),
-            borderRadius: 2,
-          }} />
-          {!compact && subText && <div style={descriptorStyle}>{subText}</div>}
-          {!compact && extraTagline && (
-            <div style={{ ...taglineStyle, marginTop: Math.round(9 * scale) }}>
-              {extraTagline}
+          {/* One quiet support line below the headline. The left brand bar is
+              the only accent — the gold rule that also sat here was redundant. */}
+          {!compact && subLine && (
+            <div style={{ ...subLineStyle, marginTop: Math.round(16 * scale) }}>
+              {subLine}
             </div>
           )}
         </div>
