@@ -27,6 +27,11 @@ import {
   productShowcaseCardSchema,
   calcMetaProductShowcaseCard,
 } from "./QuoteCard/ProductShowcaseCard";
+import {
+  ShopListingCard,
+  shopListingCardSchema,
+  calcMetaShopListingCard,
+} from "./QuoteCard/ShopListingCard";
 import { AppIcon, appIconSchema } from "./AppIcon/AppIcon";
 
 export const RemotionRoot: React.FC = () => {
@@ -166,6 +171,32 @@ export const RemotionRoot: React.FC = () => {
           logoSrc: "",
           logoPosition: "top-right" as const,
           logoSize: 0.085,
+        }}
+      />
+
+      <Composition
+        id="ShopListingCard"
+        component={ShopListingCard}
+        durationInFrames={60}
+        fps={30}
+        width={1080}
+        height={1080}
+        schema={shopListingCardSchema}
+        calculateMetadata={calcMetaShopListingCard}
+        defaultProps={{
+          photoSrc: "",
+          cardType: "hero" as const,
+          specs: [],
+          productName: "",
+          colorLabel: "",
+          materialLabel: "",
+          featureLine: "",
+          brandName: "Tranzzie Eyeglasses",
+          logoSrc: "",
+          logoDarkSrc: "",
+          brandGold: "#F4B400",
+          brandRed: "#E11522",
+          aspectRatio: "1:1" as const,
         }}
       />
 
