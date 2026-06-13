@@ -105,14 +105,11 @@ const typeDecorNote = TYPE_DECOR.has(stylePresetKey)
     `sticker, or any number anywhere in the image. No small text, no logos, ` +
     `no brand names.`
   : "";
-// Negative-space directive appended to every eyeglasses guidance prompt —
-// tone-aware and aspect-aware (the composition wording must match the ratio
-// the renderer will actually output, or crops look accidental).
-const ASPECT_WORD = {
-  "1:1": "Square 1:1 composition",
-  "9:16": "Tall vertical 9:16 composition",
-  "4:5": "Vertical 4:5 portrait composition",
-};
+// Negative-space directive appended to every eyeglasses guidance prompt.
+// The target aspect is now driven by imageConfig.aspectRatio on the Gemini
+// call — NOT by text. Declaring "Tall vertical 9:16 composition" in the prompt
+// made the model refuse and return no image (empty 9:16 posters), so the
+// aspect wording is deliberately gone from the text.
 // Product-anatomy guard — Gemini sometimes draws a third temple arm or
 // merged/duplicated hinges. Appended to every eyeglasses guidance prompt.
 const ANATOMY_RULE =
@@ -121,13 +118,13 @@ const ANATOMY_RULE =
   "three or more arms, never duplicated, crossed, or merged temples; hinges " +
   "exist only at the two outer corners of the front frame. If any extra arm " +
   "or limb appears the image is WRONG.";
-const NEG_SPACE = (aspect) => ANATOMY_RULE + " " + (refTone === "light"
-  ? `${ASPECT_WORD[aspect] || ASPECT_WORD["4:5"]}. HIGH-KEY and bright: keep the top ` +
+const NEG_SPACE = (_aspect) => ANATOMY_RULE + " " + (refTone === "light"
+  ? `HIGH-KEY and bright: keep the top ` +
     `~30% and bottom ~35% of the frame bright, airy and low-detail (clean ` +
     `seamless backdrop or soft gradient — negative space for a text overlay ` +
     `added later). No heavy vignettes, no moody darkness. The photo must ` +
     `contain zero readable text.`
-  : `${ASPECT_WORD[aspect] || ASPECT_WORD["4:5"]}. Keep the top ~30% and bottom ~35% ` +
+  : `Keep the top ~30% and bottom ~35% ` +
     `darker and visually simple (clean negative space for a text overlay ` +
     `added later). The photo must contain zero readable text.`) + typeDecorNote;
 
@@ -336,12 +333,12 @@ try {
 const ai = new GoogleGenAI({ vertexai: true, project, location });
 const REF_MODEL = process.env.REF_MODEL || "gemini-2.5-flash-image";
 
-// Aspect-aware (same plan the renderer uses) so mixed-ratio batches are
-// composed for their target crop instead of always 4:5.
-const STYLE = (aspect) =>
+// Aspect is driven by imageConfig.aspectRatio on the Gemini call, not text
+// (see NEG_SPACE note). The _aspect param is kept for call-site compatibility.
+const STYLE = (_aspect) =>
   "Cinematic candid documentary photograph, natural available light, " +
   "shallow depth of field, realistic, photojournalistic. Subject NOT " +
-  `looking at the camera. ${ASPECT_WORD[aspect] || ASPECT_WORD["4:5"]}. Keep the top ` +
+  `looking at the camera. Keep the top ` +
   "~30% and bottom ~35% darker and visually simple (clean negative space " +
   "for a text overlay that is added later). " +
   "ABSOLUTELY NO text anywhere in the image: no letters, words, numbers, " +
@@ -379,6 +376,11 @@ console.log(
 // COMPOSED for the ratio they'll be rendered at, instead of always 4:5 and
 // then cropped (which made mixed-ratio batches look accidental).
 const ASPECT_PLAN = buildAspectPlan(process.env.DASHBOARD_ASPECT_DIST, quotes.length);
+
+// If the model ever rejects the imageConfig param, disable it for the rest of
+// the batch (self-heals to default-square generation) so we don't burn 3
+// failed attempts per poster.
+let imageConfigOk = true;
 
 for (const { q, i } of targets) {
   const fname = `bg-${String(i + 1).padStart(2, "0")}.png`;
@@ -523,76 +525,87 @@ for (const { q, i } of targets) {
   let buf = null;
   let lastErr = "";
   const MAX_TRIES = 3;
-  for (let attempt = 1; attempt <= MAX_TRIES && !buf; attempt++) {
+  // Build the parts list once (it doesn't change per attempt): subject refs
+  // first, optional style ref, then guidance.
+  // Eyeglasses mode: the user explicitly chose this reference as the look they
+  // want, so the model must MATCH it — replicate its visual language.
+  const styleNote = styleRefPart
+    ? eyeglassesMode
+      ? " The LAST image is the STYLE REFERENCE — a finished eyeglasses " +
+        "advertisement whose look this poster must MATCH. Replicate its visual " +
+        "identity faithfully: background treatment, colour palette, lighting " +
+        "style, prop and staging approach, level of drama, and overall mood. " +
+        "The finished image should look like another poster from the SAME " +
+        "campaign as the reference. Three exceptions: " +
+        "(1) COMPOSITION — the SHOT VARIATION directive above dictates the " +
+        "camera angle, distance, and product position for THIS poster and " +
+        "OVERRIDES the reference's framing; do NOT default to the reference's " +
+        "centered composition. " +
+        "(2) do NOT copy any text, lettering, or logos from the reference — " +
+        "this image must contain zero readable text. " +
+        "(3) do NOT copy the eyeglasses shown in the reference — the product " +
+        "must come ONLY from the product reference photos above. " +
+        "FINALLY: if the scene context above describes a DIFFERENT setting, " +
+        "backdrop, or palette than the reference, the REFERENCE WINS — " +
+        "restage the scene inside the reference's world."
+      : " The last image is a BRAND AESTHETIC REFERENCE. Use it for general " +
+        "brand feel: production quality, premium/editorial/minimal tone, and " +
+        "compositional style. The subject must come only from the reference " +
+        "images above, not from this style reference."
+    : "";
+  const allParts = [
+    ...(hasRef ? refParts : []),
+    ...(styleRefPart ? [styleRefPart] : []),
+    { text: guidance + styleNote },
+  ];
+  // One attempt against the model. withAspect=true asks Gemini to compose at
+  // the target ratio via imageConfig (the proper mechanism). The previous code
+  // only put "9:16" in the TEXT, which the model would refuse — returning no
+  // image and leaving the poster with an empty background.
+  const tryGen = async (withAspect) => {
+    const useConfig = withAspect && imageConfigOk;
     try {
-      // Build the parts list: subject refs first, optional style ref, then guidance.
-      // styleRefPart is included when the dashboard sends a style reference —
-      // either a selected poster template preset or a user-uploaded override.
-      // Eyeglasses mode: the user explicitly chose this reference as the look
-      // they want, so the model must MATCH it — replicate its visual language,
-      // not just its "vibe". (The old soft wording told the model to ignore the
-      // reference's background/lighting/look, which made every template pick
-      // produce the same generic output.)
-      const styleNote = styleRefPart
-        ? eyeglassesMode
-          ? " The LAST image is the STYLE REFERENCE — a finished eyeglasses " +
-            "advertisement whose look this poster must MATCH. Replicate its visual " +
-            "identity faithfully: background treatment, colour palette, lighting " +
-            "style, prop and staging approach, level of drama, and overall mood. " +
-            "The finished image should look like another poster from the SAME " +
-            "campaign as the reference. Three exceptions: " +
-            "(1) COMPOSITION — the SHOT VARIATION directive above dictates the " +
-            "camera angle, distance, and product position for THIS poster and " +
-            "OVERRIDES the reference's framing; do NOT default to the reference's " +
-            "centered composition. " +
-            "(2) do NOT copy any text, lettering, or logos from the reference — " +
-            "this image must contain zero readable text. " +
-            "(3) do NOT copy the eyeglasses shown in the reference — the product " +
-            "must come ONLY from the product reference photos above. " +
-            "FINALLY: if the scene context above describes a DIFFERENT setting, " +
-            "backdrop, or palette than the reference, the REFERENCE WINS — " +
-            "restage the scene inside the reference's world."
-          : " The last image is a BRAND AESTHETIC REFERENCE. Use it for general " +
-            "brand feel: production quality, premium/editorial/minimal tone, and " +
-            "compositional style. The subject must come only from the reference " +
-            "images above, not from this style reference."
-        : "";
-      const allParts = [
-        ...(hasRef ? refParts : []),
-        ...(styleRefPart ? [styleRefPart] : []),
-        { text: guidance + styleNote },
-      ];
       const resp = await ai.models.generateContent({
         model: REF_MODEL,
         contents: [{ role: "user", parts: allParts }],
+        ...(useConfig ? { config: { imageConfig: { aspectRatio: targetAspect } } } : {}),
       });
       const parts = resp.candidates?.[0]?.content?.parts || [];
-      for (const p of parts) {
-        if (p.inlineData?.data) {
-          buf = Buffer.from(p.inlineData.data, "base64");
-          break;
-        }
+      for (const p of parts) if (p.inlineData?.data) return Buffer.from(p.inlineData.data, "base64");
+      return null;
+    } catch (err) {
+      // Model rejected imageConfig → stop using it batch-wide (default square
+      // still produces a usable image; the renderer crops to the target ratio).
+      if (useConfig && /imageconfig|aspect|invalid|unsupported|unknown|argument|400/i.test(String(err?.message || ""))) {
+        imageConfigOk = false;
+        console.warn("  imageConfig unsupported on this model — falling back to default aspect for the batch.");
       }
+      throw err;
+    }
+  };
+  for (let attempt = 1; attempt <= MAX_TRIES && !buf; attempt++) {
+    try {
+      buf = await tryGen(true);
       if (!buf) {
         lastErr = "no image in response";
-        console.warn(
-          `  [${i + 1}] attempt ${attempt}/${MAX_TRIES}: ${lastErr}` +
-            (attempt < MAX_TRIES ? " — retrying…" : ""),
-        );
+        console.warn(`  [${i + 1}] attempt ${attempt}/${MAX_TRIES}: ${lastErr}` + (attempt < MAX_TRIES ? " — retrying…" : ""));
       }
     } catch (err) {
       lastErr = err?.message ? String(err.message).slice(0, 160) : String(err);
-      console.warn(
-        `  [${i + 1}] attempt ${attempt}/${MAX_TRIES} failed: ${lastErr}` +
-          (attempt < MAX_TRIES ? " — retrying…" : ""),
-      );
+      console.warn(`  [${i + 1}] attempt ${attempt}/${MAX_TRIES} failed: ${lastErr}` + (attempt < MAX_TRIES ? " — retrying…" : ""));
     }
-    if (!buf && attempt < MAX_TRIES) {
-      await new Promise((r) => setTimeout(r, 2500 * attempt));
-    }
+    if (!buf && attempt < MAX_TRIES) await new Promise((r) => setTimeout(r, 2500 * attempt));
+  }
+  // Fallback: if the aspect-constrained attempts all failed, generate WITHOUT
+  // the aspect config (default square). A cropped square beats an empty poster.
+  if (!buf) {
+    try {
+      buf = await tryGen(false);
+      if (buf) console.warn(`  [${i + 1}] recovered via no-aspect fallback (${targetAspect} would not generate)`);
+    } catch (err) { lastErr = err?.message ? String(err.message).slice(0, 160) : String(err); }
   }
   if (!buf) {
-    console.warn(`  [${i + 1}] GAVE UP after ${MAX_TRIES} tries (${lastErr})`);
+    console.warn(`  [${i + 1}] GAVE UP after ${MAX_TRIES} tries + fallback (${lastErr})`);
     continue;
   }
   await fs.writeFile(outPath, buf);

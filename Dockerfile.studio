@@ -2,7 +2,7 @@
 # Multi-client Quote Poster Studio + B-Roll (scripts/jurie-dashboard.mjs).
 # Separate from the existing Dockerfile (which ships server.mjs) — do not
 # merge. Includes Chromium deps for Remotion rendering.
-# (Redeploy trigger — v0.28.1: dark logo variant for light shop cards.)
+# (Redeploy trigger — v0.28.2: fix empty 9:16 posters — aspect via imageConfig, not text.)
 
 FROM node:20-bookworm-slim AS base
 
