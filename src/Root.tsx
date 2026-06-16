@@ -32,6 +32,16 @@ import {
   shopListingCardSchema,
   calcMetaShopListingCard,
 } from "./QuoteCard/ShopListingCard";
+import {
+  AdviceCard,
+  adviceCardSchema,
+  calcMetaAdviceCard,
+} from "./QuoteCard/AdviceCard";
+import {
+  TweetCard,
+  tweetCardSchema,
+  calcMetaTweetCard,
+} from "./QuoteCard/TweetCard";
 import { AppIcon, appIconSchema } from "./AppIcon/AppIcon";
 
 export const RemotionRoot: React.FC = () => {
@@ -197,6 +207,61 @@ export const RemotionRoot: React.FC = () => {
           brandGold: "#F4B400",
           brandRed: "#E11522",
           aspectRatio: "1:1" as const,
+        }}
+      />
+
+      <Composition
+        id="AdviceCard"
+        component={AdviceCard}
+        durationInFrames={90}
+        fps={30}
+        width={1080}
+        height={1350}
+        schema={adviceCardSchema}
+        calculateMetadata={calcMetaAdviceCard}
+        defaultProps={{
+          handle: "@learnwithjurie",
+          avatarSrc: "",
+          hook: "Hindi mo kailangan mag-overtime para kumita.",
+          lines: [
+            "I-automate ang paulit-ulit na gawain.",
+            "Gamitin ang AI para sa drafts at replies.",
+            "Mag-focus sa trabahong tao lang ang kaya.",
+          ],
+          payoff: "Trabahong tama, hindi trabahong dami.",
+          seriesLabel: "Working Smart",
+          dayNumber: 12,
+          url: "learnwithjurie.it.com",
+          theme: "dark" as const,
+          brandGold: "#F5C13B",
+          brandRed: "#E11522",
+          aspectRatio: "4:5" as const,
+        }}
+      />
+
+      <Composition
+        id="TweetCard"
+        component={TweetCard}
+        durationInFrames={90}
+        fps={30}
+        width={1080}
+        height={1350}
+        schema={tweetCardSchema}
+        calculateMetadata={calcMetaTweetCard}
+        defaultProps={{
+          displayName: "Jurie",
+          handle: "@learnwithjurie",
+          avatarSrc: "",
+          verified: true,
+          body: "Ang AI hindi pamalit sa'yo. Pamalit siya sa trabahong nakakapagod na ginagawa mo gabi-gabi. Gamitin mo, para may oras ka na rin.",
+          timestamp: "9:41 AM · Jun 17, 2026",
+          replies: "",
+          reposts: "",
+          likes: "",
+          cardTheme: "light" as const,
+          brandGold: "#F5C13B",
+          brandRed: "#E11522",
+          aspectRatio: "4:5" as const,
         }}
       />
 
