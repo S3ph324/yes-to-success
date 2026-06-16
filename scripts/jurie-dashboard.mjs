@@ -1004,6 +1004,7 @@ app.post("/api/generate", extraRefUpload.fields([
     shopColor,
     shopMaterial,
     shopAspect,
+    adviceSeries,
   } = req.body || {};
   const c = await getClient(client);
   if (!c) return res.status(400).json({ error: "Unknown client" });
@@ -1018,7 +1019,10 @@ app.post("/api/generate", extraRefUpload.fields([
   // Topic is required for main/quote posters; optional for eyeglasses showcase
   // and shop (those use product inputs instead of a topic).
   const isEyeglassesBatch = client === "tranzzie" && posterType === "eyeglasses";
-  if (!t && !isEyeglassesBatch && !isShop) return res.status(400).json({ error: "Topic is required." });
+  // Jurie advice/tweet posters — text-only cards, topic optional (generator
+  // rotates the brief topics when none is given).
+  const isAdvice = client === "jurie" && (posterType === "advice" || posterType === "tweet");
+  if (!t && !isEyeglassesBatch && !isShop && !isAdvice) return res.status(400).json({ error: "Topic is required." });
   if (isShop && !(filesMap.shopPhoto || []).length)
     return res.status(400).json({ error: "Upload at least one product photo." });
   if (!guard(req, res)) return;
@@ -1042,6 +1046,8 @@ app.post("/api/generate", extraRefUpload.fields([
 
   const header = isShop
     ? `▶ [${c.label}] TikTok Shop cards for "${String(shopProduct || "product").slice(0, 40)}" · ${shopPhotoPaths.length} photo(s)…`
+    : isAdvice
+    ? `▶ [${c.label}] ${n} ${posterType === "tweet" ? "tweet-style" : "advice"} card(s)` + (t ? ` about "${t}"` : "") + "…"
     : `▶ [${c.label}] ${n} ${isEyeglasses ? "eyeglasses showcase " : ""}poster(s) about "${t}"` +
       (isEyeglasses ? ` · frame ${glassesId || "(none selected)"}` : "") +
       (extraRefPaths.length ? ` · ${extraRefPaths.length} extra ref(s)` : "") +
@@ -1067,6 +1073,11 @@ app.post("/api/generate", extraRefUpload.fields([
   if (includeCta !== "1") env.DASHBOARD_NO_CTA = "1";
   if (aiHeadline === "1") env.DASHBOARD_AI_HEADLINE = "1";
   if (bufferAutopost === "1") env.BUFFER_AUTOPOST = "1";
+  // Jurie advice/tweet posters — text-only cards via the advice generator.
+  if (isAdvice) {
+    env.DASHBOARD_ADVICE_FORMAT = posterType; // "advice" | "tweet"
+    if (adviceSeries) env.DASHBOARD_ADVICE_SERIES = String(adviceSeries).slice(0, 28);
+  }
   if (extraRefPaths.length)
     env.DASHBOARD_EXTRA_REFS = JSON.stringify(extraRefPaths);
   if (styleRefPath)
@@ -2225,6 +2236,7 @@ async function viewGenerate(){
       +c.name+' ('+n+' photo'+(n===1?'':'s')+')</option>';}).join('');
   // Eyeglasses showcase mode is Tranzzie-only for now.
   const showEyeglasses=CLIENT==='tranzzie';
+  const showAdvice=CLIENT==='jurie';
   const glassPhotoOf={};glasses.forEach(g=>{glassPhotoOf[g.id]=(g.photos&&g.photos[0])||'';});
   const glassOpts=glasses.length
    ?glasses.map(g=>{const n=(g.photos||[]).length;
@@ -2256,6 +2268,21 @@ async function viewGenerate(){
        +'<input type="radio" name="g_ptype" value="shop" style="width:auto;margin:3px 0 0">'
        +'<span><b>\\ud83d\\udecd\\ufe0f TikTok Shop</b><br><span class="muted" style="font-size:11px">Upload product photos \\u2192 a set of listing cards</span></span></label>'
        +'</div>')
+     :showAdvice
+     ?('<div class="section-label">Poster type</div>'
+       +'<div class="row" style="gap:10px;margin-bottom:14px">'
+       +'<label class="ptype-card" data-pt="main" style="flex:1;display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:12px 14px;border:1px solid var(--gold);border-radius:10px;background:rgba(232,182,74,.04);transition:border-color .15s,background .15s">'
+       +'<input type="radio" name="g_ptype" value="main" checked style="width:auto;margin:3px 0 0;accent-color:var(--gold)">'
+       +'<span><b>Quote poster</b><br><span class="muted" style="font-size:11px">Cinematic photo + Taglish hook \\u2192 payoff</span></span></label>'
+       +'<label class="ptype-card" data-pt="advice" style="flex:1;display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:12px 14px;border:1px solid var(--line);border-radius:10px;transition:border-color .15s,background .15s">'
+       +'<input type="radio" name="g_ptype" value="advice" style="width:auto;margin:3px 0 0">'
+       +'<span><b>\\ud83d\\udca1 Advice card</b><br><span class="muted" style="font-size:11px">Dark text card: hook \\u2192 tips \\u2192 payoff</span></span></label>'
+       +'<label class="ptype-card" data-pt="tweet" style="flex:1;display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:12px 14px;border:1px solid var(--line);border-radius:10px;transition:border-color .15s,background .15s">'
+       +'<input type="radio" name="g_ptype" value="tweet" style="width:auto;margin:3px 0 0">'
+       +'<span><b>\\ud83d\\udc26 Tweet style</b><br><span class="muted" style="font-size:11px">X/Twitter screenshot of an advice post</span></span></label>'
+       +'</div>'
+       +'<div id="advice_box" style="display:none;margin-bottom:18px"><label style="font-size:11px;display:block;margin-bottom:5px">Series label <span class="muted">(footer streak, e.g. "Working Smart")</span></label>'
+       +'<input id="advice_series" maxlength="28" placeholder="Working Smart" style="width:260px;padding:11px 14px"></div>')
      :'')
    // ── Primary form ──
    +'<div id="g_section_label" class="section-label">What do you want to post about?</div>'
@@ -2514,9 +2541,14 @@ async function viewGenerate(){
     const pt = curPosterType();
     const isEye = pt === 'eyeglasses';
     const isShop = pt === 'shop';
+    const isAdv = pt === 'advice' || pt === 'tweet';
+    // Advice series field (Jurie advice/tweet).
+    const advBox=$('#advice_box');
+    if(advBox) advBox.style.display = isAdv ? 'block' : 'none';
+    // For advice the topic label reads as an optional angle.
     // Topic vs headline — both hidden in shop mode (product inputs instead).
     const secLbl=$('#g_section_label'), topicCell=$('#g_topic_cell'), hlCell=$('#ea_headline_cell');
-    if(secLbl)  secLbl.style.display  = (isEye||isShop) ? 'none' : '';
+    if(secLbl){ secLbl.style.display = (isEye||isShop) ? 'none' : ''; secLbl.textContent = isAdv ? 'Topic / angle (optional)' : 'What do you want to post about?'; }
     if(topicCell) topicCell.style.display = (isEye||isShop) ? 'none' : '';
     if(hlCell)  hlCell.style.display   = isEye ? '' : 'none';
     const promoCell=$('#ea_promo_cell');
@@ -2842,16 +2874,17 @@ async function viewGenerate(){
   };
   $('#g_go').onclick=async()=>{
     saveGenSettings();
-    const posterType=showEyeglasses?curPosterType():'main';
+    const posterType=(showEyeglasses||showAdvice)?curPosterType():'main';
     const isEyePoster = posterType === 'eyeglasses';
     const isShopPoster = posterType === 'shop';
+    const isAdvicePoster = posterType === 'advice' || posterType === 'tweet';
     const shopFiles = isShopPoster && $('#shop_photos') ? Array.from($('#shop_photos').files||[]).slice(0,5) : [];
     if(isShopPoster && !shopFiles.length) return toast('Upload at least one product photo',true);
-    // For eyeglasses: topic is optional headline idea; for main: required topic
+    // Topic required only for quote posters; optional for eyeglasses/advice; n/a for shop.
     const topic = isEyePoster
       ? ($('#ea_headline')&&$('#ea_headline').value.trim() || '')
       : (isShopPoster ? '' : $('#g_topic').value.trim());
-    if(!isEyePoster && !isShopPoster && !topic) return toast('Enter a topic first',true);
+    if(!isEyePoster && !isShopPoster && !isAdvicePoster && !topic) return toast('Enter a topic first',true);
     const fd=new FormData();
     fd.append('client',CLIENT);
     fd.append('topic',topic);
@@ -2859,7 +2892,10 @@ async function viewGenerate(){
     fd.append('briefId',$('#g_brief').value);
     fd.append('brandPresetId',$('#g_brand').value);
     fd.append('posterType',posterType);
-    if(posterType==='shop'){
+    if(posterType==='advice'||posterType==='tweet'){
+      fd.append('adviceSeries',($('#advice_series')||{}).value||'');
+      fd.append('characterId','');
+    }else if(posterType==='shop'){
       shopFiles.forEach(f=>fd.append('shopPhoto',f));
       const specs=Array.from(document.querySelectorAll('input[name="shop_spec"]:checked')).map(c=>c.value);
       fd.append('shopSpecs',JSON.stringify(specs));

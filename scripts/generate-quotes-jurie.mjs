@@ -119,6 +119,17 @@ EMPHASIS — choose deliberately, not randomly:
 This is the visual hierarchy: gold payoff = biggest, white = body,
 the one red bar = the hook's punch.
 
+CAPTION (Facebook) — the scroll-stopper under the poster:
+- FIRST LINE is a hook on its own: a question, a relatable scene, or a small
+  confession — NEVER a description of the poster. This single line decides if
+  they keep reading.
+- Then 2–3 short lines (or a tiny dash list) that deliver one concrete,
+  practical idea — a small win they can act on. Real specifics beat adjectives.
+- Close on a quotable Taglish payoff, then ONE soft CTA
+  (e.g. "Comment 'AI' para ituro ko kung paano."). No fake guarantees, no hype.
+- Conversational Taglish, short lines, generous line breaks — never a
+  paragraph wall. Validate their effort; never shame.
+
 Output ONLY a valid JSON array. No commentary, no markdown fences.`;
 
 const userPrompt = TOPIC

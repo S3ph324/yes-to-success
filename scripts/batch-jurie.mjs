@@ -73,14 +73,18 @@ console.log(
   } catch { /* ignore */ }
 }
 
-console.log(`\n━━━ Step 1: Generate quotes (${client.label} voice) ━━━`);
+// Advice/Tweet posters (DASHBOARD_ADVICE_FORMAT set) are text-only cards —
+// they use a different generator and SKIP background generation entirely.
+const adviceFormat = process.env.DASHBOARD_ADVICE_FORMAT;
+const isAdvice = adviceFormat === "advice" || adviceFormat === "tweet";
+
+console.log(`\n━━━ Step 1: Generate ${isAdvice ? adviceFormat + " copy" : "quotes"} (${client.label} voice) ━━━`);
 try {
-  await run([
-    "scripts/generate-quotes-jurie.mjs",
-    "--client",
-    client.id,
-    String(count),
-  ]);
+  await run(
+    isAdvice
+      ? ["scripts/generate-advice-jurie.mjs", "--client", client.id, String(count)]
+      : ["scripts/generate-quotes-jurie.mjs", "--client", client.id, String(count)],
+  );
 } catch (err) {
   console.error(`[batch] Step 1 failed: ${err?.message || err}`);
   process.exit(1);
@@ -99,13 +103,17 @@ if (!latest) {
 const latestPath = path.join(outDir, latest);
 console.log(`\nUsing ${latest}`);
 
-console.log("\n━━━ Step 2: Generate scene backgrounds ━━━");
-await run([
-  "scripts/generate-backgrounds-jurie.mjs",
-  "--client",
-  client.id,
-  latestPath,
-]);
+if (isAdvice) {
+  console.log("\n━━━ Step 2: (skipped — advice cards need no backgrounds) ━━━");
+} else {
+  console.log("\n━━━ Step 2: Generate scene backgrounds ━━━");
+  await run([
+    "scripts/generate-backgrounds-jurie.mjs",
+    "--client",
+    client.id,
+    latestPath,
+  ]);
+}
 
 console.log("\n━━━ Step 3: Render posters ━━━");
 await run([

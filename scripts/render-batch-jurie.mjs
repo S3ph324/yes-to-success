@@ -191,10 +191,45 @@ for (const q of quotes) {
   // not a Taglish hook→payoff quote graphic. Route them to ProductShowcaseCard
   // instead of JurieQuoteCard so they never get the big colored-text overlay
   // treatment (that's the whole point of the separate composition).
+  // Advice / Tweet posters (text-only cards, no background photo).
+  const isAdvice = q.variant === "advice";
+  const isTweet = q.variant === "tweet";
   const isShowcase = Boolean(q.eyeglassesId);
-  const compositionId = isShowcase ? "ProductShowcaseCard" : "JurieQuoteCard";
+  const compositionId = isAdvice ? "AdviceCard"
+    : isTweet ? "TweetCard"
+    : isShowcase ? "ProductShowcaseCard"
+    : "JurieQuoteCard";
   const bgStats = isShowcase && q.bgPath ? await analyzeBg(q.bgPath) : null;
-  const inputProps = isShowcase
+  const jurieAvatar = brand.logoSrc || "characters/jurie/jurie-enhanced.png";
+  const inputProps = isAdvice
+    ? {
+        handle: "@learnwithjurie",
+        avatarSrc: jurieAvatar,
+        hook: q.hook || q.quote || "",
+        lines: q.lines || [],
+        payoff: q.payoff || "",
+        seriesLabel: q.seriesLabel || "Working Smart",
+        dayNumber: q.dayNumber || 0,
+        url: "learnwithjurie.it.com",
+        theme: q.theme === "light" ? "light" : "dark",
+        brandGold: brand.brandGold,
+        brandRed: brand.brandRed,
+        aspectRatio,
+      }
+    : isTweet
+    ? {
+        displayName: "Jurie",
+        handle: "@learnwithjurie",
+        avatarSrc: jurieAvatar,
+        verified: true,
+        body: q.tweetBody || q.quote || "",
+        timestamp: "",
+        cardTheme: q.theme === "dark" ? "dark" : "light",
+        brandGold: brand.brandGold,
+        brandRed: brand.brandRed,
+        aspectRatio,
+      }
+    : isShowcase
     ? {
         productLine: q.productLine || q.quote || "",
         tagline: q.tagline || "",
