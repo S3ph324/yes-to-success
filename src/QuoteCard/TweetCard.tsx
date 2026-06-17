@@ -30,6 +30,8 @@ export const tweetCardSchema = z.object({
   reposts: z.string().default(""),
   likes: z.string().default(""),
   cardTheme: z.enum(["light", "dark"]).default("light"),
+  // Outer backdrop behind the tweet card — several styles for variety.
+  backdrop: z.enum(["clean", "dark", "indigo", "rose", "gold"]).default("clean"),
   brandGold: z.string().default("#F5C13B"),
   brandRed: z.string().default("#E11522"),
   aspectRatio: aspectRatioSchema,
@@ -71,7 +73,7 @@ const EngIcon: React.FC<{ d: string; color: string; size: number }> = ({ d, colo
 
 export const TweetCard: React.FC<TweetCardProps> = ({
   displayName, handle, avatarSrc, verified, body, timestamp,
-  replies, reposts, likes, cardTheme, brandGold, brandRed,
+  replies, reposts, likes, cardTheme, backdrop, brandGold, brandRed,
 }) => {
   useTweetFonts();
   const frame = useCurrentFrame();
@@ -88,19 +90,30 @@ export const TweetCard: React.FC<TweetCardProps> = ({
   const line = dark ? "#2f3336" : "#eff3f4";
   const avatar = resolveSrc(avatarSrc);
 
-  // Backdrop: soft brand-gold gradient so the white/black card pops.
-  const backdrop = `linear-gradient(150deg, ${brandGold} 0%, #e7a92e 55%, ${brandRed} 140%)`;
+  // Outer backdrop — several styles so the batch isn't all one colour.
+  const BACKDROPS: Record<string, string> = {
+    clean: "linear-gradient(160deg, #eef1f4 0%, #e2e6ea 100%)",
+    dark: "radial-gradient(ellipse at 50% 28%, #1b1d23 0%, #0a0a0c 100%)",
+    indigo: "linear-gradient(160deg, #6366f1 0%, #7c3aed 58%, #2563eb 130%)",
+    rose: "linear-gradient(160deg, #fb7185 0%, #f43f5e 55%, #be123c 130%)",
+    gold: `linear-gradient(150deg, ${brandGold} 0%, #e7a92e 55%, ${brandRed} 140%)`,
+  };
+  const bg = BACKDROPS[backdrop] || BACKDROPS.clean;
+  const sheen = backdrop === "clean"
+    ? "radial-gradient(ellipse at 50% 30%, rgba(255,255,255,0.6) 0%, transparent 60%)"
+    : "radial-gradient(ellipse at 50% 40%, rgba(255,255,255,0.12) 0%, transparent 60%)";
 
   const bodySize = Math.round((body.length > 180 ? 38 : body.length > 110 ? 44 : 52) * scale);
   const pad = Math.round(46 * scale);
   const cardW = Math.round(width * 0.84);
 
   return (
-    <AbsoluteFill style={{ background: backdrop, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <AbsoluteFill style={{ background: "radial-gradient(ellipse at 50% 40%, rgba(255,255,255,0.12) 0%, transparent 60%)" }} />
+    <AbsoluteFill style={{ background: bg, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <AbsoluteFill style={{ background: sheen }} />
       <div style={{
         width: cardW, background: cardBg, borderRadius: Math.round(28 * scale),
-        padding: pad, boxShadow: "0 30px 80px rgba(0,0,0,0.28)",
+        padding: pad,
+        boxShadow: backdrop === "clean" ? "0 24px 60px rgba(15,20,25,0.16), 0 0 0 1px rgba(15,20,25,0.05)" : "0 30px 80px rgba(0,0,0,0.28)",
         opacity: fade, transform: `translateY(${lift}px)`,
       }}>
         {/* Header row */}

@@ -979,6 +979,7 @@ app.post("/api/generate", extraRefUpload.fields([
   { name: "extraRef", maxCount: 8 },
   { name: "styleRef", maxCount: 1 },
   { name: "shopPhoto", maxCount: 10 },
+  { name: "adviceAvatar", maxCount: 1 },
 ]), async (req, res) => {
   const {
     client,
@@ -1077,6 +1078,12 @@ app.post("/api/generate", extraRefUpload.fields([
   if (isAdvice) {
     env.DASHBOARD_ADVICE_FORMAT = posterType; // "advice" | "tweet"
     if (adviceSeries) env.DASHBOARD_ADVICE_SERIES = String(adviceSeries).slice(0, 28);
+    // Optional custom profile photo for the cards (HEIC → JPEG).
+    const avatarFile = (filesMap.adviceAvatar || [])[0];
+    if (avatarFile) {
+      const avPath = await convertHeicInPlace(avatarFile.path).catch(() => avatarFile.path);
+      env.DASHBOARD_ADVICE_AVATAR = avPath;
+    }
   }
   if (extraRefPaths.length)
     env.DASHBOARD_EXTRA_REFS = JSON.stringify(extraRefPaths);
@@ -2281,8 +2288,16 @@ async function viewGenerate(){
        +'<input type="radio" name="g_ptype" value="tweet" style="width:auto;margin:3px 0 0">'
        +'<span><b>\\ud83d\\udc26 Tweet style</b><br><span class="muted" style="font-size:11px">X/Twitter screenshot of an advice post</span></span></label>'
        +'</div>'
-       +'<div id="advice_box" style="display:none;margin-bottom:18px"><label style="font-size:11px;display:block;margin-bottom:5px">Series label <span class="muted">(footer streak, e.g. "Working Smart")</span></label>'
-       +'<input id="advice_series" maxlength="28" placeholder="Working Smart" style="width:260px;padding:11px 14px"></div>')
+       +'<div id="advice_box" style="display:none;margin-bottom:18px">'
+       +'<div class="row" style="gap:16px;align-items:flex-start">'
+       +'<div><label style="font-size:11px;display:block;margin-bottom:5px">Series label <span class="muted">(footer streak, e.g. "Working Smart")</span></label>'
+       +'<input id="advice_series" maxlength="28" placeholder="Working Smart" style="width:240px;padding:11px 14px"></div>'
+       +'<div><label style="font-size:11px;display:block;margin-bottom:5px">Profile photo <span class="muted">(optional \\u2014 defaults to Jurie)</span></label>'
+       +'<div style="display:flex;align-items:center;gap:10px">'
+       +'<div id="advice_avatar_prev" style="width:48px;height:48px;border-radius:50%;overflow:hidden;border:1px solid var(--line2);background:#0d0d0f;background-size:cover;background-position:center"></div>'
+       +'<label class="sec" style="cursor:pointer;position:relative;font-size:12px;padding:8px 12px">Upload<input type="file" id="advice_avatar" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label>'
+       +'</div></div>'
+       +'</div></div>')
      :'')
    // ── Primary form ──
    +'<div id="g_section_label" class="section-label">What do you want to post about?</div>'
@@ -2594,6 +2609,13 @@ async function viewGenerate(){
       c.closest('.spec-chip').style.background=c.checked?'rgba(232,182,74,.08)':'transparent';};
     c.onchange=paint;paint();
   });
+  // Advice/tweet custom avatar preview.
+  if($('#advice_avatar')){
+    $('#advice_avatar').onchange=()=>{
+      const f=$('#advice_avatar').files&&$('#advice_avatar').files[0];
+      if(f)$('#advice_avatar_prev').style.backgroundImage='url('+URL.createObjectURL(f)+')';
+    };
+  }
   // ── Eyeglasses poster-style card wiring ──────────────────────────────────
   function syncPspCards() {
     document.querySelectorAll('#ea_psp_grid .esty-img-card').forEach(el => {
@@ -2894,6 +2916,8 @@ async function viewGenerate(){
     fd.append('posterType',posterType);
     if(posterType==='advice'||posterType==='tweet'){
       fd.append('adviceSeries',($('#advice_series')||{}).value||'');
+      const av=$('#advice_avatar')&&$('#advice_avatar').files&&$('#advice_avatar').files[0];
+      if(av)fd.append('adviceAvatar',av);
       fd.append('characterId','');
     }else if(posterType==='shop'){
       shopFiles.forEach(f=>fd.append('shopPhoto',f));

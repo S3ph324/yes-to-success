@@ -47,3 +47,4 @@ npm-debug.log*
 # Shop-listing temp dirs
 public/_shoptest
 public/_shop-input
+public/_advice-avatar

@@ -172,6 +172,21 @@ try {
   }
 } catch { /* out/cards may not exist — skip */ }
 
+// Stage a user-uploaded advice/tweet avatar into public/ so staticFile() can
+// resolve it (uploads live at an absolute path outside public/). Cleaned up
+// after the batch.
+let ADVICE_AVATAR_REL = "";
+const _adviceAvatarAbs = process.env.DASHBOARD_ADVICE_AVATAR || "";
+if (_adviceAvatarAbs) {
+  try {
+    const ext = (path.extname(_adviceAvatarAbs) || ".png").toLowerCase();
+    const rel = path.posix.join("_advice-avatar", `${stamp}${ext}`);
+    await fs.mkdir(path.join(projectRoot, "public", "_advice-avatar"), { recursive: true });
+    await fs.copyFile(_adviceAvatarAbs, path.join(projectRoot, "public", rel));
+    ADVICE_AVATAR_REL = rel;
+  } catch (e) { console.warn(`  advice avatar stage failed: ${e.message}`); }
+}
+
 let i = 0;
 let failed = 0;
 for (const q of quotes) {
@@ -200,7 +215,18 @@ for (const q of quotes) {
     : isShowcase ? "ProductShowcaseCard"
     : "JurieQuoteCard";
   const bgStats = isShowcase && q.bgPath ? await analyzeBg(q.bgPath) : null;
-  const jurieAvatar = brand.logoSrc || "characters/jurie/jurie-enhanced.png";
+  // Avatar for advice/tweet cards: user-uploaded photo (staged into public/)
+  // wins; else the Jurie character photo.
+  const jurieAvatar = ADVICE_AVATAR_REL || "characters/jurie/jurie-enhanced.png";
+  // Tweet backdrop rotates across the batch so it isn't all one colour.
+  const TWEET_BACKDROPS = [
+    { backdrop: "clean", cardTheme: "light" },
+    { backdrop: "dark", cardTheme: "dark" },
+    { backdrop: "indigo", cardTheme: "light" },
+    { backdrop: "rose", cardTheme: "light" },
+    { backdrop: "gold", cardTheme: "dark" },
+  ];
+  const tweetStyle = TWEET_BACKDROPS[(i - 1) % TWEET_BACKDROPS.length];
   const inputProps = isAdvice
     ? {
         handle: "@learnwithjurie",
@@ -224,7 +250,8 @@ for (const q of quotes) {
         verified: true,
         body: q.tweetBody || q.quote || "",
         timestamp: "",
-        cardTheme: q.theme === "dark" ? "dark" : "light",
+        cardTheme: q.cardTheme || tweetStyle.cardTheme,
+        backdrop: q.backdrop || tweetStyle.backdrop,
         brandGold: brand.brandGold,
         brandRed: brand.brandRed,
         aspectRatio,
@@ -374,6 +401,8 @@ try {
       .map((f) => fs.rm(path.join(projectRoot, "out", f), { force: true })),
   );
 } catch { /* ignore */ }
+// Staged advice/tweet avatar (if any).
+if (ADVICE_AVATAR_REL) await fs.rm(path.join(projectRoot, "public", ADVICE_AVATAR_REL), { force: true }).catch(() => {});
 console.log("Cleanup done.");
 // Exit explicitly — after a render error (e.g. ENOSPC) Remotion's headless
 // browser can keep the event loop alive, hanging the job until the

@@ -259,6 +259,7 @@ export const RemotionRoot: React.FC = () => {
           reposts: "",
           likes: "",
           cardTheme: "light" as const,
+          backdrop: "clean" as const,
           brandGold: "#F5C13B",
           brandRed: "#E11522",
           aspectRatio: "4:5" as const,
