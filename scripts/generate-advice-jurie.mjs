@@ -92,23 +92,27 @@ FORMAT — SINGLE X/TWITTER ADVICE POST:
   schemaRequired = ["tweetBody", "caption"];
 } else {
   formatNote = `
-FORMAT — ADVICE CARD (hook + list + authority quote):
+FORMAT — ADVICE CARD (keep it simple — hook + 3 steps + one strong quote):
 - hook: the big relatable line in JURIE'S Taglish voice (6–11 words).
-- lines: 3–5 short, concrete advice steps in Jurie's voice (each one line,
-  ≤9 words, no ellipsis).
-- payoff: a SHORT real quote from a well-known authority whose GENUINE
-  philosophy backs the advice above — the credibility close. English is fine
-  (that's how they speak). ≤18 words.
+- lines: EXACTLY 3 short, concrete advice steps in Jurie's voice (each one
+  line, ≤8 words, no ellipsis). Three is enough — do not add more.
+- payoff: a SHORT, punchy quote from a well-known ENTREPRENEUR / SALES /
+  MARKETING / WEALTH figure whose GENUINE thinking backs the advice — this is
+  the emphasised line on the card, so make it quotable. English. ≤16 words.
 - authorName: that person's name, e.g. "Alex Hormozi".
 - caption: the Facebook caption (see CAPTION).
 
 AUTHORITY QUOTE — rules (do this carefully):
-- Pick a figure whose real, widely-documented thinking actually fits THIS
-  post's topic. Money/spending → Alex Hormozi, Morgan Housel, Warren Buffett,
-  Ramit Sethi. Habits/consistency → James Clear, Jim Rohn. Sales/scaling →
-  Alex Hormozi, Grant Cardone, Gary Vaynerchuk. Mindset/discipline → David
-  Goggins, Jocko Willink. Leverage/tech/AI → Naval Ravikant, Sam Altman.
-  Marketing → Seth Godin. (Choose per-post; vary across the batch.)
+- Quote the kind of big names business owners actually follow. Pick whoever
+  truly fits THIS post (vary across the batch):
+    • Offers / scaling a business → Alex Hormozi, Dan Martell, Tony Robbins
+    • Sales / persuasion / closing → Jordan Belfort, Grant Cardone, Alex Hormozi
+    • Marketing / funnels / attention → Russell Brunson, Gary Vaynerchuk, Seth Godin
+    • Money / wealth / assets → Robert Kiyosaki, Naval Ravikant, Warren Buffett
+    • Consistency / patience / volume → Gary Vaynerchuk, Alex Hormozi
+    • Leverage / AI / building → Naval Ravikant, Sam Altman
+- Do NOT use productivity authors like James Clear or Cal Newport — the
+  audience wants business/sales/wealth voices, not "habits" authors.
 - Use their AUTHENTIC idea/principle. Paraphrase faithfully if unsure of exact
   wording — but NEVER invent fake statistics, fake verbatim quotes, or put
   words in their mouth they're not genuinely known for.
@@ -202,7 +206,7 @@ for (const p of posts) {
   } else {
     if (typeof p.hook !== "string" || !p.hook.trim()) continue;
     e.hook = p.hook.trim();
-    e.lines = (Array.isArray(p.lines) ? p.lines : []).map((l) => String(l).trim()).filter(Boolean).slice(0, 5);
+    e.lines = (Array.isArray(p.lines) ? p.lines : []).map((l) => String(l).trim()).filter(Boolean).slice(0, 3);
     e.payoff = (p.payoff || "").trim();
     e.authorName = (p.authorName || "").trim();
     e.quote = e.hook;

@@ -98,10 +98,12 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
 
   // Hook scales down as it gets longer so it always fits ~two lines.
   const hookSize = Math.round((hook.length > 46 ? 56 : hook.length > 28 ? 66 : 78) * scale);
-  const items = (lines || []).filter((l) => l && l.trim()).slice(0, 6);
-  // Tips shrink a touch when there are many, so the card stays balanced.
-  const tipSize = Math.round((items.length >= 5 ? 28 : 32) * scale);
+  // Keep it simple to consume — at most 3 steps.
+  const items = (lines || []).filter((l) => l && l.trim()).slice(0, 3);
+  const tipSize = Math.round(34 * scale);
   const numSize = Math.round(tipSize * 0.78);
+  // The quote is the emphasised element — size it down only for long ones.
+  const quoteSize = Math.round((payoff.length > 92 ? 36 : payoff.length > 56 ? 42 : 48) * scale);
 
   // Hook with the last word in gold — a small accent that adds pop.
   const hookWords = hook.trim().split(/\s+/);
@@ -123,25 +125,17 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
         display: "flex", flexDirection: "column",
         opacity: fade, transform: `translateY(${lift}px)`,
       }}>
-        {/* Header: avatar + name/handle (left) · series tag (right) */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: Math.round(14 * scale) }}>
-            {avatar && (
-              <div style={{ width: Math.round(60 * scale), height: Math.round(60 * scale), borderRadius: "50%", overflow: "hidden", border: `2px solid ${brandGold}`, boxShadow: `0 0 0 4px ${goldTint}` }}>
-                <Img src={avatar} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              </div>
-            )}
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <span style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: Math.round(24 * scale), color: ink, lineHeight: 1.1 }}>Jurie</span>
-              <span style={{ fontFamily: ARCHIVO, fontWeight: 500, fontSize: Math.round(19 * scale), color: muted }}>{handle}</span>
+        {/* Header: just avatar + name — no extra furniture, keep it clean */}
+        <div style={{ display: "flex", alignItems: "center", gap: Math.round(14 * scale) }}>
+          {avatar && (
+            <div style={{ width: Math.round(64 * scale), height: Math.round(64 * scale), borderRadius: "50%", overflow: "hidden", border: `2px solid ${brandGold}`, boxShadow: `0 0 0 4px ${goldTint}` }}>
+              <Img src={avatar} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             </div>
+          )}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <span style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: Math.round(25 * scale), color: ink, lineHeight: 1.1 }}>Jurie</span>
+            <span style={{ fontFamily: ARCHIVO, fontWeight: 500, fontSize: Math.round(19 * scale), color: muted }}>{handle}</span>
           </div>
-          <div style={{
-            fontFamily: ARCHIVO, fontWeight: 700, fontSize: Math.round(14 * scale),
-            letterSpacing: "0.18em", color: brandGold, textTransform: "uppercase",
-            border: `1.5px solid ${brandGold}`, borderRadius: 999,
-            padding: `${Math.round(7 * scale)}px ${Math.round(16 * scale)}px`,
-          }}>{seriesTag}</div>
         </div>
 
         {/* Middle — vertically centred so few-tip cards stay balanced */}
@@ -171,26 +165,24 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
           </div>
         </div>
 
-        {/* Payoff — gold left bar + tinted block. With an authorName it reads as
-            a quote backing the advice: «"quote" — Name». */}
+        {/* Quote — the emphasised credibility close: big gold open-quote, large
+            italic serif, bold gold attribution. The visual anchor of the card. */}
         {payoff && (
           <div style={{
-            display: "flex", gap: Math.round(18 * scale), alignItems: "stretch",
-            background: goldTint, borderRadius: Math.round(14 * scale),
-            padding: `${Math.round(20 * scale)}px ${Math.round(22 * scale)}px`,
-            marginBottom: Math.round(24 * scale),
+            background: goldTint, borderRadius: Math.round(18 * scale),
+            borderLeft: `${Math.round(6 * scale)}px solid ${brandGold}`,
+            padding: `${Math.round(24 * scale)}px ${Math.round(32 * scale)}px ${Math.round(30 * scale)}px`,
+            marginBottom: Math.round(22 * scale),
           }}>
-            <div style={{ width: Math.round(5 * scale), background: brandGold, borderRadius: 3, flexShrink: 0 }} />
-            <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
-              <div style={{ fontFamily: FRAUNCES, fontStyle: "italic", fontWeight: 500, fontSize: Math.round((authorName ? 34 : 36) * scale), color: ink, lineHeight: 1.22 }}>
-                {authorName ? `“${payoff}”` : payoff}
-              </div>
-              {authorName && (
-                <div style={{ fontFamily: ARCHIVO, fontWeight: 700, fontSize: Math.round(20 * scale), letterSpacing: "0.06em", textTransform: "uppercase", color: brandGold, marginTop: Math.round(12 * scale) }}>
-                  — {authorName}
-                </div>
-              )}
+            <div style={{ fontFamily: FRAUNCES, fontWeight: 900, fontSize: Math.round(78 * scale), lineHeight: 0.7, color: brandGold, marginBottom: Math.round(6 * scale) }}>“</div>
+            <div style={{ fontFamily: FRAUNCES, fontStyle: "italic", fontWeight: 600, fontSize: quoteSize, color: ink, lineHeight: 1.2 }}>
+              {payoff}
             </div>
+            {authorName && (
+              <div style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: Math.round(23 * scale), letterSpacing: "0.1em", textTransform: "uppercase", color: brandGold, marginTop: Math.round(18 * scale) }}>
+                — {authorName}
+              </div>
+            )}
           </div>
         )}
 
