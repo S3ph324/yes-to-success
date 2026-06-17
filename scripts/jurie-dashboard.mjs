@@ -1150,13 +1150,22 @@ function startGenJob(spec) {
     const pruned = await pruneOldBatches(clientCfg);
     if (pruned)
       log(`🧹 Pruned ${pruned} old batch folder(s) — keeping the ${KEEP_BATCHES} newest.`);
-    try {
-      const st = await fs.statfs(EXPORT_BASE);
-      const freeGB = (Number(st.bavail) * Number(st.bsize)) / 1e9;
+    // Hard guard: the per-client prune can't reclaim space another client
+    // filled. If the volume is still tight, sweep the globally-oldest batches
+    // (across all clients) until there's safe render headroom — this is what
+    // actually stops the ENOSPC-mid-render "all posters failed" batches.
+    let freeGB = await exportFreeGB();
+    if (freeGB !== null && freeGB < DISK_TARGET_GB) {
+      const { freed, free } = await sweepVolumeToFree(DISK_TARGET_GB, 2);
+      if (freed)
+        log(`🧹 Low disk — swept ${freed} old batch folder(s) across clients to free space.`);
+      freeGB = free;
+    }
+    if (freeGB !== null) {
       log(`💾 Volume free space: ${freeGB.toFixed(2)} GB`);
-      if (freeGB < 0.75)
-        log("⚠ Low disk space — delete old batches in the Batches tab if renders fail.");
-    } catch { /* statfs unsupported on this platform — skip the report */ }
+      if (freeGB < 0.4)
+        log("⚠ Still low on disk after cleanup — consider increasing the Railway volume size.");
+    }
   })();
   preflight.catch(() => {}).then(() => {
     if (!job?.running) return; // cleared while pruning
@@ -1234,6 +1243,13 @@ const clientExportDir = (c) =>
 // ENOSPC mid-write. Before each generate run, keep only the newest N batch
 // folders per client. The queue auto-prunes entries whose folder is gone.
 const KEEP_BATCHES = Math.max(1, parseInt(process.env.STUDIO_KEEP_BATCHES || "12", 10));
+// Render headroom the volume should keep free. When a preflight finds less
+// than this, the space-aware sweep deletes the globally-oldest batches (down
+// to 2 newest per client) until the bar is met. Override via STUDIO_DISK_TARGET_GB.
+const DISK_TARGET_GB = Math.max(
+  0.3,
+  parseFloat(process.env.STUDIO_DISK_TARGET_GB || "1.0"),
+);
 async function pruneOldBatches(clientCfg) {
   try {
     const base = clientExportDir(clientCfg);
@@ -1259,6 +1275,77 @@ async function pruneOldBatches(clientCfg) {
   } catch {
     return 0; // export dir may not exist yet — nothing to prune
   }
+}
+
+// Free GB available on the export volume (null if statfs is unsupported).
+async function exportFreeGB() {
+  try {
+    const st = await fs.statfs(EXPORT_BASE);
+    return (Number(st.bavail) * Number(st.bsize)) / 1e9;
+  } catch {
+    return null;
+  }
+}
+
+// Space-aware sweep ACROSS ALL clients. The per-client count prune above can't
+// reclaim a volume that ANOTHER client filled (each client only keeps its own
+// newest N), so renders still die with ENOSPC when, say, Tranzzie's batches
+// have eaten the disk. When free space is under `targetGB`, delete the
+// globally-oldest batch folders — never dropping below `minKeep` newest per
+// client — until we clear the bar or run out of safely-removable batches.
+// Queue entries pointing at deleted stamps are dropped too. Returns
+// { freed, free }.
+async function sweepVolumeToFree(targetGB, minKeep = 2) {
+  let free = await exportFreeGB();
+  if (free === null || free >= targetGB) return { freed: 0, free };
+
+  let entries = [];
+  try {
+    entries = await fs.readdir(EXPORT_BASE, { withFileTypes: true });
+  } catch {
+    return { freed: 0, free };
+  }
+
+  // Gather every removable batch dir across all client subfolders (skip
+  // _studio-data and other non-client dirs; protect each client's newest few).
+  const batches = []; // { client, stamp, abs }
+  for (const d of entries) {
+    if (!d.isDirectory() || d.name.startsWith("_")) continue;
+    const cdir = path.join(EXPORT_BASE, d.name);
+    let stamps = [];
+    try {
+      stamps = (await fs.readdir(cdir)).filter(safeStamp).sort().reverse();
+    } catch {
+      continue;
+    }
+    stamps.slice(minKeep).forEach((stamp) =>
+      batches.push({ client: d.name, stamp, abs: path.join(cdir, stamp) }),
+    );
+  }
+  // Oldest globally first (stamps are ISO-ish, so lexical sort = chronological).
+  batches.sort((a, b) => (a.stamp < b.stamp ? -1 : a.stamp > b.stamp ? 1 : 0));
+
+  let freed = 0;
+  const removedByClient = {};
+  for (const b of batches) {
+    const now = await exportFreeGB();
+    if (now !== null && now >= targetGB) break;
+    await fs.rm(b.abs, { recursive: true, force: true }).catch(() => {});
+    freed += 1;
+    (removedByClient[b.client] ||= []).push(b.stamp);
+  }
+
+  // Drop queue entries that pointed at the now-deleted batches.
+  for (const [cid, stamps] of Object.entries(removedByClient)) {
+    const doomedSet = new Set(stamps);
+    await updateQueue(cid, (queue) => {
+      const kept = queue.filter((e) => !doomedSet.has(e.stamp));
+      return kept.length !== queue.length ? kept : undefined;
+    }).catch(() => {});
+  }
+
+  free = await exportFreeGB();
+  return { freed, free };
 }
 
 app.get("/api/batches", async (req, res) => {

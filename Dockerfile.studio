@@ -2,7 +2,7 @@
 # Multi-client Quote Poster Studio + B-Roll (scripts/jurie-dashboard.mjs).
 # Separate from the existing Dockerfile (which ships server.mjs) — do not
 # merge. Includes Chromium deps for Remotion rendering.
-# (Redeploy trigger — v0.29.3: hide character picker for advice/tweet posters.)
+# (Redeploy trigger — v0.29.4: space-aware volume sweep — fixes ENOSPC "all posters failed".)
 
 FROM node:20-bookworm-slim AS base
 
