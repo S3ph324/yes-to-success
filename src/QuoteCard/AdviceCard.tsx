@@ -114,10 +114,6 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
         ? "radial-gradient(ellipse at 88% 6%, rgba(245,193,59,0.16) 0%, transparent 44%)"
         : "radial-gradient(ellipse at 88% 6%, rgba(245,193,59,0.22) 0%, transparent 44%)" }} />
       {isDark && <AbsoluteFill style={{ background: "linear-gradient(180deg, transparent 58%, rgba(0,0,0,0.4) 100%)" }} />}
-      {/* faint oversized series initial as a watermark */}
-      <div style={{ position: "absolute", right: -Math.round(60 * scale), bottom: Math.round(height * 0.16), fontFamily: ARCHIVO, fontWeight: 900, fontStretch: "125%", fontSize: Math.round(440 * scale), color: brandGold, opacity: isDark ? 0.05 : 0.08, lineHeight: 1 }}>
-        {seriesTag.charAt(0)}
-      </div>
 
       <div style={{
         position: "absolute", left: inset, right: inset, top: inset, bottom: inset,

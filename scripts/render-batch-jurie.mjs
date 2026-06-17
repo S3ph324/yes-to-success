@@ -151,6 +151,28 @@ const slugify = (s) =>
     .slice(0, 40);
 
 console.log(`Rendering ${quotes.length} ${client.label} poster(s)…`);
+
+const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+
+// Stage a user-uploaded advice/tweet avatar into public/ *BEFORE* bundling.
+// Remotion's bundle() snapshots public/ at bundle time and serves that copy —
+// anything written into public/ AFTER bundling is not served and staticFile()
+// 404s. Staging here previously ran after the bundle, so every advice/tweet
+// poster with a custom profile photo failed with "Error loading image". Cleaned
+// up after the batch. Falls back to the default Jurie photo if staging fails.
+let ADVICE_AVATAR_REL = "";
+const _adviceAvatarAbs = process.env.DASHBOARD_ADVICE_AVATAR || "";
+if (_adviceAvatarAbs) {
+  try {
+    await fs.access(_adviceAvatarAbs); // upload still present?
+    const ext = (path.extname(_adviceAvatarAbs) || ".png").toLowerCase();
+    const rel = path.posix.join("_advice-avatar", `${stamp}${ext}`);
+    await fs.mkdir(path.join(projectRoot, "public", "_advice-avatar"), { recursive: true });
+    await fs.copyFile(_adviceAvatarAbs, path.join(projectRoot, "public", rel));
+    ADVICE_AVATAR_REL = rel;
+  } catch (e) { console.warn(`  advice avatar stage failed (using default): ${e.message}`); }
+}
+
 console.log("Bundling Remotion project (one-time)…");
 const t0 = Date.now();
 const bundleLocation = await bundle({
@@ -159,7 +181,6 @@ const bundleLocation = await bundle({
 });
 console.log(`  bundled in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 
-const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
 const exportDir = path.join(EXPORT_DIR, stamp);
 await fs.mkdir(exportDir, { recursive: true });
 
@@ -171,21 +192,6 @@ try {
     fs.rm(path.join(cardsRoot, d), { recursive: true, force: true }).catch(() => {});
   }
 } catch { /* out/cards may not exist — skip */ }
-
-// Stage a user-uploaded advice/tweet avatar into public/ so staticFile() can
-// resolve it (uploads live at an absolute path outside public/). Cleaned up
-// after the batch.
-let ADVICE_AVATAR_REL = "";
-const _adviceAvatarAbs = process.env.DASHBOARD_ADVICE_AVATAR || "";
-if (_adviceAvatarAbs) {
-  try {
-    const ext = (path.extname(_adviceAvatarAbs) || ".png").toLowerCase();
-    const rel = path.posix.join("_advice-avatar", `${stamp}${ext}`);
-    await fs.mkdir(path.join(projectRoot, "public", "_advice-avatar"), { recursive: true });
-    await fs.copyFile(_adviceAvatarAbs, path.join(projectRoot, "public", rel));
-    ADVICE_AVATAR_REL = rel;
-  } catch (e) { console.warn(`  advice avatar stage failed: ${e.message}`); }
-}
 
 let i = 0;
 let failed = 0;
