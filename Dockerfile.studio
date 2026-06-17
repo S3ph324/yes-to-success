@@ -2,7 +2,7 @@
 # Multi-client Quote Poster Studio + B-Roll (scripts/jurie-dashboard.mjs).
 # Separate from the existing Dockerfile (which ships server.mjs) — do not
 # merge. Includes Chromium deps for Remotion rendering.
-# (Redeploy trigger — v0.29.5: stage advice/tweet avatar before bundle (fix 404) + drop "W" watermark.)
+# (Redeploy trigger — v0.29.6: cache Chromium layer (faster/reliable deploys) + retrigger v0.29.5 fixes.)
 
 FROM node:20-bookworm-slim AS base
 
@@ -26,10 +26,14 @@ ENV EXPORT_BASE=/app/exports
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
 
-COPY . .
-
-# Pre-download Remotion's Chromium so the first render isn't slow (non-fatal).
+# Pre-download Remotion's Chromium in a CACHED layer — keyed on the dependency
+# install above, NOT the app source. Previously this ran after `COPY . .`, so
+# every code change re-downloaded ~150 MB of Chromium and made deploys slow (and
+# could hang/fail the build when the download stalled). Now a source-only change
+# reuses this layer and ships fast. (non-fatal — falls back to runtime fetch.)
 RUN npx remotion browser ensure || echo "browser ensure deferred to runtime"
+
+COPY . .
 
 # Writable output + working dirs (mount a Railway volume at /app/exports)
 RUN mkdir -p /app/exports /app/out /app/public/generated-bg \
