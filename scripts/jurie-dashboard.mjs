@@ -2512,6 +2512,8 @@ async function viewGenerate(){
   function paintSubject(){
     const pt=curPosterType();
     const row=$('#g_subjrow');if(!row)return;
+    // Advice / tweet cards are text-only — no character/subject needed.
+    if(pt==='advice'||pt==='tweet'){row.innerHTML='';return;}
     if(pt==='eyeglasses'){
       row.innerHTML='<div class="row" style="align-items:flex-start;margin-top:14px">'
         +'<div><label>Eyeglasses</label>'
