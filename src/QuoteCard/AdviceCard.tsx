@@ -34,6 +34,9 @@ export const adviceCardSchema = z.object({
   hook: z.string().default(""),
   lines: z.array(z.string()).default([]),
   payoff: z.string().default(""),
+  // When set, the payoff block reads as a quote backed by a real authority
+  // (e.g. "Alex Hormozi") — shown as «"quote" — Name».
+  authorName: z.string().default(""),
   seriesLabel: z.string().default(""),
   dayNumber: z.number().int().min(0).default(0),
   url: z.string().default("learnwithjurie.it.com"),
@@ -73,7 +76,7 @@ const useAdviceFonts = () => {
 };
 
 export const AdviceCard: React.FC<AdviceCardProps> = ({
-  handle, avatarSrc, hook, lines, payoff, seriesLabel, dayNumber, url,
+  handle, avatarSrc, hook, lines, payoff, authorName, seriesLabel, dayNumber, url,
   theme, brandGold, brandRed,
 }) => {
   useAdviceFonts();
@@ -168,7 +171,8 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
           </div>
         </div>
 
-        {/* Payoff — gold left bar + tinted block */}
+        {/* Payoff — gold left bar + tinted block. With an authorName it reads as
+            a quote backing the advice: «"quote" — Name». */}
         {payoff && (
           <div style={{
             display: "flex", gap: Math.round(18 * scale), alignItems: "stretch",
@@ -177,7 +181,16 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
             marginBottom: Math.round(24 * scale),
           }}>
             <div style={{ width: Math.round(5 * scale), background: brandGold, borderRadius: 3, flexShrink: 0 }} />
-            <div style={{ fontFamily: FRAUNCES, fontStyle: "italic", fontWeight: 500, fontSize: Math.round(36 * scale), color: ink, lineHeight: 1.22 }}>{payoff}</div>
+            <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+              <div style={{ fontFamily: FRAUNCES, fontStyle: "italic", fontWeight: 500, fontSize: Math.round((authorName ? 34 : 36) * scale), color: ink, lineHeight: 1.22 }}>
+                {authorName ? `“${payoff}”` : payoff}
+              </div>
+              {authorName && (
+                <div style={{ fontFamily: ARCHIVO, fontWeight: 700, fontSize: Math.round(20 * scale), letterSpacing: "0.06em", textTransform: "uppercase", color: brandGold, marginTop: Math.round(12 * scale) }}>
+                  — {authorName}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

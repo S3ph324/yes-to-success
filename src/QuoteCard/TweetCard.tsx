@@ -145,16 +145,17 @@ export const TweetCard: React.FC<TweetCardProps> = ({
           {timestamp || "9:41 AM · Jun 17, 2026"}
         </div>
 
-        {/* Divider + engagement */}
+        {/* Divider + engagement — icons only; counts left blank (like a fresh
+            post) unless explicitly provided. */}
         <div style={{ borderTop: `1px solid ${line}`, marginTop: Math.round(22 * scale), paddingTop: Math.round(20 * scale), display: "flex", gap: Math.round(48 * scale) }}>
           {[
-            { d: "M3 5h18v12H8l-5 4z", v: replies || "128" },
-            { d: "M4 8h13l-3-3M20 16H7l3 3", v: reposts || "412" },
-            { d: "M12 21s-7.5-4.6-9.5-9C1 8 3 5 6 5c2 0 3 1.5 3 1.5S10 5 12 5s3 1.5 3 1.5S16 5 18 5c3 0 5 3 3.5 7-2 4.4-9.5 9-9.5 9z", v: likes || "2.4K" },
+            { d: "M3 5h18v12H8l-5 4z", v: replies },
+            { d: "M4 8h13l-3-3M20 16H7l3 3", v: reposts },
+            { d: "M12 21s-7.5-4.6-9.5-9C1 8 3 5 6 5c2 0 3 1.5 3 1.5S10 5 12 5s3 1.5 3 1.5S16 5 18 5c3 0 5 3 3.5 7-2 4.4-9.5 9-9.5 9z", v: likes },
           ].map((m, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: Math.round(9 * scale) }}>
               <EngIcon d={m.d} color={sub} size={Math.round(24 * scale)} />
-              <span style={{ fontFamily: SYS, fontWeight: 500, fontSize: Math.round(20 * scale), color: sub }}>{m.v}</span>
+              {m.v ? <span style={{ fontFamily: SYS, fontWeight: 500, fontSize: Math.round(20 * scale), color: sub }}>{m.v}</span> : null}
             </div>
           ))}
         </div>

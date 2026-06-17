@@ -92,19 +92,36 @@ FORMAT — SINGLE X/TWITTER ADVICE POST:
   schemaRequired = ["tweetBody", "caption"];
 } else {
   formatNote = `
-FORMAT — ADVICE CARD (hook + list + payoff):
-- hook: the big relatable line (6–11 words).
-- lines: 3–5 short, concrete advice steps (each one line, ≤9 words, no ellipsis).
-- payoff: ONE quotable Taglish reframe line.
-- caption: the Facebook caption (see CAPTION).`;
+FORMAT — ADVICE CARD (hook + list + authority quote):
+- hook: the big relatable line in JURIE'S Taglish voice (6–11 words).
+- lines: 3–5 short, concrete advice steps in Jurie's voice (each one line,
+  ≤9 words, no ellipsis).
+- payoff: a SHORT real quote from a well-known authority whose GENUINE
+  philosophy backs the advice above — the credibility close. English is fine
+  (that's how they speak). ≤18 words.
+- authorName: that person's name, e.g. "Alex Hormozi".
+- caption: the Facebook caption (see CAPTION).
+
+AUTHORITY QUOTE — rules (do this carefully):
+- Pick a figure whose real, widely-documented thinking actually fits THIS
+  post's topic. Money/spending → Alex Hormozi, Morgan Housel, Warren Buffett,
+  Ramit Sethi. Habits/consistency → James Clear, Jim Rohn. Sales/scaling →
+  Alex Hormozi, Grant Cardone, Gary Vaynerchuk. Mindset/discipline → David
+  Goggins, Jocko Willink. Leverage/tech/AI → Naval Ravikant, Sam Altman.
+  Marketing → Seth Godin. (Choose per-post; vary across the batch.)
+- Use their AUTHENTIC idea/principle. Paraphrase faithfully if unsure of exact
+  wording — but NEVER invent fake statistics, fake verbatim quotes, or put
+  words in their mouth they're not genuinely known for.
+- The quote must REINFORCE the advice, never contradict it.`;
   schemaProps = {
     hook: { type: Type.STRING },
     lines: { type: Type.ARRAY, items: { type: Type.STRING } },
     payoff: { type: Type.STRING },
+    authorName: { type: Type.STRING },
     caption: { type: Type.STRING },
     theme: { type: Type.STRING },
   };
-  schemaRequired = ["hook", "lines", "payoff", "caption"];
+  schemaRequired = ["hook", "lines", "payoff", "authorName", "caption"];
 }
 
 const CAPTION_RULES = `
@@ -162,6 +179,9 @@ try { posts = JSON.parse(resp.text); } catch { console.error("Bad JSON:\n", resp
 if (!Array.isArray(posts) || !posts.length) { console.error("Empty/non-array response"); process.exit(1); }
 
 // ── Normalise into render-batch entries ────────────────────────────────────
+// One generation moment for the whole batch — tweets render this as their
+// posted-at timestamp ("exact time it was generated").
+const generatedAt = new Date().toISOString();
 const clean = [];
 for (const p of posts) {
   if (!p || typeof p.caption !== "string" || !p.caption.trim()) continue;
@@ -173,6 +193,7 @@ for (const p of posts) {
     theme: p.theme === "light" ? "light" : "dark",
     seriesLabel: SERIES,
     dayNumber: DAY_START + clean.length,
+    generatedAt,
   };
   if (FORMAT === "tweet") {
     if (typeof p.tweetBody !== "string" || !p.tweetBody.trim()) continue;
@@ -183,6 +204,7 @@ for (const p of posts) {
     e.hook = p.hook.trim();
     e.lines = (Array.isArray(p.lines) ? p.lines : []).map((l) => String(l).trim()).filter(Boolean).slice(0, 5);
     e.payoff = (p.payoff || "").trim();
+    e.authorName = (p.authorName || "").trim();
     e.quote = e.hook;
     if (!e.lines.length) continue;
   }

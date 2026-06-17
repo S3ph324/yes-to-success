@@ -150,6 +150,17 @@ const slugify = (s) =>
     .replace(/^_|_$/g, "")
     .slice(0, 40);
 
+// Tweet "posted at" line — the real moment the content was generated, shown in
+// the client's local timezone like a genuine X timestamp ("9:41 AM · Jun 17, 2026").
+const TWEET_TZ = process.env.JURIE_TWEET_TZ || "Asia/Manila";
+const fmtTweetTime = (iso) => {
+  const d = iso ? new Date(iso) : new Date();
+  if (isNaN(d.getTime())) return "";
+  const t = d.toLocaleTimeString("en-US", { timeZone: TWEET_TZ, hour: "numeric", minute: "2-digit", hour12: true });
+  const day = d.toLocaleDateString("en-US", { timeZone: TWEET_TZ, month: "short", day: "numeric", year: "numeric" });
+  return `${t} · ${day}`;
+};
+
 console.log(`Rendering ${quotes.length} ${client.label} poster(s)…`);
 
 const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
@@ -240,6 +251,7 @@ for (const q of quotes) {
         hook: q.hook || q.quote || "",
         lines: q.lines || [],
         payoff: q.payoff || "",
+        authorName: q.authorName || "",
         seriesLabel: q.seriesLabel || "Working Smart",
         dayNumber: q.dayNumber || 0,
         url: "learnwithjurie.it.com",
@@ -255,7 +267,12 @@ for (const q of quotes) {
         avatarSrc: jurieAvatar,
         verified: true,
         body: q.tweetBody || q.quote || "",
-        timestamp: "",
+        // Real generation time as the posted-at line; engagement counts stay
+        // blank (replies/reposts/likes default to "" → icons only).
+        timestamp: fmtTweetTime(q.generatedAt),
+        replies: "",
+        reposts: "",
+        likes: "",
         cardTheme: q.cardTheme || tweetStyle.cardTheme,
         backdrop: q.backdrop || tweetStyle.backdrop,
         brandGold: brand.brandGold,
