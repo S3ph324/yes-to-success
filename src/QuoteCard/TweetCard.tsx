@@ -118,8 +118,10 @@ export const TweetCard: React.FC<TweetCardProps> = ({
       }}>
         {/* Header row */}
         <div style={{ display: "flex", alignItems: "center", gap: Math.round(14 * scale) }}>
-          <div style={{ width: Math.round(64 * scale), height: Math.round(64 * scale), borderRadius: "50%", overflow: "hidden", background: dark ? "#16181c" : "#f0f0f0", flexShrink: 0 }}>
-            {avatar && <Img src={avatar} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+          <div style={{ width: Math.round(64 * scale), height: Math.round(64 * scale), borderRadius: "50%", overflow: "hidden", background: avatar ? (dark ? "#16181c" : "#f0f0f0") : brandGold, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {avatar
+              ? <Img src={avatar} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              : <span style={{ fontFamily: SYS, fontWeight: 800, fontSize: Math.round(30 * scale), color: "#0f1419" }}>{(displayName || "?").trim().charAt(0).toUpperCase()}</span>}
           </div>
           <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: Math.round(6 * scale) }}>

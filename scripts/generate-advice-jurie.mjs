@@ -86,13 +86,38 @@ ${bannedLine}`;
 let schemaProps, schemaRequired, formatNote;
 if (FORMAT === "tweet") {
   formatNote = `
-FORMAT — SINGLE X/TWITTER ADVICE POST:
-- tweetBody: ONE short advice post (2–4 short lines, blank line between beats).
-  Hook line → reframe → small actionable nudge. Conversational, like a real
-  tweet from a mentor. Under ~240 characters. No hashtags, no links.
-- caption: a longer Facebook caption that EXPANDS the same idea (see CAPTION).`;
-  schemaProps = { tweetBody: { type: Type.STRING }, caption: { type: Type.STRING }, theme: { type: Type.STRING } };
-  schemaRequired = ["tweetBody", "caption"];
+FORMAT — X/TWITTER POST "SCREENSHOT". MIX the batch:
+- About HALF the posts are in JURIE'S own Taglish mentor voice
+  (authorName: "Jurie", authorHandle: "@learnwithjurie").
+- The OTHER half are a genuine insight from a PROMINENT ENTREPRENEUR / SALES /
+  MARKETING / WEALTH figure, written in THAT person's voice (English), with
+  their real name + handle. Use these (name → handle):
+    Alex Hormozi → @AlexHormozi
+    Gary Vaynerchuk → @garyvee
+    Naval Ravikant → @naval
+    Grant Cardone → @GrantCardone
+    Russell Brunson → @russellbrunson
+    Robert Kiyosaki → @theRealKiyosaki
+    Jordan Belfort → @wolfofwallst
+    Tony Robbins → @tonyrobbins
+    Sam Altman → @sama
+  Vary which figure across the batch; pick one whose topic fits the post.
+- tweetBody: ONE short post (2–4 short lines, blank line between beats), under
+  ~240 chars, no hashtags/links. For a figure it MUST be their AUTHENTIC,
+  widely-documented idea — faithfully paraphrased — NEVER an invented claim,
+  fake stat, or words they're not actually known for.
+- authorName / authorHandle: the poster (Jurie + "@learnwithjurie", or the
+  figure + their handle above).
+- caption: a longer Facebook caption (see CAPTION). When the post is a figure's,
+  the caption is JURIE reacting to / building on that insight in her voice.`;
+  schemaProps = {
+    tweetBody: { type: Type.STRING },
+    authorName: { type: Type.STRING },
+    authorHandle: { type: Type.STRING },
+    caption: { type: Type.STRING },
+    theme: { type: Type.STRING },
+  };
+  schemaRequired = ["tweetBody", "authorName", "authorHandle", "caption"];
 } else {
   formatNote = `
 FORMAT — QUOTE-LED ADVICE CARD. The QUOTE is the hero (shown biggest, read
@@ -210,6 +235,11 @@ for (const p of posts) {
   if (FORMAT === "tweet") {
     if (typeof p.tweetBody !== "string" || !p.tweetBody.trim()) continue;
     e.tweetBody = p.tweetBody.trim();
+    // Tweet author — Jurie or a prominent figure. Default to Jurie.
+    e.authorName = (p.authorName || "Jurie").trim();
+    let h = (p.authorHandle || "").trim();
+    if (h && !h.startsWith("@")) h = "@" + h.replace(/^@+/, "");
+    e.authorHandle = h || (/^jurie$/i.test(e.authorName) ? "@learnwithjurie" : "");
     e.quote = e.tweetBody.split("\n")[0];
   } else {
     if (typeof p.hook !== "string" || !p.hook.trim()) continue;
