@@ -2,7 +2,7 @@
 # Multi-client Quote Poster Studio + B-Roll (scripts/jurie-dashboard.mjs).
 # Separate from the existing Dockerfile (which ships server.mjs) — do not
 # merge. Includes Chromium deps for Remotion rendering.
-# (Redeploy trigger — v0.29.13: tweet batches mix Jurie with prominent-figure "screenshots".)
+# (Redeploy trigger — v0.29.14: tweets always posted by Jurie; body may quote a figure.)
 
 FROM node:20-bookworm-slim AS base
 

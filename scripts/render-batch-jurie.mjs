@@ -252,8 +252,6 @@ for (const q of quotes) {
   ];
   const tweetSet = q.theme === "light" ? TWEET_BACKDROPS_LIGHT : TWEET_BACKDROPS_DARK;
   const tweetStyle = tweetSet[(i - 1) % tweetSet.length];
-  // Whether this tweet is Jurie's own voice or a prominent figure's "screenshot".
-  const tweetIsJurie = !q.authorName || q.authorName.trim().toLowerCase() === "jurie";
   const inputProps = isAdvice
     ? {
         handle: "@learnwithjurie",
@@ -272,12 +270,10 @@ for (const q of quotes) {
       }
     : isTweet
     ? {
-        // A tweet is either Jurie's own or a prominent figure's "screenshot".
-        // Jurie uses her photo; figures get a monogram (we don't ship their
-        // photos) — TweetCard draws the initial when avatarSrc is "".
-        displayName: tweetIsJurie ? "Jurie" : q.authorName.trim(),
-        handle: tweetIsJurie ? "@learnwithjurie" : (q.authorHandle || "").trim(),
-        avatarSrc: tweetIsJurie ? jurieAvatar : "",
+        // Jurie is ALWAYS the poster — the body may quote a prominent figure.
+        displayName: "Jurie",
+        handle: "@learnwithjurie",
+        avatarSrc: jurieAvatar,
         verified: true,
         body: q.tweetBody || q.quote || "",
         // Real generation time as the posted-at line; engagement counts stay
