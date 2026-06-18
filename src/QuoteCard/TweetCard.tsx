@@ -30,8 +30,11 @@ export const tweetCardSchema = z.object({
   reposts: z.string().default(""),
   likes: z.string().default(""),
   cardTheme: z.enum(["light", "dark"]).default("light"),
-  // Outer backdrop behind the tweet card — several styles for variety.
-  backdrop: z.enum(["clean", "dark", "indigo", "rose", "gold"]).default("clean"),
+  // Outer backdrop behind the tweet card — muted, deep tones (never bright).
+  // Legacy keys (dark/indigo/rose/gold) are aliased to muted equivalents.
+  backdrop: z
+    .enum(["clean", "mist", "blush", "ink", "slate", "plum", "bronze", "dark", "indigo", "rose", "gold"])
+    .default("ink"),
   brandGold: z.string().default("#F5C13B"),
   brandRed: z.string().default("#E11522"),
   aspectRatio: aspectRatioSchema,
@@ -90,18 +93,29 @@ export const TweetCard: React.FC<TweetCardProps> = ({
   const line = dark ? "#2f3336" : "#eff3f4";
   const avatar = resolveSrc(avatarSrc);
 
-  // Outer backdrop — several styles so the batch isn't all one colour.
+  // Outer backdrop — muted, deep tones so the batch has subtle variety without
+  // bright/vibrant colour. Light variants are soft neutrals.
   const BACKDROPS: Record<string, string> = {
+    // soft light neutrals
     clean: "linear-gradient(160deg, #eef1f4 0%, #e2e6ea 100%)",
-    dark: "radial-gradient(ellipse at 50% 28%, #1b1d23 0%, #0a0a0c 100%)",
-    indigo: "linear-gradient(160deg, #6366f1 0%, #7c3aed 58%, #2563eb 130%)",
-    rose: "linear-gradient(160deg, #fb7185 0%, #f43f5e 55%, #be123c 130%)",
-    gold: `linear-gradient(150deg, ${brandGold} 0%, #e7a92e 55%, ${brandRed} 140%)`,
+    mist: "linear-gradient(155deg, #e9edf2 0%, #d7dde5 100%)",
+    blush: "linear-gradient(155deg, #efe7e9 0%, #ddd2d6 100%)",
+    // muted, deep darks (subtle hue, never bright)
+    ink: "radial-gradient(ellipse at 50% 26%, #191b22 0%, #090a0d 100%)",
+    slate: "linear-gradient(155deg, #283042 0%, #13161f 100%)",
+    plum: "linear-gradient(155deg, #2f2632 0%, #161219 100%)",
+    bronze: "linear-gradient(155deg, #2f2820 0%, #161310 100%)",
+    // legacy aliases → muted equivalents (older entries keep working)
+    dark: "radial-gradient(ellipse at 50% 26%, #191b22 0%, #090a0d 100%)",
+    indigo: "linear-gradient(155deg, #283042 0%, #13161f 100%)",
+    rose: "linear-gradient(155deg, #2f2632 0%, #161219 100%)",
+    gold: "linear-gradient(155deg, #2f2820 0%, #161310 100%)",
   };
-  const bg = BACKDROPS[backdrop] || BACKDROPS.clean;
-  const sheen = backdrop === "clean"
-    ? "radial-gradient(ellipse at 50% 30%, rgba(255,255,255,0.6) 0%, transparent 60%)"
-    : "radial-gradient(ellipse at 50% 40%, rgba(255,255,255,0.12) 0%, transparent 60%)";
+  const lightBg = backdrop === "clean" || backdrop === "mist" || backdrop === "blush";
+  const bg = BACKDROPS[backdrop] || BACKDROPS.ink;
+  const sheen = lightBg
+    ? "radial-gradient(ellipse at 50% 30%, rgba(255,255,255,0.55) 0%, transparent 60%)"
+    : "radial-gradient(ellipse at 50% 38%, rgba(255,255,255,0.05) 0%, transparent 62%)";
 
   const bodySize = Math.round((body.length > 180 ? 38 : body.length > 110 ? 44 : 52) * scale);
   const pad = Math.round(46 * scale);
@@ -113,7 +127,7 @@ export const TweetCard: React.FC<TweetCardProps> = ({
       <div style={{
         width: cardW, background: cardBg, borderRadius: Math.round(28 * scale),
         padding: pad,
-        boxShadow: backdrop === "clean" ? "0 24px 60px rgba(15,20,25,0.16), 0 0 0 1px rgba(15,20,25,0.05)" : "0 30px 80px rgba(0,0,0,0.28)",
+        boxShadow: lightBg ? "0 24px 60px rgba(15,20,25,0.16), 0 0 0 1px rgba(15,20,25,0.05)" : "0 30px 80px rgba(0,0,0,0.34)",
         opacity: fade, transform: `translateY(${lift}px)`,
       }}>
         {/* Header row */}

@@ -206,6 +206,7 @@ try {
 
 let i = 0;
 let failed = 0;
+let prevTweetBackdrop = null; // last tweet backdrop, so random picks avoid repeats
 for (const q of quotes) {
   i += 1;
   // Assign style round-robin: quote 1 → styles[0], quote 2 → styles[1], etc.
@@ -235,23 +236,18 @@ for (const q of quotes) {
   // Avatar for advice/tweet cards: user-uploaded photo (staged into public/)
   // wins; else the Jurie character photo.
   const jurieAvatar = ADVICE_AVATAR_REL || "characters/jurie/jurie-enhanced.png";
-  // Tweet backdrop rotates across the batch so it isn't all one colour. The
-  // theme choice (default dark) decides the palette: dark cards on rich/dark
-  // backdrops, or the light "real screenshot" look. Dark never uses the white
-  // "clean" backdrop.
-  const TWEET_BACKDROPS_DARK = [
-    { backdrop: "dark", cardTheme: "dark" },
-    { backdrop: "indigo", cardTheme: "dark" },
-    { backdrop: "gold", cardTheme: "dark" },
-    { backdrop: "rose", cardTheme: "dark" },
-  ];
-  const TWEET_BACKDROPS_LIGHT = [
-    { backdrop: "clean", cardTheme: "light" },
-    { backdrop: "indigo", cardTheme: "light" },
-    { backdrop: "rose", cardTheme: "light" },
-  ];
-  const tweetSet = q.theme === "light" ? TWEET_BACKDROPS_LIGHT : TWEET_BACKDROPS_DARK;
-  const tweetStyle = tweetSet[(i - 1) % tweetSet.length];
+  // Tweet backdrop: muted tones, picked at RANDOM (no index pattern), avoiding
+  // an immediate repeat. Theme (default dark) picks the palette.
+  const tweetPool = q.theme === "light"
+    ? ["clean", "mist", "blush"]
+    : ["ink", "slate", "plum", "bronze"];
+  let tweetBackdrop = q.backdrop;
+  if (!tweetBackdrop) {
+    const choices = tweetPool.length > 1 ? tweetPool.filter((b) => b !== prevTweetBackdrop) : tweetPool;
+    tweetBackdrop = choices[Math.floor(Math.random() * choices.length)];
+  }
+  prevTweetBackdrop = tweetBackdrop;
+  const tweetCardTheme = q.cardTheme || (q.theme === "light" ? "light" : "dark");
   const inputProps = isAdvice
     ? {
         handle: "@learnwithjurie",
@@ -282,8 +278,8 @@ for (const q of quotes) {
         replies: "",
         reposts: "",
         likes: "",
-        cardTheme: q.cardTheme || tweetStyle.cardTheme,
-        backdrop: q.backdrop || tweetStyle.backdrop,
+        cardTheme: tweetCardTheme,
+        backdrop: tweetBackdrop,
         brandGold: brand.brandGold,
         brandRed: brand.brandRed,
         aspectRatio,
