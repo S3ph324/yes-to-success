@@ -105,8 +105,9 @@ first); Jurie's hook + 3 steps are the supporting "take" beneath it.
 - authorName: that person's name, e.g. "Alex Hormozi".
 - hook: a short relatable line in JURIE'S Taglish voice that bridges the quote
   to the steps (6–10 words).
-- lines: EXACTLY 3 short, concrete advice steps in Jurie's voice (each one
-  line, ≤8 words, no ellipsis). Three is enough — do not add more.
+- lines: 5 short, concrete advice steps in Jurie's voice (each one line,
+  ≤8 words, no ellipsis). Each must add its OWN value — no filler or repeats.
+  (Square posters show the first 3; taller 4:5 / 9:16 posters show more.)
 - caption: the Facebook caption (see CAPTION).
 
 AUTHORITY QUOTE — rules (do this carefully):
@@ -213,7 +214,7 @@ for (const p of posts) {
   } else {
     if (typeof p.hook !== "string" || !p.hook.trim()) continue;
     e.hook = p.hook.trim();
-    e.lines = (Array.isArray(p.lines) ? p.lines : []).map((l) => String(l).trim()).filter(Boolean).slice(0, 3);
+    e.lines = (Array.isArray(p.lines) ? p.lines : []).map((l) => String(l).trim()).filter(Boolean).slice(0, 5);
     e.payoff = (p.payoff || "").trim();
     e.authorName = (p.authorName || "").trim();
     e.quote = e.hook;

@@ -96,19 +96,29 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
   const hairline = isDark ? "rgba(255,255,255,0.14)" : "rgba(27,24,34,0.14)";
   const avatar = resolveSrc(avatarSrc);
 
+  // Fill the canvas per ratio. Every ratio is 1080 wide (so `scale` is the
+  // same), but 9:16 is much taller — without this it leaves big empty gaps.
+  // Taller canvases get MORE steps, bigger type, and spread-out spacing.
+  const ratio = height / width;
+  const tall = ratio > 1.5;        // 9:16
+  const portrait = ratio > 1.12;   // 4:5 (and 9:16)
+  const vf = tall ? 1.24 : portrait ? 1.08 : 1; // vertical-fill type multiplier
+  const maxTips = tall ? 5 : portrait ? 4 : 3;
+
   // The QUOTE leads and is the hero — the biggest type on the card. It scales
-  // with length but its floor (38) still beats the hook, so it always wins the
-  // hierarchy even for long, substantive quotes.
+  // with length (floor 38 still beats the hook) and grows on taller canvases.
   const quoteSize = Math.round(
     (payoff.length > 165 ? 38 : payoff.length > 125 ? 44 : payoff.length > 92 ? 50
-      : payoff.length > 62 ? 58 : payoff.length > 38 ? 66 : 74) * scale,
+      : payoff.length > 62 ? 58 : payoff.length > 38 ? 66 : 74) * scale * vf,
   );
   // Hook is just a small supporting bridge under the quote — always smaller.
-  const hookSize = Math.round((hook.length > 48 ? 30 : 34) * scale);
-  // Keep it simple to consume — at most 3 compact steps.
-  const items = (lines || []).filter((l) => l && l.trim()).slice(0, 3);
-  const tipSize = Math.round(28 * scale);
+  const hookSize = Math.round((hook.length > 48 ? 30 : 34) * scale * vf);
+  const items = (lines || []).filter((l) => l && l.trim()).slice(0, maxTips);
+  const tipSize = Math.round(28 * scale * vf);
   const numSize = Math.round(tipSize * 0.82);
+  const gap = Math.round(30 * scale * vf);       // between quote & advice blocks
+  const tipPad = Math.round(10 * scale * vf);    // vertical padding per step
+  const qPadV = Math.round((tall ? 40 : 28) * scale); // quote block vertical padding
 
   // Hook with the last word in gold — a small accent that adds pop.
   const hookWords = hook.trim().split(/\s+/);
@@ -144,20 +154,22 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
         </div>
 
         {/* Body — the QUOTE leads (the focus, read first, biggest), then Jurie's
-            advice supports it below. Centred as a group between header & footer. */}
+            advice supports it below. On tall canvases the two blocks spread to
+            fill the height instead of clustering in the middle. */}
         <div style={{
           flex: 1, minHeight: 0,
-          display: "flex", flexDirection: "column", justifyContent: "center",
-          gap: Math.round(30 * scale), paddingTop: Math.round(16 * scale),
+          display: "flex", flexDirection: "column",
+          justifyContent: tall ? "space-evenly" : "center",
+          gap, paddingTop: Math.round(16 * scale), paddingBottom: tall ? Math.round(6 * scale) : 0,
         }}>
           {/* QUOTE — THE HERO: read first, biggest type on the card. */}
           {payoff && (
             <div style={{
               background: goldTint, borderRadius: Math.round(20 * scale),
               borderLeft: `${Math.round(8 * scale)}px solid ${brandGold}`,
-              padding: `${Math.round(26 * scale)}px ${Math.round(36 * scale)}px ${Math.round(32 * scale)}px`,
+              padding: `${qPadV}px ${Math.round(36 * scale)}px ${qPadV + Math.round(6 * scale)}px`,
             }}>
-              <div style={{ fontFamily: FRAUNCES, fontWeight: 900, fontSize: Math.round(116 * scale), lineHeight: 0.6, color: brandGold, marginBottom: Math.round(2 * scale) }}>“</div>
+              <div style={{ fontFamily: FRAUNCES, fontWeight: 900, fontSize: Math.round((tall ? 138 : 116) * scale), lineHeight: 0.6, color: brandGold, marginBottom: Math.round(2 * scale) }}>“</div>
               <div style={{ fontFamily: FRAUNCES, fontStyle: "italic", fontWeight: 600, fontSize: quoteSize, color: ink, lineHeight: 1.18, letterSpacing: "-0.01em" }}>
                 {payoff}
               </div>
@@ -182,11 +194,11 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
               ))}
             </div>
             {/* Numbered tips with hairline separators */}
-            <div style={{ marginTop: Math.round(16 * scale) }}>
+            <div style={{ marginTop: Math.round(16 * scale * vf) }}>
               {items.map((l, i) => (
                 <div key={i} style={{
                   display: "flex", gap: Math.round(16 * scale), alignItems: "baseline",
-                  padding: `${Math.round(10 * scale)}px 0`,
+                  padding: `${tipPad}px 0`,
                   borderTop: i === 0 ? "none" : `1px solid ${hairline}`,
                 }}>
                   <span style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: numSize, color: brandGold, lineHeight: 1, flexShrink: 0, fontVariantNumeric: "tabular-nums", minWidth: Math.round(numSize * 1.6) }}>
