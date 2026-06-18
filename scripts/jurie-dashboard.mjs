@@ -1006,6 +1006,7 @@ app.post("/api/generate", extraRefUpload.fields([
     shopMaterial,
     shopAspect,
     adviceSeries,
+    adviceTheme,
   } = req.body || {};
   const c = await getClient(client);
   if (!c) return res.status(400).json({ error: "Unknown client" });
@@ -1077,6 +1078,9 @@ app.post("/api/generate", extraRefUpload.fields([
   // Jurie advice/tweet posters — text-only cards via the advice generator.
   if (isAdvice) {
     env.DASHBOARD_ADVICE_FORMAT = posterType; // "advice" | "tweet"
+    // Card theme — user-chosen (default dark); stops the AI from randomly
+    // producing light/white cards.
+    env.DASHBOARD_ADVICE_THEME = adviceTheme === "light" ? "light" : "dark";
     if (adviceSeries) env.DASHBOARD_ADVICE_SERIES = String(adviceSeries).slice(0, 28);
     // Optional custom profile photo for the cards (HEIC → JPEG).
     const avatarFile = (filesMap.adviceAvatar || [])[0];
@@ -2384,6 +2388,8 @@ async function viewGenerate(){
        +'<div id="advice_avatar_prev" style="width:48px;height:48px;border-radius:50%;overflow:hidden;border:1px solid var(--line2);background:#0d0d0f;background-size:cover;background-position:center"></div>'
        +'<label class="sec" style="cursor:pointer;position:relative;font-size:12px;padding:8px 12px">Upload<input type="file" id="advice_avatar" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label>'
        +'</div></div>'
+       +'<div><label style="font-size:11px;display:block;margin-bottom:5px">Card theme</label>'
+       +'<select id="advice_theme" style="width:130px;padding:11px 14px"><option value="dark">Dark</option><option value="light">Light</option></select></div>'
        +'</div></div>')
      :'')
    // ── Primary form ──
@@ -3005,6 +3011,7 @@ async function viewGenerate(){
     fd.append('posterType',posterType);
     if(posterType==='advice'||posterType==='tweet'){
       fd.append('adviceSeries',($('#advice_series')||{}).value||'');
+      fd.append('adviceTheme',(($('#advice_theme')||{}).value)||'dark');
       const av=$('#advice_avatar')&&$('#advice_avatar').files&&$('#advice_avatar').files[0];
       if(av)fd.append('adviceAvatar',av);
       fd.append('characterId','');

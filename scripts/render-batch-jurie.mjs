@@ -235,15 +235,23 @@ for (const q of quotes) {
   // Avatar for advice/tweet cards: user-uploaded photo (staged into public/)
   // wins; else the Jurie character photo.
   const jurieAvatar = ADVICE_AVATAR_REL || "characters/jurie/jurie-enhanced.png";
-  // Tweet backdrop rotates across the batch so it isn't all one colour.
-  const TWEET_BACKDROPS = [
-    { backdrop: "clean", cardTheme: "light" },
+  // Tweet backdrop rotates across the batch so it isn't all one colour. The
+  // theme choice (default dark) decides the palette: dark cards on rich/dark
+  // backdrops, or the light "real screenshot" look. Dark never uses the white
+  // "clean" backdrop.
+  const TWEET_BACKDROPS_DARK = [
     { backdrop: "dark", cardTheme: "dark" },
+    { backdrop: "indigo", cardTheme: "dark" },
+    { backdrop: "gold", cardTheme: "dark" },
+    { backdrop: "rose", cardTheme: "dark" },
+  ];
+  const TWEET_BACKDROPS_LIGHT = [
+    { backdrop: "clean", cardTheme: "light" },
     { backdrop: "indigo", cardTheme: "light" },
     { backdrop: "rose", cardTheme: "light" },
-    { backdrop: "gold", cardTheme: "dark" },
   ];
-  const tweetStyle = TWEET_BACKDROPS[(i - 1) % TWEET_BACKDROPS.length];
+  const tweetSet = q.theme === "light" ? TWEET_BACKDROPS_LIGHT : TWEET_BACKDROPS_DARK;
+  const tweetStyle = tweetSet[(i - 1) % tweetSet.length];
   const inputProps = isAdvice
     ? {
         handle: "@learnwithjurie",

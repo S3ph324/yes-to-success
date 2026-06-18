@@ -39,6 +39,9 @@ const TOPIC = process.env.CLIENT_TOPIC || process.env.JURIE_TOPIC || rest.slice(
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const FORMAT = process.env.DASHBOARD_ADVICE_FORMAT === "tweet" ? "tweet" : "advice";
 const SERIES = (process.env.DASHBOARD_ADVICE_SERIES || "Working Smart").trim().slice(0, 28);
+// Card theme is user-chosen (default dark) — not left to the model, which used
+// to randomly emit light/white cards.
+const THEME = process.env.DASHBOARD_ADVICE_THEME === "light" ? "light" : "dark";
 const DAY_START = Math.max(0, parseInt(process.env.DASHBOARD_ADVICE_DAYSTART || "1", 10) || 1);
 
 const voiceProfile = await fs.readFile(client.voiceProfilePath, "utf-8").catch(() => "");
@@ -198,7 +201,7 @@ for (const p of posts) {
     kind: FORMAT,
     aspectRatio: "4:5",
     caption: p.caption.trim(),
-    theme: p.theme === "light" ? "light" : "dark",
+    theme: THEME,
     seriesLabel: SERIES,
     dayNumber: DAY_START + clean.length,
     generatedAt,

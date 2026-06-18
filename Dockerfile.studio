@@ -2,7 +2,7 @@
 # Multi-client Quote Poster Studio + B-Roll (scripts/jurie-dashboard.mjs).
 # Separate from the existing Dockerfile (which ships server.mjs) — do not
 # merge. Includes Chromium deps for Remotion rendering.
-# (Redeploy trigger — v0.29.10: quote leads (read first) + longer, substantive quotes.)
+# (Redeploy trigger — v0.29.11: advice/tweet card theme — Dark default + Dark/Light toggle.)
 
 FROM node:20-bookworm-slim AS base
 
