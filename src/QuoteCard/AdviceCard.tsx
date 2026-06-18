@@ -96,16 +96,18 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
   const hairline = isDark ? "rgba(255,255,255,0.14)" : "rgba(27,24,34,0.14)";
   const avatar = resolveSrc(avatarSrc);
 
-  // The QUOTE is the hero — the biggest type on the card. It scales down only
-  // for long quotes so it always dominates the hierarchy.
+  // The QUOTE leads and is the hero — the biggest type on the card. It scales
+  // with length but its floor (38) still beats the hook, so it always wins the
+  // hierarchy even for long, substantive quotes.
   const quoteSize = Math.round(
-    (payoff.length > 100 ? 52 : payoff.length > 70 ? 60 : payoff.length > 42 ? 68 : 78) * scale,
+    (payoff.length > 165 ? 38 : payoff.length > 125 ? 44 : payoff.length > 92 ? 50
+      : payoff.length > 62 ? 58 : payoff.length > 38 ? 66 : 74) * scale,
   );
-  // Hook is now a supporting setup line — deliberately smaller than the quote.
-  const hookSize = Math.round((hook.length > 50 ? 36 : hook.length > 30 ? 42 : 46) * scale);
+  // Hook is just a small supporting bridge under the quote — always smaller.
+  const hookSize = Math.round((hook.length > 48 ? 30 : 34) * scale);
   // Keep it simple to consume — at most 3 compact steps.
   const items = (lines || []).filter((l) => l && l.trim()).slice(0, 3);
-  const tipSize = Math.round(29 * scale);
+  const tipSize = Math.round(28 * scale);
   const numSize = Math.round(tipSize * 0.82);
 
   // Hook with the last word in gold — a small accent that adds pop.
@@ -141,58 +143,60 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
           </div>
         </div>
 
-        {/* Setup — the advice is now the compact supporting section up top so
-            the quote can own the hierarchy. */}
-        <div style={{ paddingTop: Math.round(26 * scale) }}>
-          {/* gold kicker bar */}
-          <div style={{ width: Math.round(48 * scale), height: Math.round(4 * scale), background: brandGold, borderRadius: 3, marginBottom: Math.round(16 * scale) }} />
-          {/* Hook (last word gold) */}
-          <div style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: hookSize, color: ink, letterSpacing: "-0.01em", lineHeight: 1.08 }}>
-            {hookWords.map((w, i) => (
-              <span key={i} style={i === hookAccentIdx ? { color: brandGold } : undefined}>{w}{i < hookWords.length - 1 ? " " : ""}</span>
-            ))}
-          </div>
-          {/* Numbered tips with hairline separators */}
-          <div style={{ marginTop: Math.round(20 * scale) }}>
-            {items.map((l, i) => (
-              <div key={i} style={{
-                display: "flex", gap: Math.round(16 * scale), alignItems: "baseline",
-                padding: `${Math.round(11 * scale)}px 0`,
-                borderTop: i === 0 ? "none" : `1px solid ${hairline}`,
-              }}>
-                <span style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: numSize, color: brandGold, lineHeight: 1, flexShrink: 0, fontVariantNumeric: "tabular-nums", minWidth: Math.round(numSize * 1.6) }}>
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <span style={{ fontFamily: ARCHIVO, fontWeight: 500, fontSize: tipSize, color: lineCol, lineHeight: 1.3 }}>{l}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Quote — THE HERO. Biggest type on the card, claims the remaining
-            space and is vertically centred so the eye lands here first. */}
+        {/* Body — the QUOTE leads (the focus, read first, biggest), then Jurie's
+            advice supports it below. Centred as a group between header & footer. */}
         <div style={{
           flex: 1, minHeight: 0,
           display: "flex", flexDirection: "column", justifyContent: "center",
-          marginTop: Math.round(24 * scale), marginBottom: Math.round(20 * scale),
+          gap: Math.round(30 * scale), paddingTop: Math.round(16 * scale),
         }}>
+          {/* QUOTE — THE HERO: read first, biggest type on the card. */}
           {payoff && (
             <div style={{
               background: goldTint, borderRadius: Math.round(20 * scale),
               borderLeft: `${Math.round(8 * scale)}px solid ${brandGold}`,
-              padding: `${Math.round(28 * scale)}px ${Math.round(36 * scale)}px ${Math.round(34 * scale)}px`,
+              padding: `${Math.round(26 * scale)}px ${Math.round(36 * scale)}px ${Math.round(32 * scale)}px`,
             }}>
-              <div style={{ fontFamily: FRAUNCES, fontWeight: 900, fontSize: Math.round(116 * scale), lineHeight: 0.6, color: brandGold, marginBottom: Math.round(6 * scale) }}>“</div>
-              <div style={{ fontFamily: FRAUNCES, fontStyle: "italic", fontWeight: 600, fontSize: quoteSize, color: ink, lineHeight: 1.16, letterSpacing: "-0.01em" }}>
+              <div style={{ fontFamily: FRAUNCES, fontWeight: 900, fontSize: Math.round(116 * scale), lineHeight: 0.6, color: brandGold, marginBottom: Math.round(2 * scale) }}>“</div>
+              <div style={{ fontFamily: FRAUNCES, fontStyle: "italic", fontWeight: 600, fontSize: quoteSize, color: ink, lineHeight: 1.18, letterSpacing: "-0.01em" }}>
                 {payoff}
               </div>
               {authorName && (
-                <div style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: Math.round(26 * scale), letterSpacing: "0.1em", textTransform: "uppercase", color: brandGold, marginTop: Math.round(22 * scale) }}>
+                <div style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: Math.round(26 * scale), letterSpacing: "0.1em", textTransform: "uppercase", color: brandGold, marginTop: Math.round(20 * scale) }}>
                   — {authorName}
                 </div>
               )}
             </div>
           )}
+
+          {/* Jurie's take — the supporting advice (relatable hook + 3 quick steps). */}
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: Math.round(12 * scale), marginBottom: Math.round(14 * scale) }}>
+              <div style={{ width: Math.round(26 * scale), height: Math.round(3 * scale), background: brandGold, borderRadius: 3 }} />
+              <span style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: Math.round(15 * scale), letterSpacing: "0.18em", textTransform: "uppercase", color: brandGold }}>Jurie&apos;s take</span>
+            </div>
+            {/* Hook (last word gold) — small bridge line */}
+            <div style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: hookSize, color: ink, letterSpacing: "-0.01em", lineHeight: 1.12 }}>
+              {hookWords.map((w, i) => (
+                <span key={i} style={i === hookAccentIdx ? { color: brandGold } : undefined}>{w}{i < hookWords.length - 1 ? " " : ""}</span>
+              ))}
+            </div>
+            {/* Numbered tips with hairline separators */}
+            <div style={{ marginTop: Math.round(16 * scale) }}>
+              {items.map((l, i) => (
+                <div key={i} style={{
+                  display: "flex", gap: Math.round(16 * scale), alignItems: "baseline",
+                  padding: `${Math.round(10 * scale)}px 0`,
+                  borderTop: i === 0 ? "none" : `1px solid ${hairline}`,
+                }}>
+                  <span style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: numSize, color: brandGold, lineHeight: 1, flexShrink: 0, fontVariantNumeric: "tabular-nums", minWidth: Math.round(numSize * 1.6) }}>
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span style={{ fontFamily: ARCHIVO, fontWeight: 500, fontSize: tipSize, color: lineCol, lineHeight: 1.3 }}>{l}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Footer: series · day (left) · url (right) */}

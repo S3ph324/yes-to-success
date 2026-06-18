@@ -92,14 +92,18 @@ FORMAT — SINGLE X/TWITTER ADVICE POST:
   schemaRequired = ["tweetBody", "caption"];
 } else {
   formatNote = `
-FORMAT — ADVICE CARD (keep it simple — hook + 3 steps + one strong quote):
-- hook: the big relatable line in JURIE'S Taglish voice (6–11 words).
+FORMAT — QUOTE-LED ADVICE CARD. The QUOTE is the hero (shown biggest, read
+first); Jurie's hook + 3 steps are the supporting "take" beneath it.
+- payoff: THE HERO — a SUBSTANTIVE, insightful quote from a well-known
+  ENTREPRENEUR / SALES / MARKETING / WEALTH figure whose GENUINE thinking backs
+  the advice. It must carry REAL value — a complete idea people would screenshot,
+  roughly 14–26 words. NOT a 3–6 word slogan ("Sales solve all problems" is too
+  thin). Prefer a quote that teaches or reframes. English.
+- authorName: that person's name, e.g. "Alex Hormozi".
+- hook: a short relatable line in JURIE'S Taglish voice that bridges the quote
+  to the steps (6–10 words).
 - lines: EXACTLY 3 short, concrete advice steps in Jurie's voice (each one
   line, ≤8 words, no ellipsis). Three is enough — do not add more.
-- payoff: a SHORT, punchy quote from a well-known ENTREPRENEUR / SALES /
-  MARKETING / WEALTH figure whose GENUINE thinking backs the advice — this is
-  the emphasised line on the card, so make it quotable. English. ≤16 words.
-- authorName: that person's name, e.g. "Alex Hormozi".
 - caption: the Facebook caption (see CAPTION).
 
 AUTHORITY QUOTE — rules (do this carefully):
