@@ -33,10 +33,9 @@ export const adviceCardSchema = z.object({
   avatarSrc: z.string().default(""),
   hook: z.string().default(""),
   lines: z.array(z.string()).default([]),
+  // The hero line — Jurie's own contrarian reframe/insight (not a quote of
+  // anyone; no attribution).
   payoff: z.string().default(""),
-  // When set, the payoff block reads as a quote backed by a real authority
-  // (e.g. "Alex Hormozi") — shown as «"quote" — Name».
-  authorName: z.string().default(""),
   seriesLabel: z.string().default(""),
   dayNumber: z.number().int().min(0).default(0),
   url: z.string().default("learnwithjurie.it.com"),
@@ -76,7 +75,7 @@ const useAdviceFonts = () => {
 };
 
 export const AdviceCard: React.FC<AdviceCardProps> = ({
-  handle, avatarSrc, hook, lines, payoff, authorName, seriesLabel, dayNumber, url,
+  handle, avatarSrc, hook, lines, payoff, seriesLabel, dayNumber, url,
   theme, brandGold, brandRed,
 }) => {
   useAdviceFonts();
@@ -162,7 +161,9 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
           justifyContent: tall ? "space-evenly" : "center",
           gap, paddingTop: Math.round(16 * scale), paddingBottom: tall ? Math.round(6 * scale) : 0,
         }}>
-          {/* QUOTE — THE HERO: read first, biggest type on the card. */}
+          {/* HERO — Jurie's own reframe/insight. Read first, biggest type. The
+              big gold mark + italic serif treat it as a pull-quote of her own
+              line (no external attribution). */}
           {payoff && (
             <div style={{
               background: goldTint, borderRadius: Math.round(20 * scale),
@@ -173,19 +174,13 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
               <div style={{ fontFamily: FRAUNCES, fontStyle: "italic", fontWeight: 600, fontSize: quoteSize, color: ink, lineHeight: 1.18, letterSpacing: "-0.01em" }}>
                 {payoff}
               </div>
-              {authorName && (
-                <div style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: Math.round(26 * scale), letterSpacing: "0.1em", textTransform: "uppercase", color: brandGold, marginTop: Math.round(20 * scale) }}>
-                  — {authorName}
-                </div>
-              )}
             </div>
           )}
 
-          {/* Jurie's take — the supporting advice (relatable hook + 3 quick steps). */}
+          {/* The play — relatable hook + concrete steps. */}
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: Math.round(12 * scale), marginBottom: Math.round(14 * scale) }}>
-              <div style={{ width: Math.round(26 * scale), height: Math.round(3 * scale), background: brandGold, borderRadius: 3 }} />
-              <span style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: Math.round(15 * scale), letterSpacing: "0.18em", textTransform: "uppercase", color: brandGold }}>Jurie&apos;s take</span>
+            <div style={{ marginBottom: Math.round(16 * scale) }}>
+              <div style={{ width: Math.round(40 * scale), height: Math.round(4 * scale), background: brandGold, borderRadius: 3 }} />
             </div>
             {/* Hook (last word gold) — small bridge line */}
             <div style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: hookSize, color: ink, letterSpacing: "-0.01em", lineHeight: 1.12 }}>

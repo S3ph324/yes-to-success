@@ -255,7 +255,6 @@ for (const q of quotes) {
         hook: q.hook || q.quote || "",
         lines: q.lines || [],
         payoff: q.payoff || "",
-        authorName: q.authorName || "",
         seriesLabel: q.seriesLabel || "Working Smart",
         dayNumber: q.dayNumber || 0,
         url: "learnwithjurie.it.com",

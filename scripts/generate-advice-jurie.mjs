@@ -65,90 +65,75 @@ const bannedLine = brief?.bannedPhrases?.length
   ? `\nNEVER use these phrases or anything in their spirit (they shame the audience): ${brief.bannedPhrases.map((p) => `"${p}"`).join(", ")}.\n`
   : "";
 
-// ── Shared craft rules (the learned format, adapted to Jurie's warm voice) ──
+// ── Shared craft rules ──────────────────────────────────────────────────────
+// These encode the PROVEN content-creator patterns (hook-retain-reward, the
+// value-equation way of framing value, ruthless concision, give-real-value) —
+// but rendered 100% as Jurie's OWN warm Taglish voice. We never name, quote,
+// tag, or imitate any outside person/guru in the output; only the underlying
+// craft is borrowed.
 const CRAFT = `
-COPY CRAFT — the "daily builder" format, in Jurie's voice:
-- BREVITY: cut every word that isn't load-bearing. One idea per line.
-- HOOK: name a relatable daily-grind pain or limiting belief the business
-  owner FEELS (gabi-gabing overtime, takot sa AI, "wala akong oras"). Make
-  them think "ako 'to." 6–11 words. Taglish, conversational.
-- EMPATHY, NOT SHAME: validate their effort first. Never imply they're lazy,
-  tanga, or behind. The enemy is the hard way of working — not the person.
-- CONCRETE > ABSTRACT: real actions and small numbers beat adjectives
-  ("i-automate ang 3 paulit-ulit na gawain", "30 minuto kada umaga"). No
-  fake guarantees, no "get rich quick", no hype.
-- PAYOFF: end on ONE quotable Taglish line they'd want to share — a reframe
-  toward working smart with AI. Not a summary; a mic-drop.
-- Taglish that a real Filipino mentor would post. Read it back — if it sounds
-  broken or like a forced slogan, rewrite it.
+COPY CRAFT — proven creator frameworks, written entirely in JURIE'S voice.
+HARD RULE: never name, quote, tag, @-mention, or reference any outside person,
+brand, author, or guru. Every line is Jurie's own. No attributions.
+
+- HOOK FIRST (stop the scroll). Open with ONE of: a contrarian reframe
+  ("Hindi ka kulang sa oras — kulang ka sa sistema."), a specific number
+  ("3 gawain lang ang dapat mong i-automate."), a sharp question
+  ("Bakit puyat ka pa rin gabi-gabi?"), or a before→after tension. 6–12 words.
+- VALUE-EQUATION THINKING. Make the win feel BIGGER, FASTER, EASIER, and more
+  sure ("kaya ko 'to"). Don't ask "anong idadagdag" — show "anong friction ang
+  tatanggalin." Speed + less effort is the lever. Be concrete about the outcome.
+- GIVE REAL VALUE. Teach the actual how — specific, doable TODAY. Small numbers
+  and real actions beat adjectives. No vague hype, no fake guarantees, no
+  "get rich quick."
+- BREVITY. Short sentences, one idea per line. "Walang masyadong mahaba, meron
+  lang masyadong boring." Cut every word that isn't load-bearing.
+- EMPATHY, NEVER SHAME. Validate their hustle first; the enemy is the hard way
+  of working — never the person.
+- REWARD (mic-drop). Land on ONE quotable reframe in Jurie's voice — a line
+  they'd screenshot. Her words, never anyone else's.
+- Real Filipino-mentor Taglish. Read it back; if it sounds broken or like a
+  forced slogan, rewrite.
 ${bannedLine}`;
 
 let schemaProps, schemaRequired, formatNote;
 if (FORMAT === "tweet") {
   formatNote = `
-FORMAT — X/TWITTER POST. JURIE is ALWAYS the poster (@learnwithjurie). MIX the
-batch:
-- Some posts are Jurie's OWN original Taglish insight (2–4 short lines).
-- Some posts are JURIE SHARING A QUOTE from a prominent figure — i.e. the tweet
-  TEXT quotes them; Jurie is still the one posting. Format the body as the quote
-  then the attribution on its own line, optionally with ONE short Jurie reaction
-  in Taglish, e.g.:
-      "Volume negates luck. The more you do, the less luck you need."
-
-      — Alex Hormozi
-
-      Kaya dami-dami lang muna, refine na lang habang nasa laban.
-  Figures to quote (pick one whose topic fits; vary across the batch): Alex
-  Hormozi, Naval Ravikant, Gary Vaynerchuk, Grant Cardone, Russell Brunson,
-  Robert Kiyosaki, Jordan Belfort, Tony Robbins, Sam Altman. Use their
-  AUTHENTIC, widely-documented ideas — faithfully paraphrased — NEVER an
-  invented claim, fake stat, or words they're not actually known for.
-- tweetBody: the full post text (≤ ~260 chars including any quote). Blank line
-  between beats. No hashtags, no links.
+FORMAT — X/TWITTER POST, 100% in JURIE'S OWN voice (@learnwithjurie always the
+poster). NEVER quote, name, tag, @-mention, or reference anyone — just use the
+proven post SHAPES (vary the shape across the batch):
+   • Contrarian reframe — flip a belief most owners hold.
+   • List-in-a-tweet — "3 bagay na pwede mo nang i-automate:" + 2–3 tight lines.
+   • One sharp question → a one-line answer/insight.
+   • "Stop doing X. Start doing Y." / before→after.
+- tweetBody: 2–4 short lines, blank line between beats, ≤ ~260 chars. Lead with
+  the hook line, give ONE concrete takeaway, end on a punchy reframe. No
+  hashtags, no links, no @mentions, no attributions, no quotation-mark quotes.
 - caption: a longer Facebook caption in Jurie's voice (see CAPTION).`;
   schemaProps = { tweetBody: { type: Type.STRING }, caption: { type: Type.STRING }, theme: { type: Type.STRING } };
   schemaRequired = ["tweetBody", "caption"];
 } else {
   formatNote = `
-FORMAT — QUOTE-LED ADVICE CARD. The QUOTE is the hero (shown biggest, read
-first); Jurie's hook + 3 steps are the supporting "take" beneath it.
-- payoff: THE HERO — a SUBSTANTIVE, insightful quote from a well-known
-  ENTREPRENEUR / SALES / MARKETING / WEALTH figure whose GENUINE thinking backs
-  the advice. It must carry REAL value — a complete idea people would screenshot,
-  roughly 14–26 words. NOT a 3–6 word slogan ("Sales solve all problems" is too
-  thin). Prefer a quote that teaches or reframes. English.
-- authorName: that person's name, e.g. "Alex Hormozi".
-- hook: a short relatable line in JURIE'S Taglish voice that bridges the quote
-  to the steps (6–10 words).
-- lines: 5 short, concrete advice steps in Jurie's voice (each one line,
-  ≤8 words, no ellipsis). Each must add its OWN value — no filler or repeats.
-  (Square posters show the first 3; taller 4:5 / 9:16 posters show more.)
-- caption: the Facebook caption (see CAPTION).
-
-AUTHORITY QUOTE — rules (do this carefully):
-- Quote the kind of big names business owners actually follow. Pick whoever
-  truly fits THIS post (vary across the batch):
-    • Offers / scaling a business → Alex Hormozi, Dan Martell, Tony Robbins
-    • Sales / persuasion / closing → Jordan Belfort, Grant Cardone, Alex Hormozi
-    • Marketing / funnels / attention → Russell Brunson, Gary Vaynerchuk, Seth Godin
-    • Money / wealth / assets → Robert Kiyosaki, Naval Ravikant, Warren Buffett
-    • Consistency / patience / volume → Gary Vaynerchuk, Alex Hormozi
-    • Leverage / AI / building → Naval Ravikant, Sam Altman
-- Do NOT use productivity authors like James Clear or Cal Newport — the
-  audience wants business/sales/wealth voices, not "habits" authors.
-- Use their AUTHENTIC idea/principle. Paraphrase faithfully if unsure of exact
-  wording — but NEVER invent fake statistics, fake verbatim quotes, or put
-  words in their mouth they're not genuinely known for.
-- The quote must REINFORCE the advice, never contradict it.`;
+FORMAT — VALUE ADVICE CARD, 100% in JURIE'S OWN voice. NEVER quote, name, tag,
+or reference anyone outside — the hero line is HER insight, not a quote.
+- payoff: THE HERO (shown biggest, read first) — Jurie's single most powerful
+  line: a contrarian reframe or clarifying insight that makes the reader go
+  "tama nga." Her OWN words, no attribution, no quotation marks. 8–16 words,
+  punchy and complete.
+- hook: a short relatable setup in Jurie's Taglish that leads into the steps
+  (6–10 words) — the felt pain or the promise.
+- lines: 5 short, concrete steps (each ≤8 words, no ellipsis). Each adds its OWN
+  value — real actions, small numbers, the actual how. (Square shows the first
+  3; taller 4:5 / 9:16 posters show more.)
+- caption: the Facebook caption (see CAPTION).`;
   schemaProps = {
     hook: { type: Type.STRING },
     lines: { type: Type.ARRAY, items: { type: Type.STRING } },
     payoff: { type: Type.STRING },
-    authorName: { type: Type.STRING },
     caption: { type: Type.STRING },
     theme: { type: Type.STRING },
   };
-  schemaRequired = ["hook", "lines", "payoff", "authorName", "caption"];
+  schemaRequired = ["hook", "lines", "payoff", "caption"];
 }
 
 const CAPTION_RULES = `
@@ -232,7 +217,6 @@ for (const p of posts) {
     e.hook = p.hook.trim();
     e.lines = (Array.isArray(p.lines) ? p.lines : []).map((l) => String(l).trim()).filter(Boolean).slice(0, 5);
     e.payoff = (p.payoff || "").trim();
-    e.authorName = (p.authorName || "").trim();
     e.quote = e.hook;
     if (!e.lines.length) continue;
   }
