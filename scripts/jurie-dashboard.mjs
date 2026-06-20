@@ -1111,7 +1111,8 @@ app.post("/api/generate", extraRefUpload.fields([
     if (shopProduct) env.DASHBOARD_SHOP_PRODUCT = String(shopProduct).slice(0, 40);
     if (shopColor) env.DASHBOARD_SHOP_COLOR = String(shopColor).slice(0, 30);
     if (shopMaterial) env.DASHBOARD_SHOP_MATERIAL = String(shopMaterial).slice(0, 30);
-    env.DASHBOARD_SHOP_ASPECT = ["1:1", "4:5", "9:16"].includes(shopAspect) ? shopAspect : "1:1";
+    // TikTok Shop product listings are always square — no other aspect option.
+    env.DASHBOARD_SHOP_ASPECT = "1:1";
   }
   env.JURIE_NO_OPEN = "1";
   const spec = {
@@ -2412,10 +2413,7 @@ async function viewGenerate(){
    +[['anti_rad','Anti-Radiation / Blue Light'],['uv400','UV400 / UV Protection'],['photochromic','Photochromic'],['polarized','Polarized'],['anti_glare','Anti-Glare'],['anti_scratch','Anti-Scratch']]
        .map(s=>'<label class="spec-chip" style="display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border:1px solid var(--line2);border-radius:999px;cursor:pointer;font-size:13px"><input type="checkbox" name="shop_spec" value="'+s[0]+'" style="width:auto;margin:0;accent-color:var(--gold)"> '+s[1]+'</label>').join('')
    +'</div>'
-   +'<div class="row" style="gap:12px;margin-top:16px;align-items:flex-end">'
-   +'<div style="flex:0 0 200px"><label style="font-size:11px;display:block;margin-bottom:5px">Card aspect</label>'
-   +'<select id="shop_aspect" style="width:100%;padding:11px 12px"><option value="1:1">Square 1:1 (TikTok Shop)</option><option value="4:5">Portrait 4:5</option><option value="9:16">Vertical 9:16</option></select></div>'
-   +'</div>'
+   +'<p class="muted" style="margin:16px 0 0;font-size:11px">Cards are <b>square 1:1</b> \\u2014 the format TikTok Shop product listings use.</p>'
    +'</div>'
    // ── Advanced toggle (hidden for eyeglasses — settings auto-expand instead) ──
    +'<button class="adv-toggle" id="adv-btn" onclick="toggleAdv()">'
