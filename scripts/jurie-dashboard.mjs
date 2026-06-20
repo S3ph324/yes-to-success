@@ -14,7 +14,7 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import express from "express";
 import fs from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import multer from "multer";
 import path from "node:path";
 import url from "node:url";
@@ -157,9 +157,37 @@ const passOk = (pass) => {
   const b = AUTH_PASS ? Buffer.from(AUTH_PASS) : Buffer.from(AUTH_PASS_HASH);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 };
-const SESSIONS = new Map(); // token -> expiry ms
 const SESSION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
-const newToken = () => crypto.randomBytes(24).toString("hex");
+// Stateless signed-cookie sessions backed by a secret PERSISTED on the volume,
+// so a login survives server restarts / redeploys (there's no in-memory store
+// to wipe). Override with env DASH_SECRET.
+let SESSION_SECRET = process.env.DASH_SECRET || "";
+if (!SESSION_SECRET) {
+  const secretFile = path.join(PERSIST_BASE, ".session-secret");
+  try {
+    if (existsSync(secretFile)) SESSION_SECRET = readFileSync(secretFile, "utf-8").trim();
+    if (!SESSION_SECRET) {
+      SESSION_SECRET = crypto.randomBytes(32).toString("hex");
+      try { mkdirSync(path.dirname(secretFile), { recursive: true }); } catch { /* exists */ }
+      writeFileSync(secretFile, SESSION_SECRET, { mode: 0o600 });
+    }
+  } catch { SESSION_SECRET = crypto.randomBytes(32).toString("hex"); /* last resort, per-process */ }
+}
+const signSession = (expiry) =>
+  `${expiry}.${crypto.createHmac("sha256", SESSION_SECRET).update(String(expiry)).digest("hex")}`;
+const verifySession = (tok) => {
+  if (!tok) return false;
+  const dot = tok.lastIndexOf(".");
+  if (dot < 1) return false;
+  const payload = tok.slice(0, dot);
+  const sig = tok.slice(dot + 1);
+  const expiry = parseInt(payload, 10);
+  if (!Number.isFinite(expiry) || expiry < Date.now()) return false;
+  const expected = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
 const readCookies = (req) =>
   Object.fromEntries(
     (req.headers.cookie || "")
@@ -171,12 +199,7 @@ const readCookies = (req) =>
         return [c.slice(0, i), decodeURIComponent(c.slice(i + 1))];
       }),
   );
-const isAuthed = (req) => {
-  const t = readCookies(req).dash_session;
-  if (!t || !SESSIONS.has(t)) return false;
-  if (SESSIONS.get(t) < Date.now()) { SESSIONS.delete(t); return false; }
-  return true;
-};
+const isAuthed = (req) => verifySession(readCookies(req).dash_session);
 
 const LOGIN_PAGE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sign in</title><style>
@@ -212,16 +235,13 @@ catch(_){e.textContent='Network error. Try again.';}b.disabled=false;return fals
 app.post("/api/login", (req, res) => {
   const { user, pass } = req.body || {};
   if (String(user || "").trim() === AUTH_USER && passOk(pass)) {
-    const t = newToken();
-    SESSIONS.set(t, Date.now() + SESSION_MS);
+    const t = signSession(Date.now() + SESSION_MS);
     res.cookie("dash_session", t, { httpOnly: true, sameSite: "lax", secure: !!process.env.HOSTED, maxAge: SESSION_MS, path: "/" });
     return res.json({ ok: true });
   }
   return res.status(401).json({ error: "Invalid username or password" });
 });
-app.post("/api/logout", (req, res) => {
-  const t = readCookies(req).dash_session;
-  if (t) SESSIONS.delete(t);
+app.post("/api/logout", (_req, res) => {
   res.clearCookie("dash_session", { path: "/" });
   res.json({ ok: true });
 });
