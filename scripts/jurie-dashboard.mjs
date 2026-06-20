@@ -1284,6 +1284,55 @@ async function exportFreeGB() {
   }
 }
 
+// Recursively sum file sizes under a path (bytes). Bounded; ignores errors.
+async function dirSizeBytes(p) {
+  let total = 0;
+  let ents;
+  try { ents = await fs.readdir(p, { withFileTypes: true }); } catch { return 0; }
+  for (const e of ents) {
+    const fp = path.join(p, e.name);
+    try {
+      if (e.isDirectory()) total += await dirSizeBytes(fp);
+      else { const st = await fs.stat(fp); total += st.size; }
+    } catch { /* skip */ }
+  }
+  return total;
+}
+
+// READ-ONLY disk inspector — reports volume free/total + a size breakdown of
+// every top-level dir under EXPORT_BASE (and one level into _studio-data) so we
+// can see what's actually using the space. Deletes nothing.
+app.get("/api/debug/disk", async (_req, res) => {
+  if (!EXPORT_BASE) return res.json({ error: "no EXPORT_BASE (local dev)" });
+  const out = { freeGB: null, totalGB: null, usedGB: null, items: [] };
+  try {
+    const st = await fs.statfs(EXPORT_BASE);
+    const bs = Number(st.bsize);
+    out.freeGB = +((Number(st.bavail) * bs) / 1e9).toFixed(3);
+    out.totalGB = +((Number(st.blocks) * bs) / 1e9).toFixed(3);
+    out.usedGB = +(((Number(st.blocks) - Number(st.bfree)) * bs) / 1e9).toFixed(3);
+  } catch { /* statfs unsupported */ }
+  const mb = (b) => +(b / 1e6).toFixed(1);
+  const add = async (label, p) => out.items.push({ path: label, sizeMB: mb(await dirSizeBytes(p)) });
+  try {
+    for (const e of await fs.readdir(EXPORT_BASE, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue;
+      const p = path.join(EXPORT_BASE, e.name);
+      if (e.name === "_studio-data") {
+        // break studio-data down one more level (config vs public/uploads)
+        for (const s of await fs.readdir(p, { withFileTypes: true }).catch(() => [])) {
+          if (s.isDirectory()) await add(`_studio-data/${s.name}`, path.join(p, s.name));
+        }
+      } else {
+        const stamps = (await fs.readdir(p).catch(() => [])).filter(safeStamp);
+        out.items.push({ path: e.name, sizeMB: mb(await dirSizeBytes(p)), batchCount: stamps.length });
+      }
+    }
+  } catch (e) { out.error = e.message; }
+  out.items.sort((a, b) => b.sizeMB - a.sizeMB);
+  res.json(out);
+});
+
 
 app.get("/api/batches", async (req, res) => {
   const c = await getClient(req.query.client);
