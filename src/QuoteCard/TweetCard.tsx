@@ -90,16 +90,18 @@ export const TweetCard: React.FC<TweetCardProps> = ({
 
   // Clean tweet-screenshot look: the tweet fills the frame on a plain
   // background — no outer backdrop, no timestamp, no engagement row, no X logo.
+  // Type is sized big so the body fills the canvas with little empty space;
+  // long tweets scale down so they still fit.
   const len = (body || "").length;
-  const bodySize = Math.round((len > 240 ? 42 : len > 165 ? 50 : len > 95 ? 58 : 66) * scale);
-  const pad = Math.round(width * 0.08);
-  const avSize = Math.round(78 * scale);
+  const bodySize = Math.round((len > 280 ? 54 : len > 190 ? 66 : len > 120 ? 78 : len > 60 ? 90 : 102) * scale);
+  const pad = Math.round(width * 0.07);
+  const avSize = Math.round(80 * scale);
 
   return (
     <AbsoluteFill style={{ background: bg, overflow: "hidden" }}>
       <div style={{
         position: "absolute", left: pad, right: pad, top: pad, bottom: pad,
-        display: "flex", flexDirection: "column", justifyContent: "center",
+        display: "flex", flexDirection: "column",
         opacity: fade, transform: `translateY(${lift}px)`,
       }}>
         {/* Header: avatar + name + handle */}
@@ -118,8 +120,10 @@ export const TweetCard: React.FC<TweetCardProps> = ({
           </div>
         </div>
 
-        {/* Body — the tweet text, large, fills the frame */}
-        <div style={{ fontFamily: SYS, fontWeight: 400, fontSize: bodySize, color: ink, lineHeight: 1.32, whiteSpace: "pre-wrap", letterSpacing: "-0.005em" }}>{body}</div>
+        {/* Body — large, fills the remaining space (vertically centred in it) */}
+        <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", marginTop: Math.round(8 * scale) }}>
+          <div style={{ fontFamily: SYS, fontWeight: 400, fontSize: bodySize, color: ink, lineHeight: 1.28, whiteSpace: "pre-wrap", letterSpacing: "-0.01em" }}>{body}</div>
+        </div>
       </div>
     </AbsoluteFill>
   );
