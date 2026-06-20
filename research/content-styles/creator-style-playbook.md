@@ -1,9 +1,15 @@
 # Creator-style playbook (for Jurie's posts)
 
-Goal: write Jurie's advice cards + tweets using the **proven content patterns** of
-top business/creator-economy voices — **without ever quoting, naming, tagging, or
-mentioning them.** Only the underlying craft is borrowed; every line ships as
-Jurie's own warm Taglish.
+**PRIMARY reference = the studied Facebook page (Patrick Kyei "daily builder"
+format) — see `research/content-styles/patrick-kyei-format.md` at the workspace
+root.** That format/voice is the main basis: hook-led card, "most people" foil
+(done empathetically, never shaming), repetition-then-turn, concrete numbers,
+mantra payoff, dated-series footer. The frameworks below (Hormozi value-equation,
+hook-retain-reward, Koe/Welsh structure) are SUPPORTING craft that's compatible.
+
+Goal: write Jurie's advice cards + tweets using these **proven content patterns**
+— **without ever quoting, naming, tagging, or mentioning anyone.** Only the
+underlying craft is borrowed; every line ships as Jurie's own warm Taglish.
 
 Researched June 2026 (Alex Hormozi primarily; plus Dan Koe, Justin Welsh):
 

@@ -72,60 +72,72 @@ const bannedLine = brief?.bannedPhrases?.length
 // tag, or imitate any outside person/guru in the output; only the underlying
 // craft is borrowed.
 const CRAFT = `
-COPY CRAFT — proven creator frameworks, written entirely in JURIE'S voice.
+COPY CRAFT — the "DAILY BUILDER" format (the studied Facebook page style),
+written entirely in JURIE'S warm Taglish voice.
 HARD RULE: never name, quote, tag, @-mention, or reference any outside person,
 brand, author, or guru. Every line is Jurie's own. No attributions.
 
-- HOOK FIRST (stop the scroll). Open with ONE of: a contrarian reframe
-  ("Hindi ka kulang sa oras — kulang ka sa sistema."), a specific number
-  ("3 gawain lang ang dapat mong i-automate."), a sharp question
-  ("Bakit puyat ka pa rin gabi-gabi?"), or a before→after tension. 6–12 words.
-- VALUE-EQUATION THINKING. Make the win feel BIGGER, FASTER, EASIER, and more
-  sure ("kaya ko 'to"). Don't ask "anong idadagdag" — show "anong friction ang
-  tatanggalin." Speed + less effort is the lever. Be concrete about the outcome.
-- GIVE REAL VALUE. Teach the actual how — specific, doable TODAY. Small numbers
-  and real actions beat adjectives. No vague hype, no fake guarantees, no
-  "get rich quick."
-- BREVITY. Short sentences, one idea per line. "Walang masyadong mahaba, meron
-  lang masyadong boring." Cut every word that isn't load-bearing.
-- EMPATHY, NEVER SHAME. Validate their hustle first; the enemy is the hard way
-  of working — never the person.
-- REWARD (mic-drop). Land on ONE quotable reframe in Jurie's voice — a line
-  they'd screenshot. Her words, never anyone else's.
-- Real Filipino-mentor Taglish. Read it back; if it sounds broken or like a
-  forced slogan, rewrite.
+THE SIGNATURE MOVES (use them — this is the style to copy):
+- HOOK LEADS, and it's the biggest line. Rotate the hook formula across the
+  batch:
+    1. Number + hard promise — "3 gawain na dapat mo nang itigil ngayon."
+    2. Command opener — "Ilista ang 5 paulit-ulit mong ginagawa araw-araw."
+    3. Aphorism — "Ang busy ay hindi katumbas ng kita."
+    4. Contrarian split (the "most people" foil) — "Karamihan, gustong lumago.
+       Iilan lang ang handang magbago ng sistema."
+    5. Confession / proof — "Ito ang routine na nagbawas ng 10 oras ko kada linggo:"
+- "MOST PEOPLE" FOIL, but EMPATHETIC. Cast the HARD WAY of working as the foil,
+  never the reader as tamad/tanga/behind. "Karamihan, X — pero may mas madaling
+  paraan." The enemy is the grind, not the person.
+- CONCRETE > ABSTRACT. Real numbers and actions beat adjectives
+  ("i-automate ang 3 follow-ups", "30 minuto kada umaga", "1 tool, 1 task").
+- REPETITION-THEN-TURN. Stack parallel lines, then flip:
+  "Hindi kapag may oras. Hindi kapag pagod. Kapag may sistema — kahit puyat."
+- PAYOFF = a quotable MANTRA. End on ONE short reframe they'd screenshot/save.
+- BREVITY. One idea per line. "Walang masyadong mahaba, meron lang masyadong
+  boring." White space is the design — never a paragraph block.
+- IDENTITY framing. Not just "gawin mo 'to" — "ito ang ginagawa ng umaangat."
+  The reader self-selects into the worldview.
+- Topic stays in Jurie's lane: AI + systems for Filipino business owners. Sell
+  the dream in the hook; deliver a boring, repeatable mechanism in the body.
+- EMPATHY, NEVER SHAME. No fake guarantees, no "get rich quick."
 ${bannedLine}`;
 
 let schemaProps, schemaRequired, formatNote;
 if (FORMAT === "tweet") {
   formatNote = `
-FORMAT — X/TWITTER POST, 100% in JURIE'S OWN voice (@learnwithjurie always the
-poster). NEVER quote, name, tag, @-mention, or reference anyone — just use the
-proven post SHAPES (vary the shape across the batch):
-   • Contrarian reframe — flip a belief most owners hold.
+FORMAT — X/TWITTER POST in the DAILY-BUILDER style, 100% JURIE'S OWN voice
+(@learnwithjurie always the poster). NEVER quote, name, tag, @-mention, or
+reference anyone. Rotate the post shape across the batch:
+   • Contrarian split (the "most people" foil) — "Karamihan, X. Iilan lang, Y."
    • List-in-a-tweet — "3 bagay na pwede mo nang i-automate:" + 2–3 tight lines.
-   • One sharp question → a one-line answer/insight.
-   • "Stop doing X. Start doing Y." / before→after.
+   • Aphorism — one quotable mantra line.
+   • System reveal — "Ito ang routine ko:" + 2–3 dash lines.
+   • Reframe — flip an excuse into agency.
 - tweetBody: 2–4 short lines, blank line between beats, ≤ ~260 chars. Lead with
-  the hook line, give ONE concrete takeaway, end on a punchy reframe. No
-  hashtags, no links, no @mentions, no attributions, no quotation-mark quotes.
+  the hook, give ONE concrete takeaway (real numbers/actions), end on a mantra.
+  You MAY use repetition-then-turn. No hashtags, links, @mentions, attributions,
+  or quotation-mark quotes.
 - caption: a longer Facebook caption in Jurie's voice (see CAPTION).`;
   schemaProps = { tweetBody: { type: Type.STRING }, caption: { type: Type.STRING }, theme: { type: Type.STRING } };
   schemaRequired = ["tweetBody", "caption"];
 } else {
   formatNote = `
-FORMAT — VALUE ADVICE CARD, 100% in JURIE'S OWN voice. NEVER quote, name, tag,
-or reference anyone outside — the hero line is HER insight, not a quote.
-- payoff: THE HERO (shown biggest, read first) — Jurie's single most powerful
-  line: a contrarian reframe or clarifying insight that makes the reader go
-  "tama nga." Her OWN words, no attribution, no quotation marks. 8–16 words,
-  punchy and complete.
-- hook: a short relatable setup in Jurie's Taglish that leads into the steps
-  (6–10 words) — the felt pain or the promise.
-- lines: 5 short, concrete steps (each ≤8 words, no ellipsis). Each adds its OWN
-  value — real actions, small numbers, the actual how. (Square shows the first
-  3; taller 4:5 / 9:16 posters show more.)
-- caption: the Facebook caption (see CAPTION).`;
+FORMAT — DAILY-BUILDER ADVICE CARD, 100% in JURIE'S OWN voice. NEVER quote,
+name, tag, or reference anyone. Structure, top → bottom:
+- hook: THE HERO — the biggest line, read first. Use one of the hook formulas
+  above and ROTATE them across the batch. 5–11 words. The scroll-stopper.
+- lines: 3–5 concrete points beneath it (each ≤8 words, no ellipsis). Each adds
+  its OWN value — real actions, small numbers, the actual how. You MAY run the
+  repetition-then-turn rhythm across these lines. (Square shows the first 3;
+  taller 4:5 / 9:16 posters show more.)
+- payoff: the closing MANTRA — one short quotable reframe they'd save. Jurie's
+  own words, 4–12 words.
+- caption: the Facebook caption (see CAPTION).
+
+Rotate the post TYPE across the batch (like the page does): single-habit card,
+system reveal ("ito ang routine ko:"), contrarian split, aphorism, roadmap/
+challenge, or reframe (flip an excuse into agency).`;
   schemaProps = {
     hook: { type: Type.STRING },
     lines: { type: Type.ARRAY, items: { type: Type.STRING } },

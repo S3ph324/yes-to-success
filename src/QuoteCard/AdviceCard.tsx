@@ -104,20 +104,17 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
   const vf = tall ? 1.24 : portrait ? 1.08 : 1; // vertical-fill type multiplier
   const maxTips = tall ? 5 : portrait ? 4 : 3;
 
-  // The QUOTE leads and is the hero — the biggest type on the card. It scales
-  // with length (floor 38 still beats the hook) and grows on taller canvases.
-  const quoteSize = Math.round(
-    (payoff.length > 165 ? 38 : payoff.length > 125 ? 44 : payoff.length > 92 ? 50
-      : payoff.length > 62 ? 58 : payoff.length > 38 ? 66 : 74) * scale * vf,
+  // HOOK is the hero — the biggest line on the card (the page leads with the
+  // hook). Scales down for long hooks, grows on taller canvases.
+  const hookSize = Math.round(
+    (hook.length > 80 ? 50 : hook.length > 52 ? 60 : hook.length > 30 ? 72 : 84) * scale * vf,
   );
-  // Hook is just a small supporting bridge under the quote — always smaller.
-  const hookSize = Math.round((hook.length > 48 ? 30 : 34) * scale * vf);
   const items = (lines || []).filter((l) => l && l.trim()).slice(0, maxTips);
-  const tipSize = Math.round(28 * scale * vf);
+  const tipSize = Math.round(30 * scale * vf);
   const numSize = Math.round(tipSize * 0.82);
-  const gap = Math.round(30 * scale * vf);       // between quote & advice blocks
-  const tipPad = Math.round(10 * scale * vf);    // vertical padding per step
-  const qPadV = Math.round((tall ? 40 : 28) * scale); // quote block vertical padding
+  // PAYOFF is the closing mantra — gold, emphasised, smaller than the hook.
+  const payoffSize = Math.round((payoff.length > 70 ? 28 : 34) * scale * vf);
+  const tipPad = Math.round(11 * scale * vf);    // vertical padding per step
 
   // Hook with the last word in gold — a small accent that adds pop.
   const hookWords = hook.trim().split(/\s+/);
@@ -152,44 +149,27 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
           </div>
         </div>
 
-        {/* Body — the QUOTE leads (the focus, read first, biggest), then Jurie's
-            advice supports it below. On tall canvases the two blocks spread to
-            fill the height instead of clustering in the middle. */}
+        {/* Body — HOOK leads (the hero, biggest), the concrete list under it,
+            and the payoff MANTRA closes in gold. On taller canvases the hook+list
+            group and the mantra spread to fill instead of clustering centre. */}
         <div style={{
           flex: 1, minHeight: 0,
           display: "flex", flexDirection: "column",
-          justifyContent: tall ? "space-evenly" : "center",
-          gap, paddingTop: Math.round(16 * scale), paddingBottom: tall ? Math.round(6 * scale) : 0,
+          justifyContent: tall ? "space-between" : "center",
+          paddingTop: Math.round(20 * scale), paddingBottom: Math.round(10 * scale),
         }}>
-          {/* HERO — Jurie's own reframe/insight. Read first, biggest type. The
-              big gold mark + italic serif treat it as a pull-quote of her own
-              line (no external attribution). */}
-          {payoff && (
-            <div style={{
-              background: goldTint, borderRadius: Math.round(20 * scale),
-              borderLeft: `${Math.round(8 * scale)}px solid ${brandGold}`,
-              padding: `${qPadV}px ${Math.round(36 * scale)}px ${qPadV + Math.round(6 * scale)}px`,
-            }}>
-              <div style={{ fontFamily: FRAUNCES, fontWeight: 900, fontSize: Math.round((tall ? 138 : 116) * scale), lineHeight: 0.6, color: brandGold, marginBottom: Math.round(2 * scale) }}>“</div>
-              <div style={{ fontFamily: FRAUNCES, fontStyle: "italic", fontWeight: 600, fontSize: quoteSize, color: ink, lineHeight: 1.18, letterSpacing: "-0.01em" }}>
-                {payoff}
-              </div>
-            </div>
-          )}
-
-          {/* The play — relatable hook + concrete steps. */}
+          {/* HOOK (hero) + the list */}
           <div>
-            <div style={{ marginBottom: Math.round(16 * scale) }}>
-              <div style={{ width: Math.round(40 * scale), height: Math.round(4 * scale), background: brandGold, borderRadius: 3 }} />
-            </div>
-            {/* Hook (last word gold) — small bridge line */}
-            <div style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: hookSize, color: ink, letterSpacing: "-0.01em", lineHeight: 1.12 }}>
+            {/* gold kicker bar */}
+            <div style={{ width: Math.round(48 * scale), height: Math.round(4 * scale), background: brandGold, borderRadius: 3, marginBottom: Math.round(18 * scale) }} />
+            {/* HOOK — biggest line, last word in gold */}
+            <div style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: hookSize, color: ink, letterSpacing: "-0.02em", lineHeight: 1.05 }}>
               {hookWords.map((w, i) => (
                 <span key={i} style={i === hookAccentIdx ? { color: brandGold } : undefined}>{w}{i < hookWords.length - 1 ? " " : ""}</span>
               ))}
             </div>
-            {/* Numbered tips with hairline separators */}
-            <div style={{ marginTop: Math.round(16 * scale * vf) }}>
+            {/* Numbered list with hairline separators */}
+            <div style={{ marginTop: Math.round(28 * scale * vf) }}>
               {items.map((l, i) => (
                 <div key={i} style={{
                   display: "flex", gap: Math.round(16 * scale), alignItems: "baseline",
@@ -204,6 +184,15 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
               ))}
             </div>
           </div>
+
+          {/* PAYOFF — the closing mantra, gold italic, with a hairline above it */}
+          {payoff && (
+            <div style={{ marginTop: Math.round(26 * scale), paddingTop: Math.round(22 * scale), borderTop: `1px solid ${hairline}` }}>
+              <div style={{ fontFamily: FRAUNCES, fontStyle: "italic", fontWeight: 600, fontSize: payoffSize, color: brandGold, lineHeight: 1.22 }}>
+                {payoff}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer: series · day (left) · url (right) */}
