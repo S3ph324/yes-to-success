@@ -202,6 +202,8 @@ export const RemotionRoot: React.FC = () => {
           materialLabel: "",
           featureLine: "",
           brandName: "Tranzzie Eyeglasses",
+          establishedTag: "SINCE 2019",
+          pills: ["Premium Build", "Fashion Forward", "Everyday Comfort"],
           logoSrc: "",
           logoDarkSrc: "",
           brandGold: "#F4B400",

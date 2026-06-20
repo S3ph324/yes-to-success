@@ -2,7 +2,7 @@
 # Multi-client Quote Poster Studio + B-Roll (scripts/jurie-dashboard.mjs).
 # Separate from the existing Dockerfile (which ships server.mjs) — do not
 # merge. Includes Chromium deps for Remotion rendering.
-# (Redeploy trigger — v0.29.24: TikTok Shop locked to 1:1 only (no aspect option).)
+# (Redeploy trigger — v0.29.25: shop cards redesigned to match reference listings (bright e-commerce).)
 
 FROM node:20-bookworm-slim AS base
 
