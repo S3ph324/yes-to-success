@@ -2,7 +2,7 @@
 # Multi-client Quote Poster Studio + B-Roll (scripts/jurie-dashboard.mjs).
 # Separate from the existing Dockerfile (which ships server.mjs) — do not
 # merge. Includes Chromium deps for Remotion rendering.
-# (Redeploy trigger — v0.29.22: low-disk warning is volume-relative (no more false alarms).)
+# (Redeploy trigger — v0.29.23: shop cards — aspect-aware, overflow guards, configurable claims, framed detail.)
 
 FROM node:20-bookworm-slim AS base
 

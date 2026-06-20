@@ -47,6 +47,12 @@ export const shopListingCardSchema = z.object({
   materialLabel: z.string().default(""),
   featureLine: z.string().default(""),
   brandName: z.string().default("Tranzzie Eyeglasses"),
+  // Brand established/subtitle tag (from the preset) — shown in the wordmark and
+  // the specs footer. Configurable so no claim is hardcoded; "" hides it.
+  establishedTag: z.string().default("SINCE 2019"),
+  // Studio-card trust pills — configurable so we never bake a returns/policy
+  // claim that may not match the seller's actual terms.
+  pills: z.array(z.string()).default(["Premium Build", "Fashion Forward", "Everyday Comfort"]),
   // White-lettering logo — used on DARK surfaces.
   logoSrc: z.string().default(""),
   // Dark-lettering logo — used on LIGHT surfaces so the wordmark stays crisp.
@@ -193,18 +199,21 @@ const BrandMark: React.FC<{ size: number; color: string }> = ({ size, color }) =
   </svg>
 );
 
-// Wordmark lockup: mark + brand name + "SINCE 2019".
-const Wordmark: React.FC<{ name: string; gold: string; color: string; scale: number; center?: boolean }> = ({
-  name, gold, color, scale, center,
+// Wordmark lockup: mark + brand name + established tag (configurable; hidden
+// when empty so no claim is hardcoded).
+const Wordmark: React.FC<{ name: string; gold: string; color: string; scale: number; center?: boolean; tag?: string }> = ({
+  name, gold, color, scale, center, tag,
 }) => (
   <div style={{ display: "flex", flexDirection: "column", alignItems: center ? "center" : "flex-start", gap: Math.round(6 * scale) }}>
     <BrandMark size={Math.round(86 * scale)} color={gold} />
     <div style={{ fontFamily: ARCHIVO, fontWeight: 700, fontSize: Math.round(20 * scale), letterSpacing: "0.22em", color, textTransform: "uppercase" }}>
       {name}
     </div>
-    <div style={{ fontFamily: ARCHIVO, fontWeight: 500, fontSize: Math.round(11 * scale), letterSpacing: "0.42em", color: gold }}>
-      • SINCE 2019 •
-    </div>
+    {tag ? (
+      <div style={{ fontFamily: ARCHIVO, fontWeight: 500, fontSize: Math.round(11 * scale), letterSpacing: "0.42em", color: gold }}>
+        • {tag} •
+      </div>
+    ) : null}
   </div>
 );
 
@@ -227,7 +236,7 @@ const SpecNode: React.FC<{ spec: SpecDef; gold: string; ink: string; scale: numb
 
 export const ShopListingCard: React.FC<ShopListingCardProps> = ({
   photoSrc, cardType, specs, productName, colorLabel, materialLabel, featureLine,
-  brandName, logoSrc, logoDarkSrc, brandGold, brandRed,
+  brandName, establishedTag, pills, logoSrc, logoDarkSrc, brandGold, brandRed,
 }) => {
   useShopFonts();
   const frame = useCurrentFrame();
@@ -235,6 +244,13 @@ export const ShopListingCard: React.FC<ShopListingCardProps> = ({
   const scale = width / 1080;
   const inset = Math.round(Math.min(width, height) * 0.06);
   const fade = interpolate(frame, [0, 18], [0, 1], { extrapolateRight: "clamp" });
+  // These cards are designed for 1:1. Width is always 1080 (so `scale` alone
+  // doesn't grow type on taller canvases) — `vf` bumps type/spacing up on 4:5
+  // and 9:16 so they don't look tiny/empty.
+  const ratio = height / width;
+  const tall = ratio > 1.5;       // 9:16
+  const portrait = ratio > 1.12;  // 4:5 (and 9:16)
+  const vf = tall ? 1.3 : portrait ? 1.12 : 1;
 
   const photo = resolveSrc(photoSrc);
   const logoWhite = resolveSrc(logoSrc);
@@ -254,7 +270,7 @@ export const ShopListingCard: React.FC<ShopListingCardProps> = ({
     const onDark = !!opts?.onDark;
     const src = onDark ? (logoWhite || logoDark) : (logoDark || logoWhite);
     if (!src) {
-      return <Wordmark name={brandName} gold={brandGold} color={onDark ? "#fff" : ink} scale={scale} center={opts?.center} />;
+      return <Wordmark name={brandName} gold={brandGold} color={onDark ? "#fff" : ink} scale={scale} center={opts?.center} tag={establishedTag} />;
     }
     const usingFallback = onDark ? !logoWhite : !logoDark; // had to borrow the other variant
     const filter = onDark
@@ -313,11 +329,12 @@ export const ShopListingCard: React.FC<ShopListingCardProps> = ({
 
   // ── STUDIO — white card, black letterbox, wordmark + feature pills ────────
   if (cardType === "studio") {
-    const pills = ["Free 15-Day Returns", "Premium Build", "Fashion Forward"];
+    const studioPills = (pills && pills.length ? pills : ["Premium Build", "Fashion Forward", "Everyday Comfort"]).slice(0, 3);
     return (
       <AbsoluteFill style={{ background: "#0c0b0e", overflow: "hidden", opacity: fade }}>
-        <div style={{ position: "absolute", top: "11%", left: 0, right: 0, bottom: "16%" }}>
-          <div style={{ position: "absolute", inset: 0, background: "#fbf9f5" }} />
+        <div style={{ position: "absolute", top: "11%", left: inset, right: inset, bottom: "16%" }}>
+          {/* defined card so a light-background photo doesn't dissolve into it */}
+          <div style={{ position: "absolute", inset: 0, background: "#fbf9f5", borderRadius: Math.round(18 * scale), border: "1px solid rgba(27,24,34,0.10)", boxShadow: "0 24px 60px rgba(0,0,0,0.45)" }} />
           <div style={{ position: "absolute", top: Math.round(40 * scale), left: 0, right: 0, display: "flex", justifyContent: "center" }}>
             {brandLogo(Math.round(54 * scale), { center: true })}
           </div>
@@ -331,7 +348,7 @@ export const ShopListingCard: React.FC<ShopListingCardProps> = ({
             {brandName.split(" ")[0]}
           </div>
           <div style={{ display: "flex", gap: Math.round(18 * scale) }}>
-            {pills.map((p) => (
+            {studioPills.map((p) => (
               <div key={p} style={{ display: "flex", alignItems: "center", gap: Math.round(6 * scale) }}>
                 <div style={{ width: Math.round(7 * scale), height: Math.round(7 * scale), borderRadius: "50%", background: brandGold }} />
                 <span style={{ fontFamily: ARCHIVO, fontWeight: 500, fontSize: Math.round(14 * scale), color: "rgba(255,255,255,0.82)" }}>{p}</span>
@@ -345,20 +362,26 @@ export const ShopListingCard: React.FC<ShopListingCardProps> = ({
 
   // ── DETAIL — dark dramatic field + material/finish label ──────────────────
   if (cardType === "detail") {
+    const matLabel = materialLabel || "Premium Build";
     return (
       <AbsoluteFill style={{ background: "radial-gradient(ellipse at 50% 40%, #2a2a30 0%, #0a0a0c 100%)", overflow: "hidden", opacity: fade }}>
-        <AbsoluteFill style={{ top: "8%", bottom: "8%", left: "4%", right: "4%" }}>
-          {productImg({ filter: "drop-shadow(0 20px 50px rgba(0,0,0,0.6))" })}
-        </AbsoluteFill>
-        {/* label line top-right */}
-        <div style={{ position: "absolute", top: inset, right: inset, textAlign: "right" }}>
-          <div style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: Math.round(26 * scale), letterSpacing: "0.14em", color: "#fff", textTransform: "uppercase", lineHeight: 1.2 }}>
-            {materialLabel || "Premium Build"}
+        {/* Frame the photo on a rounded panel so a light-background product photo
+            reads as a deliberate hero image, not a bright rectangle pasted on
+            the dark field. */}
+        <div style={{ position: "absolute", top: "13%", bottom: "20%", left: "8%", right: "8%", borderRadius: Math.round(22 * scale), overflow: "hidden", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 30px 70px rgba(0,0,0,0.55)" }}>
+          {productImg({})}
+          {/* subtle inner vignette to blend the photo edges into the frame */}
+          <AbsoluteFill style={{ boxShadow: "inset 0 0 60px rgba(0,0,0,0.35)", pointerEvents: "none" }} />
+        </div>
+        {/* label line top-right (clamped + auto-shrink so long labels don't clip) */}
+        <div style={{ position: "absolute", top: inset, left: inset, right: inset, textAlign: "right" }}>
+          <div style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: Math.round((matLabel.length > 22 ? 20 : matLabel.length > 14 ? 24 : 28) * scale * vf), letterSpacing: "0.14em", color: "#fff", textTransform: "uppercase", lineHeight: 1.2 }}>
+            {matLabel}
           </div>
           <div style={{ width: Math.round(70 * scale), height: 2, background: brandGold, marginTop: Math.round(10 * scale), marginLeft: "auto" }} />
         </div>
         {featureLine && (
-          <div style={{ position: "absolute", bottom: inset, left: inset, right: inset, fontFamily: FRAUNCES, fontStyle: "italic", fontSize: Math.round(24 * scale), color: "rgba(255,255,255,0.85)" }}>
+          <div style={{ position: "absolute", bottom: inset, left: inset, right: Math.round(width * 0.22), fontFamily: FRAUNCES, fontStyle: "italic", fontSize: Math.round(24 * scale * vf), color: "rgba(255,255,255,0.85)", lineHeight: 1.3 }}>
             {featureLine}
           </div>
         )}
@@ -380,7 +403,7 @@ export const ShopListingCard: React.FC<ShopListingCardProps> = ({
           {productImg({ filter: "drop-shadow(0 22px 44px rgba(0,0,0,0.18))" })}
         </AbsoluteFill>
         {colorLabel && (
-          <div style={{ position: "absolute", bottom: Math.round(height * 0.08), right: inset, fontFamily: ARCHIVO, fontWeight: 900, fontStretch: "125%", fontSize: Math.round(54 * scale), letterSpacing: "0.04em", color: brandRed, textTransform: "uppercase" }}>
+          <div style={{ position: "absolute", bottom: Math.round(height * 0.08), left: inset, right: inset, textAlign: "right", fontFamily: ARCHIVO, fontWeight: 900, fontStretch: "125%", fontSize: Math.round((colorLabel.length > 18 ? 32 : colorLabel.length > 11 ? 44 : 54) * scale * vf), letterSpacing: "0.04em", color: brandRed, textTransform: "uppercase", lineHeight: 1.04 }}>
             {colorLabel}
           </div>
         )}
@@ -390,31 +413,37 @@ export const ShopListingCard: React.FC<ShopListingCardProps> = ({
   }
 
   // ── SPECS — feature breakdown (icon + name + brand-safe line per row) ──────
+  const specRows = chosen.length ? chosen : [SPECS.anti_rad, SPECS.uv400];
+  const iconBox = Math.round(72 * scale * vf);
   return (
     <AbsoluteFill style={{ background: "#fbf9f5", overflow: "hidden", opacity: fade, padding: inset }}>
       <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `2px solid ${ink}`, paddingBottom: Math.round(16 * scale) }}>
-          <div style={{ fontFamily: ARCHIVO, fontWeight: 900, fontStretch: "125%", fontSize: Math.round(42 * scale), letterSpacing: "0.02em", color: ink, textTransform: "uppercase" }}>
+          <div style={{ fontFamily: ARCHIVO, fontWeight: 900, fontStretch: "125%", fontSize: Math.round(42 * scale * vf), letterSpacing: "0.02em", color: ink, textTransform: "uppercase" }}>
             Lens Features
           </div>
           {brandLogo(Math.round(56 * scale))}
         </div>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: Math.round(20 * scale) }}>
-          {(chosen.length ? chosen : [SPECS.anti_rad, SPECS.uv400]).map((s) => (
-            <div key={s.id} style={{ display: "flex", alignItems: "center", gap: Math.round(22 * scale) }}>
-              <div style={{ width: Math.round(72 * scale), height: Math.round(72 * scale), flexShrink: 0, borderRadius: Math.round(16 * scale), background: "#fff", border: `1.5px solid ${brandGold}`, padding: Math.round(17 * scale) }}>
+        {/* Rows distribute across the available height (space-evenly) so the card
+            fills instead of clustering in the centre with big empty gaps. */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-evenly", paddingTop: Math.round(24 * scale), paddingBottom: Math.round(24 * scale) }}>
+          {specRows.map((s) => (
+            <div key={s.id} style={{ display: "flex", alignItems: "center", gap: Math.round(22 * scale * vf) }}>
+              <div style={{ width: iconBox, height: iconBox, flexShrink: 0, borderRadius: Math.round(16 * scale), background: "#fff", border: `1.5px solid ${brandGold}`, padding: Math.round(17 * scale * vf) }}>
                 {s.icon(brandGold)}
               </div>
               <div>
-                <div style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: Math.round(27 * scale), letterSpacing: "0.02em", color: ink }}>{s.label}</div>
-                <div style={{ fontFamily: ARCHIVO, fontWeight: 400, fontSize: Math.round(18 * scale), color: muted, marginTop: Math.round(3 * scale), lineHeight: 1.35 }}>{s.line}</div>
+                <div style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: Math.round(27 * scale * vf), letterSpacing: "0.02em", color: ink }}>{s.label}</div>
+                <div style={{ fontFamily: ARCHIVO, fontWeight: 400, fontSize: Math.round(18 * scale * vf), color: muted, marginTop: Math.round(3 * scale), lineHeight: 1.35 }}>{s.line}</div>
               </div>
             </div>
           ))}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid rgba(27,24,34,0.15)`, paddingTop: Math.round(16 * scale) }}>
           <span style={{ fontFamily: ARCHIVO, fontWeight: 700, fontSize: Math.round(16 * scale), letterSpacing: "0.2em", color: ink, textTransform: "uppercase" }}>{brandName}</span>
-          <span style={{ fontFamily: ARCHIVO, fontWeight: 500, fontSize: Math.round(13 * scale), letterSpacing: "0.3em", color: brandGold }}>• SINCE 2019 •</span>
+          {establishedTag ? (
+            <span style={{ fontFamily: ARCHIVO, fontWeight: 500, fontSize: Math.round(13 * scale), letterSpacing: "0.3em", color: brandGold }}>• {establishedTag} •</span>
+          ) : null}
         </div>
       </div>
     </AbsoluteFill>

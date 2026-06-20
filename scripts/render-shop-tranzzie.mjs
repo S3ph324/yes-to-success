@@ -50,6 +50,15 @@ try {
 } catch { /* component defaults */ }
 const brandGold = preset?.brandAccent || "#F4B400";
 const brandRed = preset?.brandPrimary || "#E11522";
+// Established/subtitle tag from the brand preset (e.g. "SINCE 2019") — configurable,
+// never hardcoded in the card. Empty hides it.
+const establishedTag = (preset?.subtitle || "").trim();
+// Studio trust pills — overridable via DASHBOARD_SHOP_PILLS; default avoids any
+// specific returns/policy claim that may not match the seller's terms.
+let shopPills = [];
+try { shopPills = JSON.parse(process.env.DASHBOARD_SHOP_PILLS || "[]"); } catch { shopPills = []; }
+if (!Array.isArray(shopPills) || !shopPills.length) shopPills = ["Premium Build", "Fashion Forward", "Everyday Comfort"];
+shopPills = shopPills.map((p) => String(p).slice(0, 24)).slice(0, 3);
 
 // Logo variants: white-lettering on dark cards, dark-lettering on light cards.
 // Both resolved relative to public/ (staticFile) when present.
@@ -115,6 +124,8 @@ for (let i = 0; i < plan.length; i++) {
     materialLabel,
     featureLine,
     brandName: client.label || "Tranzzie Eyeglasses",
+    establishedTag,
+    pills: shopPills,
     logoSrc,
     logoDarkSrc,
     brandGold,

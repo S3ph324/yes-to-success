@@ -2397,7 +2397,7 @@ async function viewGenerate(){
    // ── TikTok Shop panel (shown when poster type = shop) ─────────────────────
    +'<div id="shop_box" style="display:none;margin-bottom:18px;padding:16px 18px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:12px">'
    +'<div class="section-label" style="margin:0 0 6px">Product photos</div>'
-   +'<p class="muted" style="margin:0 0 10px;font-size:11px">Upload 1\\u20135 clean photos of ONE product. We composite Tranzzie-branded listing cards over your real photos \\u2014 no AI redraw.</p>'
+   +'<p class="muted" style="margin:0 0 10px;font-size:11px">Upload 3\\u20134 angles of ONE product for a varied carousel (front, side, on-face, detail) \\u2014 with one photo all cards reuse it. Plain/well-lit backgrounds composite best. We brand your real photos, no AI redraw. <b>1:1 looks best on TikTok Shop.</b></p>'
    +'<label class="ea-drop" id="shop_drop" style="padding:22px 14px;display:block;text-align:center;border:1.5px dashed var(--line2);border-radius:10px;cursor:pointer;position:relative">'
    +'<input type="file" id="shop_photos" accept="image/*" multiple style="position:absolute;inset:0;opacity:0;cursor:pointer">'
    +'<span id="shop_photos_lbl" class="muted" style="font-size:13px">Click or drop product photos here</span></label>'
