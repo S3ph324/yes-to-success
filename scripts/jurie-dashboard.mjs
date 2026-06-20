@@ -11,6 +11,7 @@
 // Env: JURIE_DASHBOARD_PORT (default 4317).
 
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import express from "express";
 import fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
@@ -141,6 +142,100 @@ const PORT = parseInt(
 const app = express();
 app.set("trust proxy", true);
 app.use(express.json());
+
+// ── Single-user login gate ────────────────────────────────────────────────
+// One account only. Username defaults to "admin1"; the password is checked
+// against env DASH_PASS (plaintext, set in Railway for best security) OR, if
+// that's unset, a committed SHA-256 HASH so it works out of the box WITHOUT
+// putting the real password in this public repo. Override either via env.
+const AUTH_USER = (process.env.DASH_USER || "admin1").trim();
+const AUTH_PASS = process.env.DASH_PASS || ""; // optional plaintext override
+const AUTH_PASS_HASH = (process.env.DASH_PASS_HASH || "a472960de7918b89f4fb873d323032ca25008c070a442b78eb65766a87cf56a9").toLowerCase();
+const sha256 = (s) => crypto.createHash("sha256").update(String(s)).digest("hex");
+const passOk = (pass) => {
+  const a = AUTH_PASS ? Buffer.from(pass || "") : Buffer.from(sha256(pass || ""));
+  const b = AUTH_PASS ? Buffer.from(AUTH_PASS) : Buffer.from(AUTH_PASS_HASH);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
+const SESSIONS = new Map(); // token -> expiry ms
+const SESSION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+const newToken = () => crypto.randomBytes(24).toString("hex");
+const readCookies = (req) =>
+  Object.fromEntries(
+    (req.headers.cookie || "")
+      .split(";")
+      .map((c) => c.trim())
+      .filter(Boolean)
+      .map((c) => {
+        const i = c.indexOf("=");
+        return [c.slice(0, i), decodeURIComponent(c.slice(i + 1))];
+      }),
+  );
+const isAuthed = (req) => {
+  const t = readCookies(req).dash_session;
+  if (!t || !SESSIONS.has(t)) return false;
+  if (SESSIONS.get(t) < Date.now()) { SESSIONS.delete(t); return false; }
+  return true;
+};
+
+const LOGIN_PAGE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in</title><style>
+:root{--bg:#0b0b0d;--panel:#141417;--line:#26262b;--txt:#f3f3f5;--mut:#9a9aa2;--gold:#F5C13B}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 0%,#1a1a1f 0%,#0b0b0d 60%);font-family:'Archivo',system-ui,Arial,sans-serif;color:var(--txt)}
+.box{width:340px;max-width:90vw;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:30px 28px}
+h1{margin:0 0 4px;font-size:17px;letter-spacing:.02em}p{margin:0 0 20px;color:var(--mut);font-size:12.5px}
+label{display:block;font-size:11px;color:var(--mut);margin:14px 0 6px;letter-spacing:.08em;text-transform:uppercase}
+input{width:100%;background:#0e0e11;border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:12px 13px;font:inherit;outline:none}
+input:focus{border-color:var(--gold)}
+button{width:100%;margin-top:22px;background:var(--gold);color:#15120a;border:0;font-weight:800;letter-spacing:.02em;padding:13px;border-radius:9px;cursor:pointer;font:inherit;font-weight:800}
+button:disabled{opacity:.5;cursor:not-allowed}
+.err{color:#ff6b6b;font-size:12.5px;margin-top:14px;min-height:16px}
+.brand{display:flex;align-items:center;gap:9px;margin-bottom:18px;font-weight:800;letter-spacing:.22em;font-size:12px;color:var(--gold)}
+.brand i{width:7px;height:7px;border-radius:50%;background:var(--gold);font-style:normal}
+</style></head><body>
+<form class="box" onsubmit="return go(event)">
+<div class="brand"><i></i> QUOTE POSTER STUDIO</div>
+<h1>Sign in</h1><p>This studio is private.</p>
+<label>Username</label><input id="u" autocomplete="username" autofocus>
+<label>Password</label><input id="p" type="password" autocomplete="current-password">
+<button id="b" type="submit">Sign in</button>
+<div class="err" id="e"></div>
+</form>
+<script>
+async function go(ev){ev.preventDefault();var b=document.getElementById('b'),e=document.getElementById('e');b.disabled=true;e.textContent='';
+try{var r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:document.getElementById('u').value,pass:document.getElementById('p').value})});
+if(r.ok){location.href='/';return false}var j=await r.json().catch(function(){return{}});e.textContent=j.error||'Invalid username or password';}
+catch(_){e.textContent='Network error. Try again.';}b.disabled=false;return false;}
+</script></body></html>`;
+
+// Public endpoints (no auth): health check + the login submit + login page.
+app.post("/api/login", (req, res) => {
+  const { user, pass } = req.body || {};
+  if (String(user || "").trim() === AUTH_USER && passOk(pass)) {
+    const t = newToken();
+    SESSIONS.set(t, Date.now() + SESSION_MS);
+    res.cookie("dash_session", t, { httpOnly: true, sameSite: "lax", secure: !!process.env.HOSTED, maxAge: SESSION_MS, path: "/" });
+    return res.json({ ok: true });
+  }
+  return res.status(401).json({ error: "Invalid username or password" });
+});
+app.post("/api/logout", (req, res) => {
+  const t = readCookies(req).dash_session;
+  if (t) SESSIONS.delete(t);
+  res.clearCookie("dash_session", { path: "/" });
+  res.json({ ok: true });
+});
+app.get("/login", (_q, res) => res.type("html").send(LOGIN_PAGE));
+
+// Gate everything else behind the session.
+app.use((req, res, next) => {
+  if (req.path === "/healthz" || req.path === "/login" || req.path === "/api/login" || req.path === "/api/logout") return next();
+  if (isAuthed(req)) return next();
+  if (req.method === "GET" && (req.path === "/" || !req.path.startsWith("/api/"))) {
+    return res.type("html").send(LOGIN_PAGE);
+  }
+  return res.status(401).json({ error: "Sign in required." });
+});
 
 // Serve rendered poster PNGs via static middleware on Railway (EXPORT_BASE set).
 // This avoids calling getClient() on every image request — 171 simultaneous
@@ -2213,7 +2308,7 @@ font-size:13px;transition:border-color .15s,box-shadow .15s;border:1.5px solid v
 <header><b>QUOTE&nbsp;POSTER&nbsp;<i>STUDIO</i></b>
 <span class="pill" title="deployed version">v${VERSION}</span><span class="sp"></span>
 <div class="sw">Client <select id="client"></select></div>
-<span class="pill">manual posting</span> <a href="/tryon" style="font-size:11px;color:var(--mut);text-decoration:none;border:1px solid var(--line2);padding:4px 10px;border-radius:6px;margin-left:4px;transition:color .14s,border-color .14s" onmouseover="this.style.color=\'var(--gold)\';this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.color=\'var(--mut)\';this.style.borderColor=\'var(--line2)\'">🕶️ Try-On</a></header>
+<span class="pill">manual posting</span> <a href="/tryon" style="font-size:11px;color:var(--mut);text-decoration:none;border:1px solid var(--line2);padding:4px 10px;border-radius:6px;margin-left:4px;transition:color .14s,border-color .14s" onmouseover="this.style.color=\'var(--gold)\';this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.color=\'var(--mut)\';this.style.borderColor=\'var(--line2)\'">🕶️ Try-On</a> <a href="#" onclick="fetch('/api/logout',{method:'POST'}).then(function(){location.href='/login'});return false" style="font-size:11px;color:var(--mut);text-decoration:none;border:1px solid var(--line2);padding:4px 10px;border-radius:6px;margin-left:4px;transition:color .14s,border-color .14s" onmouseover="this.style.color='#ff6b6b';this.style.borderColor='#ff6b6b'" onmouseout="this.style.color='var(--mut)';this.style.borderColor='var(--line2)'">Log out</a></header>
 <div id="toast"></div>
 <main>
 <nav id="nav"></nav>
