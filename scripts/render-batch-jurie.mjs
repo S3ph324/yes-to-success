@@ -235,7 +235,7 @@ for (const q of quotes) {
   const bgStats = isShowcase && q.bgPath ? await analyzeBg(q.bgPath) : null;
   // Avatar for advice/tweet cards: user-uploaded photo (staged into public/)
   // wins; else the Jurie character photo.
-  const jurieAvatar = ADVICE_AVATAR_REL || "characters/jurie/jurie-enhanced.png";
+  const jurieAvatar = ADVICE_AVATAR_REL || "characters/jurie/jurie-avatar.jpg";
   // Tweet backdrop: muted tones, picked at RANDOM (no index pattern), avoiding
   // an immediate repeat. Theme (default dark) picks the palette.
   const tweetPool = q.theme === "light"
