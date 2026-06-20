@@ -21,7 +21,8 @@ import { bundle } from "@remotion/bundler";
 import { renderStill, selectComposition } from "@remotion/renderer";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { projectRoot, resolveClient } from "./lib/client.mjs";
+import { applyGcpEnv, projectRoot, resolveClient } from "./lib/client.mjs";
+import { generateShopScenes } from "./lib/shop-scenes.mjs";
 
 process.on("unhandledRejection", (r) => { console.error("[shop] unhandledRejection:", r?.stack || r?.message || String(r)); process.exit(1); });
 process.on("uncaughtException", (e) => { console.error("[shop] uncaughtException:", e?.stack || e?.message || String(e)); process.exit(1); });
@@ -85,14 +86,43 @@ for (let i = 0; i < photos.length; i++) {
 }
 if (!staged.length) { console.error("Could not stage any uploaded photos."); process.exit(1); }
 
+// ── AI product-placement scenes ───────────────────────────────────────────
+// Generate clean studio / lifestyle / dark close-up shots of the SAME frame
+// from the uploaded reference photo(s), then the cards composite over those.
+// Falls back to the raw upload for any scene that fails. Disable with
+// DASHBOARD_SHOP_NO_AI=1.
+const sceneRelDir = path.posix.join("generated-shop", stamp);
+let sceneRel = {};
+if (process.env.DASHBOARD_SHOP_NO_AI !== "1") {
+  try {
+    applyGcpEnv();
+    const project = process.env.GOOGLE_CLOUD_PROJECT;
+    const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
+    if (!project) throw new Error("no GOOGLE_CLOUD_PROJECT configured");
+    console.log(`Generating product-placement scenes of the frame (Gemini) in ${location}…`);
+    const made = await generateShopScenes({
+      refPaths: photos, project, location,
+      outDir: path.join(publicDir, sceneRelDir),
+      log: (m) => console.log(m),
+    });
+    const relOf = (k) => (made[k] ? path.posix.join(sceneRelDir, `${k}.png`) : "");
+    sceneRel = { hero: relOf("clean"), variant: relOf("clean"), studio: relOf("life"), detail: relOf("dark") };
+    const n = Object.keys(made).length;
+    console.log(`✓ ${n}/3 scene(s) generated${n < 3 ? " — missing ones fall back to your photo" : ""}`);
+  } catch (e) {
+    console.warn(`  scene generation unavailable (${String(e.message).slice(0, 120)}) — using uploaded photo(s)`);
+  }
+}
+
 // ── Card plan ─────────────────────────────────────────────────────────────
-// 4 photo cards + 1 spec card. Photos cycle if fewer than 4 were uploaded.
+// Each photo card uses its generated scene; falls back to the uploaded photo
+// (cycled) when a scene wasn't produced. The spec card has no photo.
 const photoAt = (i) => staged[i % staged.length];
 const plan = [
-  { cardType: "hero",    photoSrc: photoAt(0) },
-  { cardType: "studio",  photoSrc: photoAt(1) },
-  { cardType: "variant", photoSrc: photoAt(2) },
-  { cardType: "detail",  photoSrc: photoAt(3) },
+  { cardType: "hero",    photoSrc: sceneRel.hero    || photoAt(0) },
+  { cardType: "studio",  photoSrc: sceneRel.studio  || photoAt(1) },
+  { cardType: "variant", photoSrc: sceneRel.variant || photoAt(2) },
+  { cardType: "detail",  photoSrc: sceneRel.detail  || photoAt(3) },
   { cardType: "specs",   photoSrc: "" },
 ];
 
@@ -168,7 +198,8 @@ await fs.writeFile(path.join(exportDir, "gallery.html"),
 console.log(`\n✓ ${plan.length - failed}/${plan.length} card(s)\n  Export : ${exportDir}\n  Review : ${path.join(exportDir, "gallery.html")}`);
 if (failed) console.log(`  (${failed} failed — see warnings)`);
 
-// ── Cleanup staged input photos ───────────────────────────────────────────
+// ── Cleanup staged input photos + generated scenes (baked into the cards) ──
 await fs.rm(stageDir, { recursive: true, force: true }).catch(() => {});
+await fs.rm(path.join(publicDir, sceneRelDir), { recursive: true, force: true }).catch(() => {});
 
 process.exit(failed >= plan.length ? 1 : 0);

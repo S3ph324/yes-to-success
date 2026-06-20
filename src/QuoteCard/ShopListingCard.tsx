@@ -188,7 +188,7 @@ export const ShopListingCard: React.FC<ShopListingCardProps> = ({
     const strip = chosen.slice(0, 4);
     const iconC = "#2c2a33";
     return (
-      <AbsoluteFill style={{ background: "linear-gradient(180deg,#ffffff 0%,#f5f1ea 100%)", overflow: "hidden", opacity: fade, fontFamily: ARCHIVO }}>
+      <AbsoluteFill style={{ background: "linear-gradient(180deg,#ffffff 0%,#fbfaf7 100%)", overflow: "hidden", opacity: fade, fontFamily: ARCHIVO }}>
         {/* faint screen/laptop motif behind the product (blue-light context) */}
         <svg viewBox="0 0 100 100" width="74%" height="74%" style={{ position: "absolute", top: "8%", left: "50%", transform: "translateX(-50%)", opacity: 0.05 }}>
           <rect x="24" y="22" width="52" height="38" rx="3" {...stroke(brandRed, 1.3)} />
