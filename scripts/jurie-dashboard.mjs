@@ -1156,13 +1156,22 @@ function startGenJob(spec) {
     if (pruned)
       log(`🧹 Pruned ${pruned} old batch folder(s) — keeping the ${KEEP_BATCHES} newest (STUDIO_KEEP_BATCHES).`);
     // We do NOT auto-delete export batches to reclaim space anymore. Just
-    // surface the disk situation so low-disk failures aren't a mystery and the
-    // user can free space themselves (Batches tab) or grow the Railway volume.
-    const freeGB = await exportFreeGB();
+    // surface the disk situation. The warning is RELATIVE to the volume's total
+    // size — a tiny volume (e.g. 0.45 GB) must not false-alarm "low disk" when
+    // it's actually nearly empty (the old fixed 0.5 GB bar was bigger than the
+    // whole volume, so it warned every time).
+    let freeGB = null, totalGB = null;
+    try {
+      const st = await fs.statfs(EXPORT_BASE);
+      const bs = Number(st.bsize);
+      freeGB = (Number(st.bavail) * bs) / 1e9;
+      totalGB = (Number(st.blocks) * bs) / 1e9;
+    } catch { /* statfs unsupported */ }
     if (freeGB !== null) {
-      log(`💾 Volume free space: ${freeGB.toFixed(2)} GB`);
-      if (freeGB < 0.5)
-        log("⚠ Low disk — a large render could fail. Delete old batches in the Batches tab, or increase the Railway volume size. (Your batches are NOT auto-deleted.)");
+      log(`💾 Volume: ${freeGB.toFixed(2)} GB free of ${(totalGB || 0).toFixed(2)} GB`);
+      const lowBar = Math.max(0.08, (totalGB || 0) * 0.12); // ~12% free, min 80 MB
+      if (freeGB < lowBar)
+        log("⚠ Volume nearly full — delete old batches in the Batches tab, or increase the Railway volume size. (Your batches are NOT auto-deleted.)");
     }
   })();
   preflight.catch(() => {}).then(() => {
