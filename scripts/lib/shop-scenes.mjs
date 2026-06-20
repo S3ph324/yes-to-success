@@ -28,17 +28,16 @@ const FRAME_LOCK =
 export const SHOP_SCENES = {
   // Used by the hero + variant cards (clean cutout-style product on white).
   clean:
-    "E-commerce studio product photograph: the eyeglasses LARGE and centred, " +
-    "filling most of the frame, on a seamless pure-white (#ffffff) background, " +
-    "soft even studio lighting, a subtle soft shadow and faint reflection beneath, " +
-    "slight three-quarter angle so the frame silhouette reads clearly. Minimal, " +
-    "premium, catalogue hero shot." + FRAME_LOCK,
-  // Lifestyle flat-lay for the studio card.
+    "Premium studio product photograph: the eyeglasses LARGE and centred, filling " +
+    "most of the frame, on a deep charcoal / near-black seamless studio backdrop, " +
+    "dramatic soft key lighting with subtle reflections and a gentle shadow " +
+    "beneath, slight three-quarter angle. Moody, high-end, cinematic catalogue " +
+    "hero shot." + FRAME_LOCK,
+  // Dark moody lifestyle flat-lay for the studio card.
   life:
-    "Lifestyle flat-lay product photograph: the eyeglasses resting at a natural " +
-    "angle on a pale wood or soft marble surface beside a minimal eyewear case, " +
-    "gentle natural daylight, soft realistic shadows, airy neutral palette, " +
-    "premium and tasteful." + FRAME_LOCK,
+    "Premium lifestyle flat-lay product photograph: the eyeglasses resting at a " +
+    "natural angle on a dark slate or dark wood surface beside a minimal eyewear " +
+    "case, low-key moody lighting, deep soft shadows, elegant dark palette." + FRAME_LOCK,
   // Dark dramatic macro for the detail card.
   dark:
     "Dramatic macro close-up product photograph: the eyeglasses on a dark charcoal " +
