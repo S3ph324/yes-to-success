@@ -76,7 +76,7 @@ export const TweetCard: React.FC<TweetCardProps> = ({
 }) => {
   useTweetFonts();
   const frame = useCurrentFrame();
-  const { fps, width } = useVideoConfig();
+  const { fps, width, height } = useVideoConfig();
   const scale = width / 1080;
 
   const fade = interpolate(frame, [0, 16], [0, 1], { extrapolateRight: "clamp" });
@@ -90,12 +90,27 @@ export const TweetCard: React.FC<TweetCardProps> = ({
 
   // Clean tweet-screenshot look: the tweet fills the frame on a plain
   // background — no outer backdrop, no timestamp, no engagement row, no X logo.
-  // Type is sized big so the body fills the canvas with little empty space;
-  // long tweets scale down so they still fit.
-  const len = (body || "").length;
-  const bodySize = Math.round((len > 280 ? 54 : len > 190 ? 66 : len > 120 ? 78 : len > 60 ? 90 : 102) * scale);
   const pad = Math.round(width * 0.07);
   const avSize = Math.round(98 * scale);
+
+  // AUTO-FIT the body: pick the biggest font (so short tweets fill the frame)
+  // whose estimated rendered height still fits below the header — so long,
+  // multi-line tweets shrink instead of overflowing / getting cut off.
+  const segs = (body || "").split("\n");
+  const headerH = avSize + Math.round(30 * scale);          // header + its margin
+  const bodyRegionH = height - pad * 2 - headerH - Math.round(8 * scale);
+  const contentW = width - pad * 2;
+  const estLines = (px: number) => {
+    const cpl = Math.max(6, Math.floor(contentW / (px * 0.54))); // ~chars per line
+    let lines = 0;
+    for (const s of segs) lines += s.length === 0 ? 1 : Math.ceil(s.length / cpl);
+    return lines;
+  };
+  let bodySize = Math.round(30 * scale);
+  for (let fs = 104; fs >= 30; fs -= 2) {
+    const px = Math.round(fs * scale);
+    if (estLines(px) * px * 1.32 <= bodyRegionH) { bodySize = px; break; }
+  }
 
   return (
     <AbsoluteFill style={{ background: bg, overflow: "hidden" }}>
