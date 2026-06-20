@@ -3229,7 +3229,7 @@ async function viewGenerate(){
    }catch(err){
     if($('#g_go'))$('#g_go').disabled=false;
     console.error('generate failed:',err);
-    toast('Couldn\'t start: '+((err&&err.message)||String(err)),true);
+    toast('Could not start: '+((err&&err.message)||String(err)),true);
    }
   };
   // SSE wiring for the generation log. fresh=true closes any previous stream
