@@ -2,7 +2,7 @@
 # Multi-client Quote Poster Studio + B-Roll (scripts/jurie-dashboard.mjs).
 # Separate from the existing Dockerfile (which ships server.mjs) — do not
 # merge. Includes Chromium deps for Remotion rendering.
-# (Redeploy trigger — v0.29.27: single-user login gate on the studio.)
+# (Redeploy trigger — v0.29.28: ship the default Jurie avatar (was gitignored -> 404).)
 
 FROM node:20-bookworm-slim AS base
 
