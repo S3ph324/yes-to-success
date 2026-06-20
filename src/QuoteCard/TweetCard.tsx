@@ -70,13 +70,9 @@ const Verified: React.FC<{ size: number; color: string }> = ({ size, color }) =>
   </svg>
 );
 
-const EngIcon: React.FC<{ d: string; color: string; size: number }> = ({ d, color, size }) => (
-  <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden><path fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d={d} /></svg>
-);
 
 export const TweetCard: React.FC<TweetCardProps> = ({
-  displayName, handle, avatarSrc, verified, body, timestamp,
-  replies, reposts, likes, cardTheme, backdrop, brandGold, brandRed,
+  displayName, handle, avatarSrc, verified, body, cardTheme, brandGold,
 }) => {
   useTweetFonts();
   const frame = useCurrentFrame();
@@ -87,94 +83,43 @@ export const TweetCard: React.FC<TweetCardProps> = ({
   const lift = spring({ frame, fps, from: 30, to: 0, durationInFrames: 30 });
 
   const dark = cardTheme === "dark";
-  const cardBg = dark ? "#000000" : "#ffffff";
+  const bg = dark ? "#000000" : "#ffffff";
   const ink = dark ? "#e7e9ea" : "#0f1419";
   const sub = dark ? "#71767b" : "#536471";
-  const line = dark ? "#2f3336" : "#eff3f4";
   const avatar = resolveSrc(avatarSrc);
 
-  // Outer backdrop — muted, deep tones so the batch has subtle variety without
-  // bright/vibrant colour. Light variants are soft neutrals.
-  const BACKDROPS: Record<string, string> = {
-    // soft light neutrals
-    clean: "linear-gradient(160deg, #eef1f4 0%, #e2e6ea 100%)",
-    mist: "linear-gradient(155deg, #e9edf2 0%, #d7dde5 100%)",
-    blush: "linear-gradient(155deg, #efe7e9 0%, #ddd2d6 100%)",
-    // muted, deep darks (subtle hue, never bright)
-    ink: "radial-gradient(ellipse at 50% 26%, #191b22 0%, #090a0d 100%)",
-    slate: "linear-gradient(155deg, #283042 0%, #13161f 100%)",
-    plum: "linear-gradient(155deg, #2f2632 0%, #161219 100%)",
-    bronze: "linear-gradient(155deg, #2f2820 0%, #161310 100%)",
-    // legacy aliases → muted equivalents (older entries keep working)
-    dark: "radial-gradient(ellipse at 50% 26%, #191b22 0%, #090a0d 100%)",
-    indigo: "linear-gradient(155deg, #283042 0%, #13161f 100%)",
-    rose: "linear-gradient(155deg, #2f2632 0%, #161219 100%)",
-    gold: "linear-gradient(155deg, #2f2820 0%, #161310 100%)",
-  };
-  const lightBg = backdrop === "clean" || backdrop === "mist" || backdrop === "blush";
-  const bg = BACKDROPS[backdrop] || BACKDROPS.ink;
-  const sheen = lightBg
-    ? "radial-gradient(ellipse at 50% 30%, rgba(255,255,255,0.55) 0%, transparent 60%)"
-    : "radial-gradient(ellipse at 50% 38%, rgba(255,255,255,0.05) 0%, transparent 62%)";
-
-  const bodySize = Math.round((body.length > 180 ? 38 : body.length > 110 ? 44 : 52) * scale);
-  const pad = Math.round(46 * scale);
-  const cardW = Math.round(width * 0.84);
+  // Clean tweet-screenshot look: the tweet fills the frame on a plain
+  // background — no outer backdrop, no timestamp, no engagement row, no X logo.
+  const len = (body || "").length;
+  const bodySize = Math.round((len > 240 ? 42 : len > 165 ? 50 : len > 95 ? 58 : 66) * scale);
+  const pad = Math.round(width * 0.08);
+  const avSize = Math.round(78 * scale);
 
   return (
-    <AbsoluteFill style={{ background: bg, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <AbsoluteFill style={{ background: sheen }} />
+    <AbsoluteFill style={{ background: bg, overflow: "hidden" }}>
       <div style={{
-        width: cardW, background: cardBg, borderRadius: Math.round(28 * scale),
-        padding: pad,
-        boxShadow: lightBg ? "0 24px 60px rgba(15,20,25,0.16), 0 0 0 1px rgba(15,20,25,0.05)" : "0 30px 80px rgba(0,0,0,0.34)",
+        position: "absolute", left: pad, right: pad, top: pad, bottom: pad,
+        display: "flex", flexDirection: "column", justifyContent: "center",
         opacity: fade, transform: `translateY(${lift}px)`,
       }}>
-        {/* Header row */}
-        <div style={{ display: "flex", alignItems: "center", gap: Math.round(14 * scale) }}>
-          <div style={{ width: Math.round(64 * scale), height: Math.round(64 * scale), borderRadius: "50%", overflow: "hidden", background: avatar ? (dark ? "#16181c" : "#f0f0f0") : brandGold, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {/* Header: avatar + name + handle */}
+        <div style={{ display: "flex", alignItems: "center", gap: Math.round(15 * scale), marginBottom: Math.round(30 * scale) }}>
+          <div style={{ width: avSize, height: avSize, borderRadius: "50%", overflow: "hidden", background: avatar ? (dark ? "#16181c" : "#f0f0f0") : brandGold, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
             {avatar
               ? <Img src={avatar} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              : <span style={{ fontFamily: SYS, fontWeight: 800, fontSize: Math.round(30 * scale), color: "#0f1419" }}>{(displayName || "?").trim().charAt(0).toUpperCase()}</span>}
+              : <span style={{ fontFamily: SYS, fontWeight: 800, fontSize: Math.round(34 * scale), color: "#0f1419" }}>{(displayName || "?").trim().charAt(0).toUpperCase()}</span>}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: Math.round(6 * scale) }}>
-              <span style={{ fontFamily: SYS, fontWeight: 800, fontSize: Math.round(28 * scale), color: ink }}>{displayName}</span>
-              {verified && <Verified size={Math.round(26 * scale)} color="#1d9bf0" />}
+          <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: Math.round(7 * scale) }}>
+              <span style={{ fontFamily: SYS, fontWeight: 800, fontSize: Math.round(31 * scale), color: ink, lineHeight: 1.12 }}>{displayName}</span>
+              {verified && <Verified size={Math.round(29 * scale)} color="#1d9bf0" />}
             </div>
-            <span style={{ fontFamily: SYS, fontWeight: 400, fontSize: Math.round(22 * scale), color: sub }}>{handle}</span>
+            <span style={{ fontFamily: SYS, fontWeight: 400, fontSize: Math.round(24 * scale), color: sub, lineHeight: 1.12 }}>{handle}</span>
           </div>
-          {/* X logo top-right */}
-          <svg viewBox="0 0 24 24" width={Math.round(30 * scale)} height={Math.round(30 * scale)} aria-hidden>
-            <path fill={ink} d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-          </svg>
         </div>
 
-        {/* Body */}
-        <div style={{
-          fontFamily: SYS, fontWeight: 400, fontSize: bodySize, color: ink,
-          lineHeight: 1.35, marginTop: Math.round(28 * scale), whiteSpace: "pre-wrap",
-        }}>{body}</div>
-
-        {/* Timestamp */}
-        <div style={{ fontFamily: SYS, fontWeight: 400, fontSize: Math.round(20 * scale), color: sub, marginTop: Math.round(26 * scale) }}>
-          {timestamp || "9:41 AM · Jun 17, 2026"}
-        </div>
-
-        {/* Divider + engagement — icons only; counts left blank (like a fresh
-            post) unless explicitly provided. */}
-        <div style={{ borderTop: `1px solid ${line}`, marginTop: Math.round(22 * scale), paddingTop: Math.round(20 * scale), display: "flex", gap: Math.round(48 * scale) }}>
-          {[
-            { d: "M3 5h18v12H8l-5 4z", v: replies },
-            { d: "M4 8h13l-3-3M20 16H7l3 3", v: reposts },
-            { d: "M12 21s-7.5-4.6-9.5-9C1 8 3 5 6 5c2 0 3 1.5 3 1.5S10 5 12 5s3 1.5 3 1.5S16 5 18 5c3 0 5 3 3.5 7-2 4.4-9.5 9-9.5 9z", v: likes },
-          ].map((m, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: Math.round(9 * scale) }}>
-              <EngIcon d={m.d} color={sub} size={Math.round(24 * scale)} />
-              {m.v ? <span style={{ fontFamily: SYS, fontWeight: 500, fontSize: Math.round(20 * scale), color: sub }}>{m.v}</span> : null}
-            </div>
-          ))}
-        </div>
+        {/* Body — the tweet text, large, fills the frame */}
+        <div style={{ fontFamily: SYS, fontWeight: 400, fontSize: bodySize, color: ink, lineHeight: 1.32, whiteSpace: "pre-wrap", letterSpacing: "-0.005em" }}>{body}</div>
       </div>
     </AbsoluteFill>
   );

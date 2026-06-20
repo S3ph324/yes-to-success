@@ -236,17 +236,8 @@ for (const q of quotes) {
   // Avatar for advice/tweet cards: user-uploaded photo (staged into public/)
   // wins; else the Jurie character photo.
   const jurieAvatar = ADVICE_AVATAR_REL || "characters/jurie/jurie-avatar.jpg";
-  // Tweet backdrop: muted tones, picked at RANDOM (no index pattern), avoiding
-  // an immediate repeat. Theme (default dark) picks the palette.
-  const tweetPool = q.theme === "light"
-    ? ["clean", "mist", "blush"]
-    : ["ink", "slate", "plum", "bronze"];
-  let tweetBackdrop = q.backdrop;
-  if (!tweetBackdrop) {
-    const choices = tweetPool.length > 1 ? tweetPool.filter((b) => b !== prevTweetBackdrop) : tweetPool;
-    tweetBackdrop = choices[Math.floor(Math.random() * choices.length)];
-  }
-  prevTweetBackdrop = tweetBackdrop;
+  // The tweet card is a clean screenshot now — a plain black/white background by
+  // theme, no outer backdrop, no timestamp, no engagement.
   const tweetCardTheme = q.cardTheme || (q.theme === "light" ? "light" : "dark");
   const inputProps = isAdvice
     ? {
@@ -271,14 +262,7 @@ for (const q of quotes) {
         avatarSrc: jurieAvatar,
         verified: true,
         body: q.tweetBody || q.quote || "",
-        // Real generation time as the posted-at line; engagement counts stay
-        // blank (replies/reposts/likes default to "" → icons only).
-        timestamp: fmtTweetTime(q.generatedAt),
-        replies: "",
-        reposts: "",
-        likes: "",
         cardTheme: tweetCardTheme,
-        backdrop: tweetBackdrop,
         brandGold: brand.brandGold,
         brandRed: brand.brandRed,
         aspectRatio,
