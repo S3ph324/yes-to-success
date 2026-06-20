@@ -596,7 +596,7 @@ export const JurieQuoteCard: React.FC<JurieQuoteCardProps> = ({
       {bg ? (
         <Img
           src={bg}
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
         />
       ) : (
         <AbsoluteFill
