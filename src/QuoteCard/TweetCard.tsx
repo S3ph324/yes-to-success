@@ -95,7 +95,7 @@ export const TweetCard: React.FC<TweetCardProps> = ({
   const len = (body || "").length;
   const bodySize = Math.round((len > 280 ? 54 : len > 190 ? 66 : len > 120 ? 78 : len > 60 ? 90 : 102) * scale);
   const pad = Math.round(width * 0.07);
-  const avSize = Math.round(80 * scale);
+  const avSize = Math.round(98 * scale);
 
   return (
     <AbsoluteFill style={{ background: bg, overflow: "hidden" }}>
@@ -109,14 +109,14 @@ export const TweetCard: React.FC<TweetCardProps> = ({
           <div style={{ width: avSize, height: avSize, borderRadius: "50%", overflow: "hidden", background: avatar ? (dark ? "#16181c" : "#f0f0f0") : brandGold, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
             {avatar
               ? <Img src={avatar} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              : <span style={{ fontFamily: SYS, fontWeight: 800, fontSize: Math.round(34 * scale), color: "#0f1419" }}>{(displayName || "?").trim().charAt(0).toUpperCase()}</span>}
+              : <span style={{ fontFamily: SYS, fontWeight: 800, fontSize: Math.round(42 * scale), color: "#0f1419" }}>{(displayName || "?").trim().charAt(0).toUpperCase()}</span>}
           </div>
           <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: Math.round(7 * scale) }}>
-              <span style={{ fontFamily: SYS, fontWeight: 800, fontSize: Math.round(31 * scale), color: ink, lineHeight: 1.12 }}>{displayName}</span>
-              {verified && <Verified size={Math.round(29 * scale)} color="#1d9bf0" />}
+            <div style={{ display: "flex", alignItems: "center", gap: Math.round(8 * scale) }}>
+              <span style={{ fontFamily: SYS, fontWeight: 800, fontSize: Math.round(40 * scale), color: ink, lineHeight: 1.12 }}>{displayName}</span>
+              {verified && <Verified size={Math.round(36 * scale)} color="#1d9bf0" />}
             </div>
-            <span style={{ fontFamily: SYS, fontWeight: 400, fontSize: Math.round(24 * scale), color: sub, lineHeight: 1.12 }}>{handle}</span>
+            <span style={{ fontFamily: SYS, fontWeight: 400, fontSize: Math.round(30 * scale), color: sub, lineHeight: 1.12 }}>{handle}</span>
           </div>
         </div>
 
