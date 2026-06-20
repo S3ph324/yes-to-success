@@ -2803,6 +2803,19 @@ async function viewGenerate(){
         d.innerHTML='<img src="'+u+'" style="width:100%;height:100%;object-fit:cover">';tw.appendChild(d);});
     };
   }
+  // Drag-and-drop onto the shop dropzone → populate the file input + preview.
+  if($('#shop_drop')&&$('#shop_photos')){
+    const dz=$('#shop_drop');const hi=on=>{dz.style.borderColor=on?'var(--gold)':'var(--line2)';};
+    dz.addEventListener('dragover',e=>{e.preventDefault();hi(true);});
+    dz.addEventListener('dragleave',()=>hi(false));
+    dz.addEventListener('drop',e=>{
+      e.preventDefault();hi(false);
+      const files=Array.from((e.dataTransfer&&e.dataTransfer.files)||[]).filter(f=>f.type.indexOf('image/')===0).slice(0,5);
+      if(!files.length)return;
+      try{const dt=new DataTransfer();files.forEach(f=>dt.items.add(f));$('#shop_photos').files=dt.files;}catch(_){}
+      $('#shop_photos').dispatchEvent(new Event('change'));
+    });
+  }
   document.querySelectorAll('input[name="shop_spec"]').forEach(c=>{
     const paint=()=>{c.closest('.spec-chip').style.borderColor=c.checked?'var(--gold)':'var(--line2)';
       c.closest('.spec-chip').style.background=c.checked?'rgba(232,182,74,.08)':'transparent';};
@@ -3094,6 +3107,7 @@ async function viewGenerate(){
     toast('Cleared '+(d.dropped||0)+' queued batch(es). The running batch continues.');
   };
   $('#g_go').onclick=async()=>{
+   try{
     saveGenSettings();
     const posterType=(showEyeglasses||showAdvice)?curPosterType():'main';
     const isEyePoster = posterType === 'eyeglasses';
@@ -3147,7 +3161,7 @@ async function viewGenerate(){
     }else{
       fd.append('characterId',$('#g_subject')?$('#g_subject').value:'');
     }
-    fd.append('useLogo',$('#g_logo_on').checked?'1':'0');
+    fd.append('useLogo',$('#g_logo_on')&&$('#g_logo_on').checked?'1':'0');
     fd.append('includeCta',$('#g_cta_on')&&$('#g_cta_on').checked?'1':'0');
     fd.append('aiHeadline',$('#g_ai_head')&&$('#g_ai_head').checked?'1':'0');
     // Aspect-ratio mix → JSON like {"1:1":25,"4:5":50,"9:16":25}; only sent
@@ -3212,6 +3226,11 @@ async function viewGenerate(){
     const gr=$('#g_result');if(gr){gr.style.display='none';gr.innerHTML='';}
     $('#g_bar').style.background='linear-gradient(90deg,var(--gold),#ffe27a)';setProg(2,false);
     connectGenSSE(true);
+   }catch(err){
+    if($('#g_go'))$('#g_go').disabled=false;
+    console.error('generate failed:',err);
+    toast('Couldn\'t start: '+((err&&err.message)||String(err)),true);
+   }
   };
   // SSE wiring for the generation log. fresh=true closes any previous stream
   // first (new job, clean log); fresh=false attaches to a stream already in
