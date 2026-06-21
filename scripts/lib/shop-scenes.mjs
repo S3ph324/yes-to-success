@@ -18,9 +18,18 @@ const mimeFor = (p) => {
 // Hard product-fidelity lock appended to every scene prompt.
 const FRAME_LOCK =
   " CRITICAL — the eyeglasses are a REAL product being sold: reproduce the EXACT " +
-  "pair shown in the reference photo(s). The frame shape, colour, material, rim " +
-  "thickness, temples, hinges and every detail must match the reference EXACTLY. " +
-  "Do NOT redesign, recolour, restyle, swap, or invent a different pair. " +
+  "pair shown in the reference photo(s). Match the frame SHAPE, COLOUR, MATERIAL, " +
+  "rim thickness, temples and hinges EXACTLY. Do NOT redesign, recolour, restyle, " +
+  "swap, or invent a different pair. " +
+  // The seller's photos are casual snapshots with a lens DISPLAY STICKER / brand
+  // logo (e.g. a 'North Face' lens sticker) — that is temporary packaging, not the
+  // product. Gemini kept it because 'match exactly' fought 'no logos'; this carve-
+  // out resolves it: keep the frame, clean the lenses.
+  "IMPORTANT — render the lenses perfectly CLEAN and CLEAR: REMOVE any display " +
+  "stickers, brand logos, retailer labels, price tags, holograms or printed text " +
+  "that appear on the lenses or frame in the reference (e.g. a lens sticker) — " +
+  "those are temporary packaging and must NOT appear in the result. This is a " +
+  "fresh studio RE-SHOOT, not a copy of the reference snapshot. " +
   "No people, no faces, no hands, no mannequins. " +
   "Absolutely NO text, letters, numbers, logos, labels or watermarks anywhere. " +
   "Photorealistic commercial product photography, ultra-clean, sharp, high detail, 1:1 square.";
@@ -46,14 +55,21 @@ export const SHOP_SCENES = {
   // Clean marketplace hero — front-on, fully visible, plain WHITE background.
   // The classic online-store / TikTok-Shop main listing image.
   front:
-    "Clean e-commerce catalogue HERO product photograph: the eyeglasses shown " +
-    "perfectly FRONT-ON and fully open, standing upright and facing the camera, " +
-    "so BOTH lenses and the COMPLETE frame outline are entirely visible, " +
-    "symmetric and unobstructed — nothing cropped or cut off. Centered on a PURE " +
-    "PLAIN WHITE seamless studio background, bright soft even high-key lighting, a " +
-    "soft natural shadow directly beneath the frame, the whole product crisp and " +
-    "in sharp focus. Exactly like an online-store / marketplace product listing " +
-    "main image." + FRAME_LOCK,
+    "Clean e-commerce catalogue HERO product photograph, shot fresh in a studio: " +
+    "the eyeglasses FRONT-ON and fully open, standing upright and facing the camera, " +
+    "so BOTH lenses and the COMPLETE frame outline are entirely visible, symmetric " +
+    "and unobstructed — nothing cropped or cut off, the frame large and filling most " +
+    "of the width. " +
+    // The reference is a casual snapshot on a grey table — Gemini kept that. Force
+    // a full background replacement onto pure white.
+    "COMPLETELY REPLACE and DISCARD the background, surface, table, wall, shadow and " +
+    "lighting from the reference photo. Render a brand-new PURE WHITE (#FFFFFF) " +
+    "seamless studio sweep with bright, soft, even high-key lighting and only a " +
+    "subtle soft contact shadow directly under the frame. Do NOT keep any grey, " +
+    "beige, wooden or coloured backdrop, table edge or window from the reference — " +
+    "the background must be solid clean white, edge to edge. " +
+    "This must look like a polished online-store / marketplace MAIN listing image on " +
+    "white, NOT a casual snapshot." + FRAME_LOCK,
 };
 
 // Generate the requested scenes. Returns { scenes, errors } — `scenes` is a map
