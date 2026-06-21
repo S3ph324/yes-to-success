@@ -92,42 +92,67 @@ if (!staged.length) { console.error("Could not stage any uploaded photos."); pro
 // Falls back to the raw upload for any scene that fails. Disable with
 // DASHBOARD_SHOP_NO_AI=1.
 const sceneRelDir = path.posix.join("generated-shop", stamp);
+// Each photo card maps to ONE generated scene. The uploaded photos are
+// reference-only and are NEVER shown as a card — if a scene can't be generated
+// the batch fails loudly (below) instead of falling back to the raw upload.
+const CARD_SCENE = { hero: "clean", front: "front", studio: "life", detail: "dark" };
+const sceneKeys = ["clean", "life", "dark", "front"];
+const aiOn = process.env.DASHBOARD_SHOP_NO_AI !== "1";
 let sceneRel = {};
-if (process.env.DASHBOARD_SHOP_NO_AI !== "1") {
-  try {
-    applyGcpEnv();
-    const project = process.env.GOOGLE_CLOUD_PROJECT;
-    const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
-    if (!project) throw new Error("no GOOGLE_CLOUD_PROJECT configured");
-    console.log(`Generating product-placement scenes of the frame (Gemini) in ${location}…`);
-    const sceneKeys = ["clean", "life", "dark", "front"];
-    const made = await generateShopScenes({
-      refPaths: photos, project, location,
-      outDir: path.join(publicDir, sceneRelDir),
-      keys: sceneKeys,
-      log: (m) => console.log(m),
+if (aiOn) {
+  applyGcpEnv();
+  const project = process.env.GOOGLE_CLOUD_PROJECT;
+  const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
+  if (!project) { console.error("✗ No GOOGLE_CLOUD_PROJECT configured — cannot generate product scenes."); process.exit(1); }
+  const outDir = path.join(publicDir, sceneRelDir);
+  console.log(`Generating product-placement scenes of the frame (Gemini) in ${location}…`);
+
+  const made = {};
+  let lastErrors = [];
+  // Two passes: an initial run, then a retry of just the scenes that failed
+  // (handles transient image-model rate limits / blips without redoing the
+  // ones that already succeeded).
+  for (let pass = 1; pass <= 2; pass++) {
+    const want = sceneKeys.filter((k) => !made[k]);
+    if (!want.length) break;
+    if (pass === 2) console.log(`  retrying ${want.length} scene(s) that failed: ${want.join(", ")}…`);
+    const { scenes, errors } = await generateShopScenes({
+      refPaths: photos, project, location, outDir, keys: want, log: (m) => console.log(m),
     });
-    const relOf = (k) => (made[k] ? path.posix.join(sceneRelDir, `${k}.png`) : "");
-    // hero=clean (dark hero), studio=life (lifestyle), front=front (clean white
-    // marketplace hero), detail=dark (macro). The old `variant` card reused the
-    // hero's exact scene — dropped in favour of the distinct front-on-white shot.
-    sceneRel = { hero: relOf("clean"), studio: relOf("life"), front: relOf("front"), detail: relOf("dark") };
-    const n = Object.keys(made).length;
-    console.log(`✓ ${n}/${sceneKeys.length} scene(s) generated${n < sceneKeys.length ? " — missing ones fall back to your photo" : ""}`);
-  } catch (e) {
-    console.warn(`  scene generation unavailable (${String(e.message).slice(0, 120)}) — using uploaded photo(s)`);
+    Object.assign(made, scenes);
+    lastErrors = errors;
   }
+
+  const relOf = (k) => (made[k] ? path.posix.join(sceneRelDir, `${k}.png`) : "");
+  sceneRel = { hero: relOf("clean"), studio: relOf("life"), front: relOf("front"), detail: relOf("dark") };
+
+  // Every photo card REQUIRES its own generated scene. If any is still missing,
+  // stop — do NOT ship the raw uploaded photo as a finished card.
+  const missing = Object.values(CARD_SCENE).filter((k) => !made[k]);
+  if (missing.length) {
+    const reason = lastErrors?.[0]?.message || "the image model returned no image";
+    console.error(
+      `\n✗ AI product scenes could not be generated (${missing.join(", ")}).\n` +
+      `  Reason: ${String(reason).slice(0, 200)}\n` +
+      `  Your uploaded photos are used ONLY as a reference for the AI and are never\n` +
+      `  shown as a card. Nothing was posted. This is usually a temporary image-model\n` +
+      `  rate limit or quota — please wait a moment and generate again.`,
+    );
+    process.exit(1);
+  }
+  console.log(`✓ ${Object.keys(made).length}/${sceneKeys.length} scene(s) generated`);
 }
 
 // ── Card plan ─────────────────────────────────────────────────────────────
-// Each photo card uses its generated scene; falls back to the uploaded photo
-// (cycled) when a scene wasn't produced. The spec card has no photo.
+// Photo cards use their generated scene. When AI is explicitly disabled
+// (DASHBOARD_SHOP_NO_AI=1) only then do we fall back to the uploaded photo.
 const photoAt = (i) => staged[i % staged.length];
+const photoFor = (card, i) => (aiOn ? sceneRel[card] : (sceneRel[card] || photoAt(i)));
 const plan = [
-  { cardType: "hero",   photoSrc: sceneRel.hero   || photoAt(0) },
-  { cardType: "front",  photoSrc: sceneRel.front  || photoAt(1) },
-  { cardType: "studio", photoSrc: sceneRel.studio || photoAt(2) },
-  { cardType: "detail", photoSrc: sceneRel.detail || photoAt(3) },
+  { cardType: "hero",   photoSrc: photoFor("hero", 0) },
+  { cardType: "front",  photoSrc: photoFor("front", 1) },
+  { cardType: "studio", photoSrc: photoFor("studio", 2) },
+  { cardType: "detail", photoSrc: photoFor("detail", 3) },
   { cardType: "specs",  photoSrc: "" },
 ];
 

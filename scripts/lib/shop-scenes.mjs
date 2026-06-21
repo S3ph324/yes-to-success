@@ -56,8 +56,10 @@ export const SHOP_SCENES = {
     "main image." + FRAME_LOCK,
 };
 
-// Generate the requested scenes. Returns a map { key: absPath } for the scenes
-// that succeeded; callers fall back to the raw upload for any that didn't.
+// Generate the requested scenes. Returns { scenes, errors } — `scenes` is a map
+// { key: absPath } for the scenes that succeeded, `errors` is [{key, message}]
+// for the ones that didn't. The caller decides what to do with failures (the
+// shop pipeline retries then fails loudly rather than showing the raw upload).
 export async function generateShopScenes({
   refPaths, project, location, outDir, keys = ["clean", "life", "dark"], log = () => {},
 }) {
@@ -76,11 +78,14 @@ export async function generateShopScenes({
   const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
   const out = {};
+  const errors = [];
   for (const key of keys) {
     const prompt = SHOP_SCENES[key];
     if (!prompt) continue;
     let buf = null;
-    for (let attempt = 1; attempt <= 2 && !buf; attempt++) {
+    let lastErr = "";
+    const MAX = 3;
+    for (let attempt = 1; attempt <= MAX && !buf; attempt++) {
       try {
         const t0 = Date.now();
         const resp = await ai.models.generateContent({
@@ -93,15 +98,21 @@ export async function generateShopScenes({
         if (!buf) throw new Error("no image in response");
         log(`  ✓ scene '${key}' (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
       } catch (e) {
-        log(`  scene '${key}' attempt ${attempt}: ${String(e?.message || e).slice(0, 120)}`);
-        if (attempt < 2) await delay(4000);
+        lastErr = String(e?.message || e);
+        log(`  scene '${key}' attempt ${attempt}/${MAX}: ${lastErr.slice(0, 160)}`);
+        if (attempt < MAX) await delay(4000);
       }
     }
     if (buf) {
       const fp = path.join(outDir, `${key}.png`);
       await fs.writeFile(fp, buf);
       out[key] = fp;
+    } else {
+      errors.push({ key, message: lastErr || "unknown" });
     }
+    // Space scenes out a little so a burst of calls doesn't trip the image
+    // model's per-minute rate limit (a common cause of whole-batch failures).
+    await delay(1200);
   }
-  return out;
+  return { scenes: out, errors };
 }
