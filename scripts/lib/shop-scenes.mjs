@@ -43,6 +43,17 @@ export const SHOP_SCENES = {
     "Dramatic macro close-up product photograph: the eyeglasses on a dark charcoal " +
     "slate surface, the temple and hinge in sharp focus, moody directional rim " +
     "lighting with subtle reflections, high-end and premium." + FRAME_LOCK,
+  // Clean marketplace hero — front-on, fully visible, plain WHITE background.
+  // The classic online-store / TikTok-Shop main listing image.
+  front:
+    "Clean e-commerce catalogue HERO product photograph: the eyeglasses shown " +
+    "perfectly FRONT-ON and fully open, standing upright and facing the camera, " +
+    "so BOTH lenses and the COMPLETE frame outline are entirely visible, " +
+    "symmetric and unobstructed — nothing cropped or cut off. Centered on a PURE " +
+    "PLAIN WHITE seamless studio background, bright soft even high-key lighting, a " +
+    "soft natural shadow directly beneath the frame, the whole product crisp and " +
+    "in sharp focus. Exactly like an online-store / marketplace product listing " +
+    "main image." + FRAME_LOCK,
 };
 
 // Generate the requested scenes. Returns a map { key: absPath } for the scenes

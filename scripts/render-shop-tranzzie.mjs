@@ -14,7 +14,7 @@
 //   DASHBOARD_SHOP_ASPECT    "1:1" | "4:5" | "9:16"  (TikTok Shop = 1:1 default)
 //   JURIE_EXPORT_DIR         output folder (per-client export dir)
 //
-// Output: <export>/<stamp>/  — 5 cards (hero, studio, variant, detail, specs)
+// Output: <export>/<stamp>/  — 5 cards (hero, front, studio, detail, specs)
 //   + gallery.html + captions.txt (brand-safe product description).
 
 import { bundle } from "@remotion/bundler";
@@ -100,15 +100,20 @@ if (process.env.DASHBOARD_SHOP_NO_AI !== "1") {
     const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
     if (!project) throw new Error("no GOOGLE_CLOUD_PROJECT configured");
     console.log(`Generating product-placement scenes of the frame (Gemini) in ${location}…`);
+    const sceneKeys = ["clean", "life", "dark", "front"];
     const made = await generateShopScenes({
       refPaths: photos, project, location,
       outDir: path.join(publicDir, sceneRelDir),
+      keys: sceneKeys,
       log: (m) => console.log(m),
     });
     const relOf = (k) => (made[k] ? path.posix.join(sceneRelDir, `${k}.png`) : "");
-    sceneRel = { hero: relOf("clean"), variant: relOf("clean"), studio: relOf("life"), detail: relOf("dark") };
+    // hero=clean (dark hero), studio=life (lifestyle), front=front (clean white
+    // marketplace hero), detail=dark (macro). The old `variant` card reused the
+    // hero's exact scene — dropped in favour of the distinct front-on-white shot.
+    sceneRel = { hero: relOf("clean"), studio: relOf("life"), front: relOf("front"), detail: relOf("dark") };
     const n = Object.keys(made).length;
-    console.log(`✓ ${n}/3 scene(s) generated${n < 3 ? " — missing ones fall back to your photo" : ""}`);
+    console.log(`✓ ${n}/${sceneKeys.length} scene(s) generated${n < sceneKeys.length ? " — missing ones fall back to your photo" : ""}`);
   } catch (e) {
     console.warn(`  scene generation unavailable (${String(e.message).slice(0, 120)}) — using uploaded photo(s)`);
   }
@@ -119,11 +124,11 @@ if (process.env.DASHBOARD_SHOP_NO_AI !== "1") {
 // (cycled) when a scene wasn't produced. The spec card has no photo.
 const photoAt = (i) => staged[i % staged.length];
 const plan = [
-  { cardType: "hero",    photoSrc: sceneRel.hero    || photoAt(0) },
-  { cardType: "studio",  photoSrc: sceneRel.studio  || photoAt(1) },
-  { cardType: "variant", photoSrc: sceneRel.variant || photoAt(2) },
-  { cardType: "detail",  photoSrc: sceneRel.detail  || photoAt(3) },
-  { cardType: "specs",   photoSrc: "" },
+  { cardType: "hero",   photoSrc: sceneRel.hero   || photoAt(0) },
+  { cardType: "front",  photoSrc: sceneRel.front  || photoAt(1) },
+  { cardType: "studio", photoSrc: sceneRel.studio || photoAt(2) },
+  { cardType: "detail", photoSrc: sceneRel.detail || photoAt(3) },
+  { cardType: "specs",  photoSrc: "" },
 ];
 
 const featureLine = materialLabel ? `${materialLabel} build for everyday wear.` : "Built for everyday wear.";

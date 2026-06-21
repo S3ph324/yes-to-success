@@ -618,6 +618,10 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   // generator keeps the LOWER band clean negative space — always drop the text
   // there for model posters so it never covers the face.
   if (stylePreset.startsWith("model-")) effLayout = "bottom";
+  // Product-only showcase keeps the eyeglasses in the CENTRAL band, so centered
+  // text lands directly on the product (the "Day" word over the glasses). The
+  // top & bottom are reserved negative space — never center; drop to the bottom.
+  if (effLayout === "center") effLayout = "bottom";
 
   // Busyness of the band the text actually occupies → adaptive overlay:
   // - scrimScale: clean art gets a whisper of a scrim, busy art the full one
@@ -689,18 +693,18 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
       case "spec":
         return <SpecHero text={heroText} size={Math.round((isHeroShort ? 64 : 44) * cs * scale)} scale={scale} color={ink} line={isLight ? "rgba(27,24,34,0.5)" : "rgba(255,255,255,0.55)"} shadow={heroShadow} />;
       default:
+        // Text is only ever anchored top (masthead) or bottom now — center is
+        // remapped to bottom above so the type never sits on the product.
         return (
           <SerifHero
             text={heroText}
-            size={Math.round((isHeroShort ? (masthead ? 112 : effLayout === "center" ? 98 : 92) : (effLayout === "center" || masthead ? 64 : 60)) * cs * scale)}
+            size={Math.round((isHeroShort ? (masthead ? 112 : 92) : (masthead ? 64 : 60)) * cs * scale)}
             gold={brandGold}
             color={ink}
             font={masthead ? BODONI : FRAUNCES}
-            weight={effLayout === "center" ? 560 : masthead ? 700 : 650}
-            lineHeight={effLayout === "center" || masthead ? 1.02 : 1.06}
-            shadow={heroShadow ?? (effLayout === "center"
-              ? "0 2px 40px rgba(0,0,0,0.8), 0 0 80px rgba(0,0,0,0.4)"
-              : undefined)}
+            weight={masthead ? 700 : 650}
+            lineHeight={masthead ? 1.02 : 1.06}
+            shadow={heroShadow}
           />
         );
     }

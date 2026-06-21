@@ -17,7 +17,8 @@ import { AspectRatio, aspectRatioSchema, aspectToDimensions } from "./aspect";
 // across all cards: the AI-generated product scene fills the frame (full-bleed,
 // no borders), a dark vignette scrim sits under the text for contrast, and the
 // type is white with GOLD (Tranzzie brand) accents and a large gold crest logo.
-//   hero    — product + brand + dotted icon spec strip
+//   hero    — product + brand + dotted icon spec strip (dark)
+//   front   — clean front-on product on PLAIN WHITE + feature-icon strip
 //   studio  — lifestyle scene + leader-line callout
 //   detail  — dark macro + material label
 //   variant — product + script name + colour name
@@ -37,7 +38,7 @@ export type SpecId = (typeof SPEC_IDS)[number];
 
 export const shopListingCardSchema = z.object({
   photoSrc: z.string().default(""),
-  cardType: z.enum(["hero", "studio", "detail", "variant", "specs"]).default("hero"),
+  cardType: z.enum(["hero", "front", "studio", "detail", "variant", "specs"]).default("hero"),
   specs: z.array(z.enum(SPEC_IDS)).default([]),
   productName: z.string().default(""),
   colorLabel: z.string().default(""),
@@ -198,6 +199,56 @@ export const ShopListingCard: React.FC<ShopListingCardProps> = ({
                   <div style={{ fontFamily: ARCHIVO, fontWeight: 700, fontSize: Math.round(15 * scale), color: "#fff", textAlign: "center", lineHeight: 1.18, textShadow: tShadow }}>{s.chip}</div>
                 </div>
                 {i < strip.length - 1 && <div style={{ flex: 1, borderTop: `2px dotted ${gold}`, opacity: 0.85, marginTop: Math.round(20 * scale) }} />}
+              </Fragment>
+            ))}
+          </div>
+        )}
+      </AbsoluteFill>
+    );
+  }
+
+  // ── FRONT — clean front-on product on PLAIN WHITE + feature-icon strip.
+  //    The marketplace "main listing" hero (LUSEEN / MetroSunnies style):
+  //    product fully visible up top, icon row below, dark ink on white. ───────
+  if (cardType === "front") {
+    const ink = "#16130d";
+    const frontLogo = logoDark || logoWhite;
+    const strip = chosen.slice(0, 4);
+    return (
+      <AbsoluteFill style={{ background: "#ffffff", overflow: "hidden", opacity: fade, fontFamily: ARCHIVO }}>
+        {/* Product sits in the upper-middle, FULLY visible (contain, never
+            cropped); the lower band stays clean white for the icon strip. */}
+        <div style={{ position: "absolute", top: Math.round(height * 0.135), left: 0, right: 0, height: Math.round(height * 0.56) }}>
+          {photo ? (
+            <Img src={photo} style={{ width: "100%", height: "100%", objectFit: "contain", objectPosition: "center" }} />
+          ) : (
+            <AbsoluteFill style={{ display: "flex", alignItems: "center", justifyContent: "center", color: "#c4c0b8", fontFamily: ARCHIVO, fontSize: Math.round(22 * scale) }}>product photo</AbsoluteFill>
+          )}
+        </div>
+        {/* Top row — dark logo + product name (dark ink on white). */}
+        <div style={{ position: "absolute", top: inset, left: inset, right: inset, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          {frontLogo ? (
+            <Img src={frontLogo} style={{ height: logoSize, width: "auto", objectFit: "contain" }} />
+          ) : (
+            <BrandMark size={Math.round(logoSize * 1.5)} color={ink} />
+          )}
+          {productName && (
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: Math.round(40 * scale), color: ink, lineHeight: 1, letterSpacing: "0.01em" }}>{productName}</div>
+              <div style={{ fontFamily: ARCHIVO, fontWeight: 700, fontSize: Math.round(15 * scale), letterSpacing: "0.34em", color: gold, marginTop: Math.round(7 * scale) }}>EYEGLASSES</div>
+            </div>
+          )}
+        </div>
+        {/* Bottom — feature-icon strip in outlined chips, dark ink on white. */}
+        {strip.length > 0 && (
+          <div style={{ position: "absolute", bottom: Math.round(height * 0.055), left: inset, right: inset, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            {strip.map((s, i) => (
+              <Fragment key={s.id}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: Math.round(10 * scale), width: Math.round(168 * scale) }}>
+                  <div style={{ width: Math.round(60 * scale), height: Math.round(60 * scale), borderRadius: Math.round(13 * scale), border: `2px solid ${ink}`, display: "flex", alignItems: "center", justifyContent: "center", padding: Math.round(12 * scale) }}>{s.icon(ink)}</div>
+                  <div style={{ fontFamily: ARCHIVO, fontWeight: 700, fontSize: Math.round(15 * scale), color: ink, textAlign: "center", lineHeight: 1.18 }}>{s.chip}</div>
+                </div>
+                {i < strip.length - 1 && <div style={{ flex: 1, borderTop: `2px dotted ${gold}`, opacity: 0.9, marginTop: Math.round(29 * scale) }} />}
               </Fragment>
             ))}
           </div>
