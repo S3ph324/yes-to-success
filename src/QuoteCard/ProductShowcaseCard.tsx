@@ -218,8 +218,10 @@ const CampaignHero: React.FC<{
   shadow?: string;
   color?: string;
 }> = ({ text, size, shadow, color = "#FFFFFF" }) => {
+  // Solid filled caps. The old first-word "hollow outline" trick read as
+  // unfinished, ugly type (esp. when a letter clipped the frame edge) — the
+  // user called it out, so every word is solid now.
   const words = text.trim().toUpperCase().split(/\s+/);
-  const stroke = Math.max(2, Math.round(size * 0.025));
   return (
     <div
       style={{
@@ -227,25 +229,17 @@ const CampaignHero: React.FC<{
         fontWeight: 900,
         fontStretch: "125%",
         fontSize: size,
-        lineHeight: 0.98,
-        letterSpacing: "0.01em",
+        lineHeight: 1.0,
+        letterSpacing: "0.005em",
         color,
         textShadow: shadow ?? "0 4px 32px rgba(0,0,0,0.9)",
+        wordBreak: "break-word",
       }}
     >
       {words.map((w, idx) => (
         <span
           key={idx}
-          style={
-            idx === 0 && words.length > 1
-              ? {
-                  display: "block",
-                  color: "transparent",
-                  WebkitTextStroke: `${stroke}px ${color}`,
-                  textShadow: "none",
-                }
-              : { display: words.length > 2 ? "block" : "inline" }
-          }
+          style={{ display: words.length > 2 ? "block" : "inline" }}
         >
           {w}
           {idx < words.length - 1 && words.length <= 2 ? " " : ""}
@@ -619,6 +613,11 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
   if (typeDecor) effLayout = "bottom"; // references keep their own type up top
   else if (!presetForced && effLayout === "bottom" && busyBottom - busyTop > 0.22) effLayout = "top";
   else if (!presetForced && effLayout === "top" && busyTop - busyBottom > 0.22) effLayout = "bottom";
+  // Portraits (model-worn shots): the face sits high & central, so any top- or
+  // center-anchored overlay lands ON it and kills the photo's emphasis. The
+  // generator keeps the LOWER band clean negative space — always drop the text
+  // there for model posters so it never covers the face.
+  if (stylePreset.startsWith("model-")) effLayout = "bottom";
 
   // Busyness of the band the text actually occupies → adaptive overlay:
   // - scrimScale: clean art gets a whisper of a scrim, busy art the full one
@@ -778,7 +777,10 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
     <>
       {bg ? (
         <AbsoluteFill style={{ transform: `scale(${bgScale})` }}>
-          <Img src={bg} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          {/* position:absolute so objectFit:cover fills the whole frame — as an
+              in-flow flex child of AbsoluteFill, height:100% wouldn't resolve and
+              the photo left blank bands (worst on tall 9:16). */}
+          <Img src={bg} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
         </AbsoluteFill>
       ) : (
         <AbsoluteFill style={{ background: fallbackBg }} />
@@ -821,6 +823,29 @@ export const ProductShowcaseCard: React.FC<ProductShowcaseCardProps> = ({
     return (
       <AbsoluteFill style={{ background: baseFill, overflow: "hidden" }}>
         {heroBg}
+        {hasText && (
+          <>
+            {/* Localized blur under the text — softens the busy detail right
+                behind the type so it POPS, without darkening or flattening the
+                rest of the photo (keeps the product/face as the emphasis). */}
+            <AbsoluteFill
+              style={{
+                backdropFilter: `blur(${Math.round(13 * scale)}px)`,
+                WebkitBackdropFilter: `blur(${Math.round(13 * scale)}px)`,
+                WebkitMaskImage: "linear-gradient(180deg, transparent 46%, #000 68%)",
+                maskImage: "linear-gradient(180deg, transparent 46%, #000 68%)",
+              }}
+            />
+            {/* Guaranteed contrast floor — a soft tone-matched gradient at the
+                very bottom so the type is always legible even over clean art:
+                light wash under dark ink, dark wash under white type. */}
+            <AbsoluteFill
+              style={{ background: isLight
+                ? "linear-gradient(180deg, transparent 54%, rgba(244,241,235,0.34) 78%, rgba(244,241,235,0.72) 100%)"
+                : "linear-gradient(180deg, transparent 52%, rgba(0,0,0,0.30) 76%, rgba(0,0,0,0.62) 100%)" }}
+            />
+          </>
+        )}
         {/* Bottom scrim — frosted panel scaled to how busy the band is */}
         <AbsoluteFill
           style={{ background: `linear-gradient(180deg, transparent 35%, rgba(${scrimRGB},${sa(0.72)}) 60%, rgba(${scrimRGB},${sa(0.97)}) 100%)` }}

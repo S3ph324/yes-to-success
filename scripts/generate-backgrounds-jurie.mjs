@@ -118,6 +118,31 @@ const ANATOMY_RULE =
   "three or more arms, never duplicated, crossed, or merged temples; hinges " +
   "exist only at the two outer corners of the front frame. If any extra arm " +
   "or limb appears the image is WRONG.";
+
+// Wardrobe + content-safety guard for MODEL-WORN shots. Gemini sometimes
+// returns bare-shouldered / topless models when no clothing is specified —
+// unusable for a mainstream eyewear brand. This makes "fully clothed" a hard,
+// non-negotiable constraint on every model image.
+const WARDROBE_RULE =
+  " WARDROBE — MANDATORY: the model is FULLY CLOTHED in stylish, well-fitted, " +
+  "tasteful everyday or smart-casual clothing suitable for a mainstream, " +
+  "family-friendly eyewear advertisement — for example a shirt, blouse, knit, " +
+  "sweater, blazer, jacket, or crew-neck tee, with a modest neckline and the " +
+  "shoulders, chest and torso COVERED BY CLOTHING at all times. ABSOLUTELY " +
+  "NO nudity, no topless, no bare chest, no bare shoulders, no exposed " +
+  "underwear, no lingerie, no swimwear, no suggestive or revealing outfits. " +
+  "If any of those appear the image is WRONG and unusable.";
+
+// Finished-campaign guard. The model wheel used to produce candid "mid-shoot"
+// moments (adjusting the temple, holding the frame up) that read like
+// behind-the-scenes test shots. This forces a polished, published look.
+const FINISHED_LOOK_RULE =
+  " FINISH — this is a FINISHED, fully-retouched, professionally art-directed " +
+  "advertising campaign photograph: a final, published magazine / billboard " +
+  "image with flawless studio-grade retouching and deliberate composition. " +
+  "It is NOT a behind-the-scenes, test, candid, casual, or mid-shoot snapshot, " +
+  "and the model is NOT in the act of putting on or fiddling with the glasses — " +
+  "the frames are already worn, settled, and perfectly in place.";
 const NEG_SPACE = (_aspect) => ANATOMY_RULE + " " + (refTone === "light"
   ? `HIGH-KEY and bright: keep the top ` +
     `~30% and bottom ~35% of the frame bright, airy and low-detail (clean ` +
@@ -412,14 +437,14 @@ for (const { q, i } of targets) {
     // copy generator's scene prompts used to leak still-life staging in here,
     // which produced product-only pedestal shots in "model" batches.
     const MODEL_SHOT_WHEEL = [
-      "classic head-and-shoulders portrait, model facing camera, the frames front and center",
-      "close beauty crop: eyes and frames prominent, generous clean headroom above",
-      "the model holding the frame up toward the camera with one hand, product in sharp focus, face soft behind it",
-      "three-quarter profile portrait, model looking off-frame, the temple line of the glasses catching the light",
-      "waist-up fashion stance, model mid-gesture, relaxed confident energy",
-      "over-the-shoulder glance back at the camera",
-      "candid laughing moment, head tilted, natural movement",
-      "the model adjusting the frames at the temple with one hand, chin slightly down",
+      "polished head-and-shoulders beauty portrait, model facing camera with a calm confident expression, the frames already worn and perfectly centered",
+      "refined close beauty crop: the eyes and frames are the clear hero, generous clean headroom above, flawless skin retouching",
+      "elegant three-quarter portrait, the model's gaze just off-camera, soft editorial key light catching the temple of the frames",
+      "composed waist-up campaign stance, the model still and self-assured, premium magazine energy",
+      "editorial studio portrait, a subtle genuine smile, shoulders squared to a clean seamless backdrop",
+      "graceful side-lit three-quarter angle, chin level, the frame outline crisp against soft negative space",
+      "warm aspirational lifestyle portrait, the model seated or leaning relaxed, beautifully art-directed",
+      "high-end fashion portrait, an intentional editorial pose, polished and aspirational",
     ];
     const frameDesc = hasRef
       ? "the EXACT pair of eyeglasses shown in these reference photos " +
@@ -436,14 +461,17 @@ for (const { q, i } of targets) {
       MODEL_SHOT_WHEEL[i % MODEL_SHOT_WHEEL.length] + `. ` +
       `Photograph of a model wearing ${frameDesc}. ` +
       `${modelNote} ` +
+      WARDROBE_RULE + " " +
+      FINISHED_LOOK_RULE + " " +
       `The eyeglasses must be clearly visible and the focal accessory of the ` +
       `image. ` +
       `Scene context: ${q.bgPrompt}. ` +
       `The overall mood must clearly evoke: "${sceneVibe}". ` +
       `The model should look natural and aspirational — NOT staged or stiff. ` +
-      `FRAMING FOR TEXT: compose with generous clean headroom — the model's ` +
-      `face sits in the central band of the frame, NEVER crowding or cropped ` +
-      `by the top edge; the area above the head stays simple negative space. ` +
+      `FRAMING FOR TEXT: frame the model's face and the glasses in the UPPER-TO-` +
+      `MIDDLE band of the image, and keep the LOWER ~38% (around the chest / ` +
+      `shoulders / below) calm, simple and low-detail — clean negative space ` +
+      `for a text overlay added later. The face must NOT sit in that lower band. ` +
       `No text, logos, or watermarks anywhere in the image. ` +
       NEG_SPACE(targetAspect);
   } else if (eyeglassesMode) {

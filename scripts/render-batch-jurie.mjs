@@ -206,6 +206,7 @@ try {
 
 let i = 0;
 let failed = 0;
+let skipped = 0; // photo posters whose background generation failed — never shipped blank
 let prevTweetBackdrop = null; // last tweet backdrop, so random picks avoid repeats
 for (const q of quotes) {
   i += 1;
@@ -232,6 +233,23 @@ for (const q of quotes) {
     : isTweet ? "TweetCard"
     : isShowcase ? "ProductShowcaseCard"
     : "JurieQuoteCard";
+  // Never ship a blank photo poster. Showcase (eyeglasses) and standard quote
+  // posters REQUIRE a background image; advice/tweet are intentionally text-only
+  // cards. If the background failed to generate for this entry (no bgPath, or
+  // the file is gone), skip it rather than render an empty gradient card.
+  const needsBg = isShowcase || (!isAdvice && !isTweet);
+  if (needsBg) {
+    const bgAbs = q.bgPath
+      ? (q.bgPath.startsWith("/") ? q.bgPath : path.join(projectRoot, "public", q.bgPath))
+      : null;
+    let bgOk = false;
+    if (bgAbs) { try { await fs.access(bgAbs); bgOk = true; } catch { /* missing */ } }
+    if (!bgOk) {
+      skipped += 1;
+      console.warn(`  [${i}/${quotes.length}] SKIP ${fname}: no background image (generation failed) — not shipping a blank poster`);
+      continue;
+    }
+  }
   const bgStats = isShowcase && q.bgPath ? await analyzeBg(q.bgPath) : null;
   // Avatar for advice/tweet cards: user-uploaded photo (staged into public/)
   // wins; else the Jurie character photo.
@@ -372,11 +390,12 @@ await fs.writeFile(
 );
 
 console.log(
-  `\n✓ ${quotes.length - failed}/${quotes.length} poster(s)\n` +
+  `\n✓ ${quotes.length - failed - skipped}/${quotes.length} poster(s)\n` +
     `  Client export  : ${exportDir}\n` +
     `  Review         : ${path.join(exportDir, "gallery.html")}`,
 );
 if (failed > 0) console.log(`  (${failed} failed — see warnings)`);
+if (skipped > 0) console.log(`  (${skipped} skipped — no background image generated, blank poster avoided)`);
 
 // ── Disk cleanup: delete generated backgrounds + quotes JSON ─────────────
 // Background PNGs are now baked into the rendered posters — no longer needed.
@@ -417,5 +436,7 @@ if (ADVICE_AVATAR_REL) await fs.rm(path.join(projectRoot, "public", ADVICE_AVATA
 console.log("Cleanup done.");
 // Exit explicitly — after a render error (e.g. ENOSPC) Remotion's headless
 // browser can keep the event loop alive, hanging the job until the
-// dashboard's 12-minute kill timer fires. Non-zero only if NOTHING rendered.
-process.exit(failed > 0 && failed >= quotes.length ? 1 : 0);
+// dashboard's 12-minute kill timer fires. Non-zero only if NOTHING rendered
+// (every poster either failed or was skipped for a missing background).
+const rendered = quotes.length - failed - skipped;
+process.exit(quotes.length > 0 && rendered <= 0 ? 1 : 0);
