@@ -17,12 +17,12 @@ import { AspectRatio, aspectRatioSchema, aspectToDimensions } from "./aspect";
 // Advice Card — the "daily builder" dark text-card format (studied from
 // Patrick Kyei) adapted to Jurie's empathetic Taglish mentor voice.
 //
-//   @handle (+ avatar)              ← top
+//   name + @handle (+ avatar)       ← top (name = "Jurie Cata Villarde")
 //   HOOK                            ← biggest line, the relatable pain/idea
 //   - advice point                 ← 3–6 short lines
 //   - advice point
-//   One-line payoff / reframe.      ← gold, the "so what"
-//   Series — Day N        url       ← footer: dated streak + brand URL
+//   One-line payoff / reframe.      ← gold, the "so what", closes the card
+//   (no footer — series/day tag and website URL were removed per request)
 //
 // No photo background needed — the card IS the design. Dark by default;
 // `theme:"light"` flips to a cream variant.
@@ -75,7 +75,7 @@ const useAdviceFonts = () => {
 };
 
 export const AdviceCard: React.FC<AdviceCardProps> = ({
-  handle, avatarSrc, hook, lines, payoff, seriesLabel, dayNumber, url,
+  handle, avatarSrc, hook, lines, payoff,
   theme, brandGold, brandRed,
 }) => {
   useAdviceFonts();
@@ -121,7 +121,6 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
   const hookAccentIdx = hookWords.length > 2 ? hookWords.length - 1 : -1;
 
   const goldTint = isDark ? "rgba(245,193,59,0.09)" : "rgba(245,193,59,0.14)";
-  const seriesTag = (seriesLabel || "Working Smart").toUpperCase();
 
   return (
     <AbsoluteFill style={{ background: bg, overflow: "hidden" }}>
@@ -137,15 +136,15 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
         opacity: fade, transform: `translateY(${lift}px)`,
       }}>
         {/* Header: just avatar + name — no extra furniture, keep it clean */}
-        <div style={{ display: "flex", alignItems: "center", gap: Math.round(14 * scale) }}>
+        <div style={{ display: "flex", alignItems: "center", gap: Math.round(18 * scale) }}>
           {avatar && (
-            <div style={{ width: Math.round(64 * scale), height: Math.round(64 * scale), borderRadius: "50%", overflow: "hidden", border: `2px solid ${brandGold}`, boxShadow: `0 0 0 4px ${goldTint}` }}>
+            <div style={{ width: Math.round(96 * scale), height: Math.round(96 * scale), borderRadius: "50%", overflow: "hidden", border: `3px solid ${brandGold}`, boxShadow: `0 0 0 5px ${goldTint}`, flexShrink: 0 }}>
               <Img src={avatar} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             </div>
           )}
           <div style={{ display: "flex", flexDirection: "column" }}>
-            <span style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: Math.round(25 * scale), color: ink, lineHeight: 1.1 }}>Jurie</span>
-            <span style={{ fontFamily: ARCHIVO, fontWeight: 500, fontSize: Math.round(19 * scale), color: muted }}>{handle}</span>
+            <span style={{ fontFamily: ARCHIVO, fontWeight: 800, fontSize: Math.round(37 * scale), color: ink, lineHeight: 1.06 }}>Jurie Cata Villarde</span>
+            <span style={{ fontFamily: ARCHIVO, fontWeight: 500, fontSize: Math.round(22 * scale), color: muted }}>{handle}</span>
           </div>
         </div>
 
@@ -194,14 +193,7 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
             </div>
           )}
         </div>
-
-        {/* Footer: series · day (left) · url (right) */}
-        <div style={{ paddingTop: Math.round(16 * scale), borderTop: `1px solid ${hairline}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontFamily: ARCHIVO, fontWeight: 700, fontSize: Math.round(16 * scale), letterSpacing: "0.16em", textTransform: "uppercase", color: ink }}>
-            {seriesTag}{dayNumber > 0 ? `  ·  Day ${dayNumber}` : ""}
-          </span>
-          <span style={{ fontFamily: ARCHIVO, fontWeight: 600, fontSize: Math.round(16 * scale), letterSpacing: "0.04em", color: brandGold }}>{url}</span>
-        </div>
+        {/* Footer removed per request — no series/day streak tag, no website URL. */}
       </div>
     </AbsoluteFill>
   );

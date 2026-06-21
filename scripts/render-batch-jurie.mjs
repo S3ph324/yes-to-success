@@ -275,7 +275,7 @@ for (const q of quotes) {
     : isTweet
     ? {
         // Jurie is ALWAYS the poster — the body may quote a prominent figure.
-        displayName: "Jurie",
+        displayName: "Jurie Cata Villarde",
         handle: "@learnwithjurie",
         avatarSrc: jurieAvatar,
         verified: true,
