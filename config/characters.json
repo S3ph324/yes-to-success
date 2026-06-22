@@ -5,7 +5,9 @@
     "enabled": true,
     "client": "jurie",
     "photos": [
-      "characters/jurie/jurie-normal.png"
+      "characters/jurie/1782122479768-jurie-ref-front.png",
+      "characters/jurie/1782122480273-jurie-ref-left.png",
+      "characters/jurie/1782122480360-jurie-ref-right.png"
     ],
     "notes": "Real 5-angle photo collage. Gray backwards cap, clear-frame glasses, white graphic tee. Best for realistic/photographic scene outputs."
   },
@@ -15,7 +17,9 @@
     "enabled": true,
     "client": "jurie",
     "photos": [
-      "characters/jurie/jurie-enhanced.png"
+      "characters/jurie/1782122479768-jurie-ref-front.png",
+      "characters/jurie/1782122480273-jurie-ref-left.png",
+      "characters/jurie/1782122480360-jurie-ref-right.png"
     ],
     "notes": "AI-generated multi-angle character sheet. Backwards cap, rimless glasses, headphones, white tank, silver cross necklace, beaded bracelet. Best for stylized/AI scene outputs."
   },
