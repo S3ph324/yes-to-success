@@ -24,10 +24,23 @@ const jsonPath = path.isAbsolute(arg) ? arg : path.join(process.cwd(), arg);
 const data = JSON.parse(await fs.readFile(jsonPath, "utf-8"));
 const shots = data.shots || [];
 
-// Optional character refs.
+// Character refs — a SESSION character generated for THIS set (from uploaded
+// reference photos) takes precedence; otherwise a saved character selected at
+// analyze time.
 let refParts = [];
+const sessionChar = data.meta?.sessionCharacter || [];
+for (const rel of sessionChar.slice(0, 3)) {
+  try {
+    const buf = await fs.readFile(path.join(projectRoot, "public", rel));
+    const ext = path.extname(rel).toLowerCase().slice(1);
+    const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "webp" ? "image/webp" : "image/png";
+    refParts.push({ inlineData: { mimeType: mime, data: buf.toString("base64") } });
+  } catch {
+    /* skip missing session character */
+  }
+}
 const charId = data.meta?.characterId || "";
-if (charId) {
+if (!refParts.length && charId) {
   try {
     const chars = JSON.parse(
       await fs.readFile(

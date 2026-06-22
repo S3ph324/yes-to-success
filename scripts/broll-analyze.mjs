@@ -32,8 +32,10 @@ const count = Math.max(1, Math.min(200, parseInt(flag("--count", "8"), 10) || 8)
 const characterId = flag("--character", ""); // "" or "none" = no character
 const scriptArg = flag("--script", "");
 const videoArg = flag("--video", "");
-if (!scriptArg && !videoArg) {
-  console.error("Provide --script <file> or --video <file>");
+const ideaArg = flag("--idea", ""); // a file holding a short IDEA → drafted into a script first
+const stampArg = flag("--stamp", ""); // caller-controlled stamp (the dashboard pins it so it can reference the set across stages)
+if (!scriptArg && !videoArg && !ideaArg) {
+  console.error("Provide --idea <file>, --script <file> or --video <file>");
   process.exit(1);
 }
 
@@ -48,6 +50,7 @@ const mmss = (s) => {
 
 let sourceKind = "SCRIPT";
 let sourceText = "";
+let draftedScript = ""; // set when --idea drafts a script (surfaced in meta.script)
 let videoPart = null; // { inlineData } | { fileData } — direct-to-Gemini video
 
 // Video MIME guesser
@@ -61,7 +64,37 @@ const videoMimeFor = (p) => {
   return "video/mp4";
 };
 
-if (scriptArg) {
+if (ideaArg) {
+  // IDEA → draft a short voiceover script first (the user can read it), then
+  // analyze that script into shots like any other SCRIPT source.
+  const p = path.isAbsolute(ideaArg) ? ideaArg : path.join(process.cwd(), ideaArg);
+  const ideaText = (await fs.readFile(p, "utf-8")).trim();
+  if (ideaText.length < 4) {
+    console.error("Idea too short.");
+    process.exit(1);
+  }
+  console.log("Drafting a short script from the idea…");
+  const draftAi = new GoogleGenAI({ vertexai: true, project, location });
+  const dr = await draftAi.models.generateContent({
+    model: MODEL,
+    contents: [{ role: "user", parts: [{ text:
+      `IDEA:\n${ideaText}\n\nWrite a short spoken-word VOICEOVER SCRIPT for a ` +
+      `${aspect} short-form social video that delivers this idea. Natural Taglish ` +
+      `is welcome. Open with a hook, make 2–4 concrete points, and close with a ` +
+      `memorable line. Keep it tight (roughly ${Math.max(40, count * 8)}–` +
+      `${count * 16} words). Output ONLY the spoken script text — no title, no ` +
+      `scene directions, no labels, no quotation marks.` }] }],
+    config: { temperature: 0.85 },
+  });
+  sourceText = (dr.text || "").trim();
+  draftedScript = sourceText;
+  if (sourceText.length < 20) {
+    console.error("Script drafting failed (empty response).");
+    process.exit(1);
+  }
+  sourceKind = "SCRIPT";
+  console.log("Drafted script:\n" + sourceText.slice(0, 500) + (sourceText.length > 500 ? "…" : ""));
+} else if (scriptArg) {
   const p = path.isAbsolute(scriptArg)
     ? scriptArg
     : path.join(process.cwd(), scriptArg);
@@ -181,7 +214,7 @@ const dynamic = `
 ## THIS RUN
 - Source type: ${sourceKind}
 - Aspect ratio: ${aspect} (state it in EVERY image and video prompt)
-- Character mode: ${charMode}${charMode === "reference-image" ? " — a reference image WILL be attached; do not describe the character, use the placeholder and the preserve-the-reference instruction" : " — no character; scenes/objects/places only"}
+- Character mode: ${charMode}${charMode === "reference-image" ? " — a reference image WILL be attached; do not describe the character, use the placeholder and the preserve-the-reference instruction" : " — no character reference is attached yet. Still set usesCharacter per shot: true ONLY when a recurring on-camera PERSON is genuinely the subject of that beat; false for scene / object / place cutaways (most b-roll). This lets the user optionally add a character afterwards."}
 - Produce EXACTLY ${count} shots, in story order, each connected to a real beat.
 ${
   sourceKind === "VIDEO TRANSCRIPT"
@@ -247,12 +280,15 @@ shots = shots.slice(0, count).map((s, i) => ({
   title: String(s.title || `Shot ${i + 1}`),
   beat: String(s.beat || ""),
   timecode: String(s.timecode || ""),
-  usesCharacter: charMode === "none" ? false : !!s.usesCharacter,
+  usesCharacter: !!s.usesCharacter,
   imagePrompt: String(s.imagePrompt || ""),
   videoPrompt: String(s.videoPrompt || ""),
 }));
+// Whether the content itself implies a recurring on-camera person — the UI uses
+// this to suggest adding a character.
+const charDetected = shots.some((s) => s.usesCharacter);
 
-const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+const stamp = stampArg || new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
 const outDir = path.join(projectRoot, "out");
 await fs.mkdir(outDir, { recursive: true });
 const outPath = path.join(outDir, `broll-${stamp}.json`);
@@ -267,6 +303,10 @@ await fs.writeFile(
         charMode,
         sourceKind,
         createdAt: stamp,
+        // Drafted from an idea (empty for script/video sources).
+        script: draftedScript,
+        // Content implies a recurring on-camera person → offer a character.
+        charDetected,
       },
       transcript: sourceKind === "VIDEO TRANSCRIPT" ? sourceText : "",
       shots,

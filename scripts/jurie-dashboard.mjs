@@ -1769,6 +1769,183 @@ app.post(
   },
 );
 
+// ── Staged B-Roll flow (analyze → review → frames) ────────────────────────
+// Run a SEQUENCE of node B-Roll scripts as ONE job, streaming logs over the
+// shared SSE channel. Stops on the first non-zero exit. (analyze = 1 step;
+// frames + deliverable = 2 steps.) Mirrors the one-shot job lifecycle above.
+function startBrollSteps(steps, label) {
+  job = { running: true, client: "broll", log: [], code: null };
+  log(label);
+  const env = { ...process.env, BROLL_EXPORT_DIR: BROLL_BASE };
+  const onData = (b) => String(b).split(/\r?\n/).filter(Boolean).forEach(log);
+  let i = 0;
+  const finish = (code) => {
+    if (jobTimer) { clearTimeout(jobTimer); jobTimer = null; }
+    job.running = false;
+    job.code = code;
+    log(code === 0 ? "✓ Done." : `✗ Exited (${code}). Check the log above for the error.`);
+  };
+  const runNext = () => {
+    if (i >= steps.length) return finish(0);
+    const child = spawn("node", steps[i], { cwd: projectRoot, env });
+    job.child = child;
+    child.stdout.on("data", onData);
+    child.stderr.on("data", onData);
+    child.on("exit", (code) => {
+      if (code !== 0) return finish(code);
+      i += 1;
+      runNext();
+    });
+  };
+  if (jobTimer) clearTimeout(jobTimer);
+  jobTimer = setTimeout(() => {
+    if (job?.running) {
+      log("⚠ B-Roll job timed out after 12 min — killing process. You can try again.");
+      try { job.child?.kill("SIGTERM"); } catch {}
+      job.running = false;
+      job.code = -1;
+      jobTimer = null;
+    }
+  }, JOB_TIMEOUT_MS);
+  runNext();
+}
+
+// Stage 1 — analyze only: idea | script | video → storyboard json in out/.
+// The dashboard pins the stamp so it can reference the set across stages.
+app.post("/api/broll/analyze", brollVideoUpload, async (req, res) => {
+  if (job?.running)
+    return res.status(409).json({ error: "A job is already running." });
+  const aspect = req.body?.aspect === "16:9" ? "16:9" : "9:16";
+  let n = parseInt(req.body?.count, 10);
+  if (!Number.isFinite(n)) n = 8;
+  n = Math.max(1, Math.min(40, n));
+  const idea = String(req.body?.idea || "").trim();
+  const scriptText = String(req.body?.script || "").trim();
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+  const args = ["scripts/broll-analyze.mjs", "--aspect", aspect, "--count", String(n), "--stamp", stamp];
+  let tmpFile = null;
+  let kind = "source";
+  if (req.file) {
+    args.push("--video", req.file.path);
+    kind = "video";
+  } else if (idea.length >= 4) {
+    tmpFile = path.join(projectRoot, "out", `broll-idea-${Date.now()}.txt`);
+    await fs.mkdir(path.dirname(tmpFile), { recursive: true });
+    await fs.writeFile(tmpFile, idea);
+    args.push("--idea", tmpFile);
+    kind = "idea";
+  } else if (scriptText.length > 10) {
+    tmpFile = path.join(projectRoot, "out", `broll-input-${Date.now()}.txt`);
+    await fs.mkdir(path.dirname(tmpFile), { recursive: true });
+    await fs.writeFile(tmpFile, scriptText);
+    args.push("--script", tmpFile);
+    kind = "script";
+  } else {
+    return res.status(400).json({ error: "Provide an idea, a script (10+ chars), or a video." });
+  }
+  if (!guard(req, res)) {
+    if (req.file) fs.unlink(req.file.path).catch(() => {});
+    if (tmpFile) fs.unlink(tmpFile).catch(() => {});
+    return;
+  }
+  startBrollSteps([args], `▶ B-Roll: analyzing ${kind} → ${n} scene(s), ${aspect}…`);
+  res.json({ ok: true, stamp });
+});
+
+// Hydrate a set (storyboard) — prefer the working json in out/, else a
+// delivered manifest.
+app.get("/api/broll/set/:stamp", async (req, res) => {
+  const stamp = String(req.params.stamp || "");
+  if (!safeStamp(stamp)) return res.status(400).json({ error: "bad stamp" });
+  for (const p of [
+    path.join(projectRoot, "out", `broll-${stamp}.json`),
+    path.join(BROLL_BASE, stamp, "manifest.json"),
+  ]) {
+    try {
+      return res.json(JSON.parse(await fs.readFile(p, "utf-8")));
+    } catch {
+      /* try next */
+    }
+  }
+  res.status(404).json({ error: "set not found" });
+});
+
+// Stage 3 — generate first frames for an analyzed set, then build the
+// deliverable so the finished set shows up in SETS.
+app.post("/api/broll/frames", async (req, res) => {
+  if (job?.running)
+    return res.status(409).json({ error: "A job is already running." });
+  const stamp = String(req.query.stamp || req.body?.stamp || "");
+  if (!safeStamp(stamp)) return res.status(400).json({ error: "bad stamp" });
+  const jsonPath = path.join(projectRoot, "out", `broll-${stamp}.json`);
+  try {
+    await fs.access(jsonPath);
+  } catch {
+    return res.status(404).json({ error: "Analyzed set not found — run analyze first." });
+  }
+  if (!guard(req, res)) return;
+  startBrollSteps(
+    [
+      ["scripts/broll-frames.mjs", jsonPath],
+      ["scripts/broll-deliverable.mjs", jsonPath],
+    ],
+    `▶ B-Roll: generating first frames for ${stamp}…`,
+  );
+  res.json({ ok: true, stamp });
+});
+
+// Stage 2 — generate a consistent CHARACTER for a set from uploaded reference
+// photos. Refs are staged under public/broll-characters/<stamp>/refs/, then
+// broll-character.mjs renders character.png and records meta.sessionCharacter.
+const brollCharStore = multer.diskStorage({
+  destination: async (req, _f, cb) => {
+    const stamp = String(req.query.stamp || "");
+    if (!safeStamp(stamp)) return cb(new Error("bad stamp"), "");
+    const d = path.join(projectRoot, "public", "broll-characters", stamp, "refs");
+    try { await fs.mkdir(d, { recursive: true }); cb(null, d); } catch (e) { cb(e, ""); }
+  },
+  filename: (_r, file, cb) =>
+    cb(null, `${Date.now()}-${file.originalname.replace(/[^\w.\-]/g, "_")}`),
+});
+const brollCharUpload = multer({ storage: brollCharStore, limits: { fileSize: 25 * 1024 * 1024 } });
+
+app.post("/api/broll/character", brollCharUpload.array("ref", 6), async (req, res) => {
+  if (job?.running)
+    return res.status(409).json({ error: "A job is already running." });
+  const stamp = String(req.query.stamp || "");
+  if (!safeStamp(stamp)) return res.status(400).json({ error: "bad stamp" });
+  const jsonPath = path.join(projectRoot, "out", `broll-${stamp}.json`);
+  let aspect = "9:16";
+  try {
+    aspect = (JSON.parse(await fs.readFile(jsonPath, "utf-8")).meta || {}).aspect || "9:16";
+  } catch {
+    return res.status(404).json({ error: "Analyzed set not found — run analyze first." });
+  }
+  // Convert any HEIC (iPhone) refs in place so the model + previews can read them.
+  for (const f of req.files || []) await convertHeicInPlace(f.path).catch(() => {});
+  const refsDir = path.join(projectRoot, "public", "broll-characters", stamp, "refs");
+  let have = [];
+  try { have = (await fs.readdir(refsDir)).filter((f) => /\.(png|jpe?g|webp|heic|heif)$/i.test(f)); } catch { /* none */ }
+  if (!have.length) return res.status(400).json({ error: "Upload at least one reference photo." });
+  if (!guard(req, res)) return;
+  startBrollSteps(
+    [["scripts/broll-character.mjs", "--stamp", stamp, "--aspect", aspect]],
+    `▶ B-Roll: generating character for ${stamp} (${have.length} ref photo${have.length === 1 ? "" : "s"})…`,
+  );
+  res.json({ ok: true, stamp });
+});
+
+// Serve a generated character / its reference previews (image-tree, ephemeral).
+app.get("/broll-char/:stamp/:file", (req, res) => {
+  const { stamp, file } = req.params;
+  if (!safeStamp(stamp) || !/^[\w.\-]+\.(png|jpe?g|webp)$/i.test(file))
+    return res.status(400).end();
+  const base = path.join(projectRoot, "public", "broll-characters", stamp);
+  const fp = path.join(base, file);
+  if (!fp.startsWith(base)) return res.status(400).end();
+  res.sendFile(fp, (err) => { if (err && !res.headersSent) res.status(404).end(); });
+});
+
 app.get("/api/broll/sets", async (_q, res) => {
   let stamps = [];
   try {
@@ -4243,20 +4420,30 @@ async function viewBroll(){
     api('/api/characters'),
     api('/api/env').catch(()=>({})),
   ]);
-  let src='script';
+  let src='idea';          // idea | script | video | claude
+  let brStamp='';          // current analyzed set
+  let brSet=null;          // {meta,shots}
+  let brLast={};           // remembered Stage-1 inputs (for Back)
+  let es;                  // shared SSE handle
+  const bresc=(s)=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const charOpts='<option value="none">— none (scenes only) —</option>'
    +chars.map(c=>'<option value="'+c.id+'">'+c.name+' ('+c.client+', '
     +((c.photos||[]).length)+' photo'+(((c.photos||[]).length)===1?'':'s')+')</option>').join('');
   $('#view').innerHTML=
    '<div class="card"><h2>B-Roll Maker</h2>'
-   +'<div class="muted" style="margin:-6px 0 16px">Paste a script or upload a video — the AI finds the beats and writes paired '
-   +'Nano Banana (first frame) + Veo 3.1 prompts, then renders every first frame. You pick the keepers. '
-   +'Veo auto-animation is wired but OFF for now.</div>'
+   +'<div class="muted" style="margin:-6px 0 16px">Start from an idea, a script, or a video. The AI plans a connected storyboard you '
+   +'<b style="color:var(--txt)">review before any frames are generated</b>, then renders the first frame + a paired video prompt for each scene. '
+   +'Veo auto-animation is OFF — you make the video in your own tool.</div>'
+   +'<div id="br_input">'
    +'<div class="bx-tools" style="margin-bottom:14px">'
+   +'<button class="sec" id="br_t_i">Idea</button>'
    +'<button class="sec" id="br_t_s">Script</button>'
    +'<button class="sec" id="br_t_v">Video</button>'
    +'<button class="sec" id="br_t_c">Use Claude <span style="opacity:.7;font-size:10px;letter-spacing:.06em;text-transform:uppercase">· any size</span></button></div>'
-   +'<div id="br_src_s"><label>Script</label>'
+   +'<div id="br_src_i"><label>Idea</label>'
+   +'<textarea id="br_idea" placeholder="One or two lines — e.g. why discipline beats motivation for busy parents" style="min-height:90px"></textarea>'
+   +'<div class="muted" style="margin-top:6px;font-size:12px">The AI drafts a short script from this first, then builds the storyboard you review.</div></div>'
+   +'<div id="br_src_s" style="display:none"><label>Script</label>'
    +'<textarea id="br_script" placeholder="Paste the script (Taglish ok)…" style="min-height:140px"></textarea></div>'
    +'<div id="br_src_v" style="display:none"><label>Video file</label>'
    +'<input id="br_video" type="file" accept="video/*"><div class="muted" style="margin-top:6px">'
@@ -4278,21 +4465,23 @@ async function viewBroll(){
    +'<div class="row" style="margin-top:6px">'
    +'<div><label>Aspect</label><select id="br_aspect"><option value="9:16">9:16 vertical</option>'
    +'<option value="16:9">16:9 landscape</option></select></div>'
-   +'<div style="flex:0 0 120px"><label>Shots</label><input id="br_count" type="number" min="1" max="200" value="8"></div>'
+   +'<div style="flex:0 0 120px"><label>Scenes</label><input id="br_count" type="number" min="1" max="40" value="8"></div>'
    +'<div><label>Character (optional)</label><select id="br_char">'+charOpts+'</select></div></div>'
-   +'<p style="margin:16px 0"><button class="go" id="br_go">Generate b-rolls</button></p>'
+   +'<p style="margin:16px 0"><button class="go" id="br_go">Analyze →</button></p>'
+   +'</div>'
+   +'<div id="br_story"></div>'
    +'<pre id="br_log" style="display:none"></pre></div>'
    +'<div class="bx-head"><h2 style="margin:0">Sets</h2><div class="bx-tools">'
    +'<button class="sec" id="br_ref">Refresh</button></div></div><div id="br_sets"></div>';
   const showSrc=()=>{
-    $('#br_src_s').style.display=src==='script'?'':'none';
-    $('#br_src_v').style.display=src==='video'?'':'none';
-    $('#br_src_c').style.display=src==='claude'?'':'none';
-    $('#br_t_s').style.borderColor=src==='script'?'var(--gold)':'';
-    $('#br_t_v').style.borderColor=src==='video'?'var(--gold)':'';
-    $('#br_t_c').style.borderColor=src==='claude'?'var(--gold)':'';
-    // In Claude mode, hide the regular Generate button — the action is "Copy prompt" inside the panel.
-    $('#br_go').style.display=src==='claude'?'none':'';
+    const set=(id,on)=>{const e=$('#'+id);if(e)e.style.display=on?'':'none';};
+    const brd=(id,on)=>{const e=$('#'+id);if(e)e.style.borderColor=on?'var(--gold)':'';};
+    set('br_src_i',src==='idea');set('br_src_s',src==='script');
+    set('br_src_v',src==='video');set('br_src_c',src==='claude');
+    brd('br_t_i',src==='idea');brd('br_t_s',src==='script');
+    brd('br_t_v',src==='video');brd('br_t_c',src==='claude');
+    // In Claude mode, hide the Analyze button — the action is "Copy prompt" inside the panel.
+    const go=$('#br_go');if(go)go.style.display=src==='claude'?'none':'';
     if(src==='claude')paintClaudePrompt();
   };
   function paintClaudePrompt(){
@@ -4322,6 +4511,7 @@ async function viewBroll(){
       +'\\nWhen the batch is done it will show up under the Sets list in the dashboard — I\\\'ll click Refresh there to grab it.';
     $('#br_claude_prompt').textContent=prompt;
   }
+  $('#br_t_i').onclick=()=>{src='idea';showSrc();};
   $('#br_t_s').onclick=()=>{src='script';showSrc();};
   $('#br_t_v').onclick=()=>{src='video';showSrc();};
   $('#br_t_c').onclick=()=>{src='claude';showSrc();};
@@ -4347,58 +4537,126 @@ async function viewBroll(){
     }
   });
   }
-  let es;
-  $('#br_go').onclick=async()=>{
-    const fd=new FormData();
-    fd.append('aspect',$('#br_aspect').value);
-    fd.append('count',$('#br_count').value||'8');
-    fd.append('characterId',$('#br_char').value);
+  // ── Staged flow: Analyze (1→2) → Storyboard review → Frames (2→3) ──
+  // Stream the shared job log; fire onDone(ok) on the job's terminal line. The
+  // SSE channel replays the previous job's log on connect, so we ignore done/fail
+  // until ctl.start() (called once the POST confirms THIS job started).
+  function brStreamLog(L,onDone){
+    es&&es.close();es=new EventSource('/api/log');
+    let jobStarted=false;
+    es.onmessage=ev=>{const line=JSON.parse(ev.data);
+      L.textContent+=line+'\\n';L.scrollTop=L.scrollHeight;
+      if(jobStarted&&(line.indexOf('✓ Done')>-1||line.indexOf('✗ Exited')>-1)){es.close();onDone(line.indexOf('✓ Done')>-1);}};
+    return {start:()=>{jobStarted=true;}};
+  }
+  $('#br_go').onclick=()=>{
+    const aspect=$('#br_aspect').value,count=$('#br_count').value||'8',charId=$('#br_char').value;
+    const fd=new FormData();fd.append('aspect',aspect);fd.append('count',count);fd.append('characterId',charId);
     let sizeMB=0;
     if(src==='video'){const f=$('#br_video').files[0];
       if(!f)return alert('Choose a video file');
       sizeMB=f.size/(1024*1024);
-      if(sizeMB>100){return alert('That video is '+sizeMB.toFixed(1)+' MB — please trim it or compress it under 100 MB. '
-        +'On a Mac: File → Export As → 720p in QuickTime, or use HandBrake. Or just trim to a shorter clip.');}
+      if(sizeMB>100)return alert('That video is '+sizeMB.toFixed(1)+' MB — please trim or compress it under 100 MB.');
       fd.append('video',f);}
+    else if(src==='idea'){const t=$('#br_idea').value.trim();
+      if(t.length<4)return alert('Describe your idea in a few words');fd.append('idea',t);}
     else{const t=$('#br_script').value.trim();
       if(t.length<10)return alert('Paste a script (10+ chars)');fd.append('script',t);}
     const L=$('#br_log');$('#br_go').disabled=true;L.style.display='block';
-    L.textContent=src==='video'
-      ? 'Uploading '+sizeMB.toFixed(1)+' MB video to server…  (this can take ~5–60s depending on your internet)\\n'
-      : 'Submitting…\\n';
-    es&&es.close();es=new EventSource('/api/log');
-    // Guard: the SSE server replays the previous job's log to new connections.
-    // Don't act on "done" signals until the XHR confirms a new job has started,
-    // otherwise a finished-job replay re-enables the button before uploading.
-    let jobStarted=false;
-    es.onmessage=ev=>{const line=JSON.parse(ev.data);
-      L.textContent+=line+'\\n';L.scrollTop=L.scrollHeight;
-      if(jobStarted&&(line.indexOf('✓ Done')>-1||line.indexOf('✗ Exited')>-1)){es.close();
-        $('#br_go').disabled=false;_apiCache.delete('/api/broll/sets');loadSets();}};
-    // Use XHR so we can show real upload progress for big videos.
-    const fail=(msg)=>{alert(msg);L.textContent+='\\n✗ '+msg+'\\n';
-      es&&es.close();$('#br_go').disabled=false;};
-    const xhr=new XMLHttpRequest();
-    xhr.open('POST','/api/broll/generate');
-    xhr.upload.onprogress=(e)=>{if(!e.lengthComputable)return;
-      const pct=Math.round(e.loaded/e.total*100);
-      const a=(e.loaded/(1024*1024)).toFixed(1),b=(e.total/(1024*1024)).toFixed(1);
-      const last=L.textContent.split('\\n').slice(-1)[0];
-      const line='Uploading… '+pct+'%  ('+a+' / '+b+' MB)';
-      if(last.startsWith('Uploading')){L.textContent=L.textContent.replace(/Uploading[^\\n]*$/,line);}
+    L.textContent=src==='video'?'Uploading '+sizeMB.toFixed(1)+' MB video…\\n':'Planning the storyboard…\\n';
+    const ctl=brStreamLog(L,(ok)=>{$('#br_go').disabled=false;if(ok)loadStoryboard();});
+    const fail=(msg)=>{alert(msg);L.textContent+='\\n✗ '+msg+'\\n';es&&es.close();$('#br_go').disabled=false;};
+    const xhr=new XMLHttpRequest();xhr.open('POST','/api/broll/analyze');
+    xhr.upload.onprogress=(e)=>{if(!e.lengthComputable)return;const pct=Math.round(e.loaded/e.total*100);
+      const last=L.textContent.split('\\n').slice(-1)[0];const line='Uploading… '+pct+'%';
+      if(last.indexOf('Uploading')===0){L.textContent=L.textContent.replace(/Uploading[^\\n]*$/,line);}
       else{L.textContent+=line+'\\n';}L.scrollTop=L.scrollHeight;};
-    xhr.upload.onerror=()=>fail('Upload failed mid-transfer (network dropped or server closed connection).');
+    xhr.upload.onerror=()=>fail('Upload failed mid-transfer.');
     xhr.onerror=()=>fail('Network error reaching the server.');
-    xhr.ontimeout=()=>fail('Upload timed out.');
-    xhr.onload=()=>{
-      const ok=xhr.status>=200&&xhr.status<300;
-      if(ok){jobStarted=true;return;} // job accepted — SSE log now carries signals for THIS job
-      let msg='';try{msg=(JSON.parse(xhr.responseText||'{}').error)||'';}catch{/*not json*/}
-      if(!msg)msg='Server returned '+xhr.status+(xhr.statusText?' '+xhr.statusText:'')
-        +(xhr.responseText?' — '+xhr.responseText.slice(0,200):'');
-      fail(msg);};
+    xhr.onload=()=>{const ok=xhr.status>=200&&xhr.status<300;
+      if(ok){try{brStamp=(JSON.parse(xhr.responseText||'{}').stamp)||'';}catch{brStamp='';}ctl.start();return;}
+      let msg='';try{msg=(JSON.parse(xhr.responseText||'{}').error)||'';}catch{}
+      fail(msg||('Server returned '+xhr.status));};
     xhr.send(fd);
   };
+  async function loadStoryboard(){
+    if(!brStamp){loadSets();return;}
+    try{brSet=await fetch('/api/broll/set/'+encodeURIComponent(brStamp)).then(r=>r.json());}catch{brSet=null;}
+    if(!brSet||!brSet.shots){alert('Could not load the storyboard.');return;}
+    renderStoryboard();
+  }
+  function renderStoryboard(){
+    const m=brSet.meta||{},shots=brSet.shots||[];
+    const scriptBlock=m.script
+      ? '<details style="margin:0 0 14px"><summary style="cursor:pointer;color:var(--gold);font-size:13px">Drafted script (click to read)</summary>'
+        +'<div class="muted" style="white-space:pre-wrap;font-size:13px;margin-top:8px;line-height:1.6">'+bresc(m.script)+'</div></details>'
+      : '';
+    const sc=(m.sessionCharacter&&m.sessionCharacter[0])||'';
+    const charPrev=sc
+      ? '<img src="/broll-char/'+encodeURIComponent(brStamp)+'/character.png?t='+Date.now()+'" style="width:120px;height:auto;border-radius:8px;border:1px solid var(--line)">'
+      : '';
+    const charCard=
+      '<div class="card" style="margin:0 0 14px;padding:14px 16px;border-left:3px solid '+(sc?'#7ee787':'var(--gold)')+'">'
+      +'<div style="font-size:14px;font-weight:600;margin-bottom:4px">Character '
+      +(sc?'<span style="color:#7ee787;font-size:12px;font-weight:500">✓ ready — used in person scenes</span>':'<span class="muted" style="font-size:12px;font-weight:400">(optional)</span>')+'</div>'
+      +'<div class="muted" style="font-size:12px;margin-bottom:10px">'+(m.charDetected?'Some scenes feature a person. ':'')
+      +'Upload a few clear reference photos and the AI generates ONE consistent character to use across those scenes. Regenerate until it looks right.</div>'
+      +'<div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">'
+      +(charPrev?'<div>'+charPrev+'</div>':'')
+      +'<div style="flex:1;min-width:220px">'
+      +'<input type="file" id="br_char_refs" accept="image/*" multiple style="font-size:12px">'
+      +'<div style="margin-top:10px"><button class="go" id="br_char_go" style="padding:8px 14px;font-size:12px">'+(sc?'Regenerate character':'Generate character')+'</button></div>'
+      +'<div id="br_char_msg" class="muted" style="font-size:11px;margin-top:6px"></div>'
+      +'</div></div></div>';
+    const cards=shots.map(sh=>
+      '<div class="card" style="margin:10px 0;padding:14px 16px">'
+      +'<div style="font-size:14px;font-weight:600">'+sh.n+'. '+bresc(sh.title)
+      +(sh.usesCharacter?' <span class="pill" style="background:#1c1f26;color:#b48bff">character</span>':'')
+      +(sh.timecode?' <span class="muted" style="font-size:11px;font-weight:400">'+bresc(sh.timecode)+'</span>':'')+'</div>'
+      +'<div class="muted" style="font-size:12px;font-style:italic;margin:4px 0 10px">'+bresc(sh.beat)+'</div>'
+      +'<div style="font-size:10px;color:#7cc4ff;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">First-frame prompt</div>'
+      +'<div class="muted" style="font-size:12px;margin-bottom:8px;white-space:pre-wrap">'+bresc(sh.imagePrompt)+'</div>'
+      +'<div style="font-size:10px;color:#b48bff;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Video prompt</div>'
+      +'<div class="muted" style="font-size:12px;white-space:pre-wrap">'+bresc(sh.videoPrompt)+'</div>'
+      +'</div>').join('');
+    $('#br_input').style.display='none';
+    $('#br_story').innerHTML=
+      '<div class="bx-row" style="margin-bottom:10px"><b>Storyboard — '+shots.length+' scene(s) · '+bresc(m.aspect||'')+'</b>'
+      +'<span><button class="sec" id="br_back">← Back</button> '
+      +'<button class="go" id="br_frames">Generate first frames →</button></span></div>'
+      +scriptBlock+charCard+cards
+      +'<p style="margin:14px 0 0;text-align:right"><button class="go" id="br_frames2">Generate first frames →</button></p>';
+    $('#br_back').onclick=()=>{$('#br_story').innerHTML='';$('#br_input').style.display='';};
+    $('#br_frames').onclick=onFrames;$('#br_frames2').onclick=onFrames;
+    const cg=$('#br_char_go');
+    if(cg)cg.onclick=()=>{
+      const inp=$('#br_char_refs');const files=inp&&inp.files?[].slice.call(inp.files):[];
+      if(!files.length)return alert('Choose at least one reference photo');
+      const fd=new FormData();files.forEach(f=>fd.append('ref',f));
+      const L=$('#br_log');L.style.display='block';L.textContent='Generating character…\\n';
+      cg.disabled=true;const msg=$('#br_char_msg');if(msg)msg.textContent='Uploading & generating…';
+      const ctl=brStreamLog(L,(ok)=>{if(ok){loadStoryboard();}else{cg.disabled=false;if(msg)msg.textContent='Generation failed — see the log.';}});
+      fetch('/api/broll/character?stamp='+encodeURIComponent(brStamp),{method:'POST',body:fd})
+        .then(r=>r.json().then(j=>({ok:r.ok,j:j})))
+        .then(o=>{if(o.ok){ctl.start();}else{alert((o.j&&o.j.error)||'Could not start character generation');cg.disabled=false;es&&es.close();}})
+        .catch(()=>{alert('Network error');cg.disabled=false;es&&es.close();});
+    };
+  }
+  function onFrames(){
+    if(!brStamp)return;
+    const L=$('#br_log');L.style.display='block';L.textContent='Generating first frames…\\n';
+    document.querySelectorAll('#br_frames,#br_frames2').forEach(b=>{b.disabled=true;});
+    const ctl=brStreamLog(L,(ok)=>{
+      document.querySelectorAll('#br_frames,#br_frames2').forEach(b=>{if(b)b.disabled=false;});
+      if(ok){toast('Frames ready');$('#br_story').innerHTML='';$('#br_input').style.display='';
+        _apiCache.delete('/api/broll/sets');loadSets();
+        const s=document.getElementById('br_sets');if(s)s.scrollIntoView({behavior:'smooth'});}});
+    fetch('/api/broll/frames?stamp='+encodeURIComponent(brStamp),{method:'POST'})
+      .then(r=>r.json().then(j=>({ok:r.ok,j:j})))
+      .then(o=>{if(o.ok){ctl.start();}else{alert((o.j&&o.j.error)||'Could not start frame generation');
+        document.querySelectorAll('#br_frames,#br_frames2').forEach(b=>{if(b)b.disabled=false;});es&&es.close();}})
+      .catch(()=>{alert('Network error');document.querySelectorAll('#br_frames,#br_frames2').forEach(b=>{if(b)b.disabled=false;});es&&es.close();});
+  }
   $('#br_ref').onclick=()=>{_apiCache.delete('/api/broll/sets');loadSets();};
   async function loadSets(){
     const sets=await api('/api/broll/sets');
