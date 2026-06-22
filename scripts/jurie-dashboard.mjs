@@ -1190,6 +1190,13 @@ app.post("/api/generate", extraRefUpload.fields([
   if (includeCta !== "1") env.DASHBOARD_NO_CTA = "1";
   if (aiHeadline === "1") env.DASHBOARD_AI_HEADLINE = "1";
   if (bufferAutopost === "1") env.BUFFER_AUTOPOST = "1";
+  // Jurie photo-quote styles — a Jurie PORTRAIT + quote overlay. Reuse the main
+  // quote+background flow (batch-jurie); just switch the render composition and
+  // generate a clean portrait instead of a busy scene.
+  if (client === "jurie" && (posterType === "photo" || posterType === "mono")) {
+    env.DASHBOARD_RENDER_STYLE = posterType;   // "photo" | "mono"
+    env.DASHBOARD_PORTRAIT_MODE = posterType;
+  }
   // Jurie advice/tweet posters — text-only cards via the advice generator.
   if (isAdvice) {
     env.DASHBOARD_ADVICE_FORMAT = posterType; // "advice" | "tweet"
@@ -2485,6 +2492,14 @@ async function viewGenerate(){
        +'<label class="ptype-card" data-pt="tweet" style="flex:1;display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:12px 14px;border:1px solid var(--line);border-radius:10px;transition:border-color .15s,background .15s">'
        +'<input type="radio" name="g_ptype" value="tweet" style="width:auto;margin:3px 0 0">'
        +'<span><b>\\ud83d\\udc26 Tweet style</b><br><span class="muted" style="font-size:11px">X/Twitter screenshot of an advice post</span></span></label>'
+       +'</div>'
+       +'<div class="row" style="gap:10px;margin-bottom:14px">'
+       +'<label class="ptype-card" data-pt="photo" style="flex:1;display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:12px 14px;border:1px solid var(--line);border-radius:10px;transition:border-color .15s,background .15s">'
+       +'<input type="radio" name="g_ptype" value="photo" style="width:auto;margin:3px 0 0">'
+       +'<span><b>\\ud83d\\udcf8 Photo quote</b><br><span class="muted" style="font-size:11px">Your portrait + a floating tweet card</span></span></label>'
+       +'<label class="ptype-card" data-pt="mono" style="flex:1;display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:12px 14px;border:1px solid var(--line);border-radius:10px;transition:border-color .15s,background .15s">'
+       +'<input type="radio" name="g_ptype" value="mono" style="width:auto;margin:3px 0 0">'
+       +'<span><b>\\ud83c\\udf11 Mono quote</b><br><span class="muted" style="font-size:11px">B&amp;W portrait + centred serif quote</span></span></label>'
        +'</div>'
        +'<div id="advice_box" style="display:none;margin-bottom:18px">'
        +'<div class="row" style="gap:16px;align-items:flex-start">'

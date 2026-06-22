@@ -42,6 +42,16 @@ import {
   tweetCardSchema,
   calcMetaTweetCard,
 } from "./QuoteCard/TweetCard";
+import {
+  PhotoTweetCard,
+  photoTweetCardSchema,
+  calcMetaPhotoTweetCard,
+} from "./QuoteCard/PhotoTweetCard";
+import {
+  QuotePortraitCard,
+  quotePortraitCardSchema,
+  calcMetaQuotePortraitCard,
+} from "./QuoteCard/QuotePortraitCard";
 import { AppIcon, appIconSchema } from "./AppIcon/AppIcon";
 
 export const RemotionRoot: React.FC = () => {
@@ -264,6 +274,49 @@ export const RemotionRoot: React.FC = () => {
           backdrop: "clean" as const,
           brandGold: "#F5C13B",
           brandRed: "#E11522",
+          aspectRatio: "4:5" as const,
+        }}
+      />
+
+      <Composition
+        id="PhotoTweetCard"
+        component={PhotoTweetCard}
+        durationInFrames={90}
+        fps={30}
+        width={1080}
+        height={1350}
+        schema={photoTweetCardSchema}
+        calculateMetadata={calcMetaPhotoTweetCard}
+        defaultProps={{
+          bgSrc: "",
+          displayName: "Jurie Cata Villarde",
+          handle: "@learnwithjurie",
+          avatarSrc: "",
+          verified: true,
+          body: "Minsan ang tunay na kahirapan ay yung hindi marunong tumanggap ng correction.",
+          accent: "correction",
+          brandGold: "#F5C13B",
+          brandRed: "#E11522",
+          aspectRatio: "4:5" as const,
+        }}
+      />
+
+      <Composition
+        id="QuotePortraitCard"
+        component={QuotePortraitCard}
+        durationInFrames={90}
+        fps={30}
+        width={1080}
+        height={1350}
+        schema={quotePortraitCardSchema}
+        calculateMetadata={calcMetaQuotePortraitCard}
+        defaultProps={{
+          bgSrc: "",
+          body: "Gawin mo na. Kasi pagdating ng panahon, mas masakit ang sana kaysa sa pagod.",
+          accent: "sana",
+          handle: "@learnwithjurie",
+          logoSrc: "",
+          brandGold: "#F5C13B",
           aspectRatio: "4:5" as const,
         }}
       />

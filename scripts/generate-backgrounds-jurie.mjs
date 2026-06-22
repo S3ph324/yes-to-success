@@ -68,6 +68,10 @@ const quotes = JSON.parse(await fs.readFile(quotesPath, "utf-8"));
 // prompt for a product-accurate one further down.
 const eyeglassesMode  = !!process.env.DASHBOARD_EYEGLASSES_ID;
 const wantGlassesId   = process.env.DASHBOARD_EYEGLASSES_ID || "";
+// Portrait mode for the photo-quote styles — generates a clean full-bleed
+// portrait of the character (Jurie) instead of a busy scene. "photo" = bright
+// confident lifestyle; "mono" = moody, suited to a B&W treatment.
+const portraitMode    = process.env.DASHBOARD_PORTRAIT_MODE || "";
 const ePosterStyle    = process.env.DASHBOARD_EYEGLASSES_STYLE       || "showcase";
 const ePlacement      = process.env.DASHBOARD_EYEGLASSES_PLACEMENT   || "auto";
 const eStyleKey       = process.env.DASHBOARD_EYEGLASSES_STYLE_KEY   || "";
@@ -534,6 +538,25 @@ for (const { q, i } of targets) {
         `No text, logos, or watermarks anywhere in the image. ` +
         NEG_SPACE(targetAspect);
     }
+  } else if (hasRef && portraitMode) {
+    // ── Character PORTRAIT (photo-quote / mono-quote styles) ───────────────
+    const moodNote = portraitMode === "mono"
+      ? "Calm, thoughtful, grounded expression, looking toward the camera. " +
+        "Dramatic soft directional light with rich contrast and deep shadows, " +
+        "composed to look striking as a black-and-white image"
+      : "Confident, warm and approachable with a subtle genuine smile. A clean, " +
+        "modern setting — a bright office, a glass-walled lobby, or a minimal " +
+        "studio — with soft natural daylight, premium lifestyle-editorial feel";
+    guidance =
+      `A polished, professional PORTRAIT photograph of the SAME person shown in ` +
+      `these reference photos — keep their face, hair, and identity perfectly ` +
+      `consistent and clearly recognizable. ${moodNote}. ` +
+      `Framing: a head-and-shoulders to waist-up portrait with the person in the ` +
+      `UPPER-CENTRAL part of the frame; keep the LOWER ~40% calm and simple ` +
+      `(soft background / clean negative space) for a text overlay added later. ` +
+      `Photorealistic, editorial, shallow depth of field, sharp on the face. ` +
+      `The person is fully and tastefully clothed. No text, logos, or watermarks ` +
+      `anywhere in the image. ${STYLE(targetAspect)}`;
   } else if (hasRef) {
     // ── Character (Jurie / other) with reference photos ────────────────────
     guidance =

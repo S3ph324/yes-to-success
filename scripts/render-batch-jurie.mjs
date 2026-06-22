@@ -107,6 +107,11 @@ try {
 
 // Per-run override from the dashboard "Include logo" checkbox.
 const NO_LOGO = process.env.DASHBOARD_NO_LOGO === "1";
+// Photo-quote render styles — a Jurie PORTRAIT with a quote overlay:
+//   "photo" → PhotoTweetCard (portrait + floating tweet card)
+//   "mono"  → QuotePortraitCard (B&W portrait + centred serif quote)
+// Empty → the normal JurieQuoteCard text-block poster.
+const RENDER_STYLE = process.env.DASHBOARD_RENDER_STYLE || "";
 
 // Poster style — locked to "cinematic" (the proven style) for now.
 // The flat/split variants are disabled pending further polish; this keeps
@@ -229,9 +234,14 @@ for (const q of quotes) {
   const isAdvice = q.variant === "advice";
   const isTweet = q.variant === "tweet";
   const isShowcase = Boolean(q.eyeglassesId);
+  // Photo-quote styles route to the portrait compositions (need a Jurie photo).
+  const isPhoto = RENDER_STYLE === "photo" && !isAdvice && !isTweet && !isShowcase;
+  const isMono = RENDER_STYLE === "mono" && !isAdvice && !isTweet && !isShowcase;
   const compositionId = isAdvice ? "AdviceCard"
     : isTweet ? "TweetCard"
     : isShowcase ? "ProductShowcaseCard"
+    : isPhoto ? "PhotoTweetCard"
+    : isMono ? "QuotePortraitCard"
     : "JurieQuoteCard";
   // Never ship a blank photo poster. Showcase (eyeglasses) and standard quote
   // posters REQUIRE a background image; advice/tweet are intentionally text-only
@@ -257,7 +267,30 @@ for (const q of quotes) {
   // The tweet card is a clean screenshot now — a plain black/white background by
   // theme, no outer backdrop, no timestamp, no engagement.
   const tweetCardTheme = q.cardTheme || (q.theme === "light" ? "light" : "dark");
-  const inputProps = isAdvice
+  const inputProps = isPhoto
+    ? {
+        bgSrc: q.bgPath || "",
+        displayName: "Jurie Cata Villarde",
+        handle: "@learnwithjurie",
+        avatarSrc: jurieAvatar,
+        verified: true,
+        body: q.quote || "",
+        accent: q.keyword || "",
+        brandGold: brand.brandGold,
+        brandRed: brand.brandRed,
+        aspectRatio,
+      }
+    : isMono
+    ? {
+        bgSrc: q.bgPath || "",
+        body: q.quote || "",
+        accent: q.keyword || "",
+        handle: "@learnwithjurie",
+        logoSrc: brand.logoSrc,
+        brandGold: brand.brandGold,
+        aspectRatio,
+      }
+    : isAdvice
     ? {
         handle: "@learnwithjurie",
         avatarSrc: jurieAvatar,
