@@ -116,7 +116,9 @@ export async function generateShopScenes({
       } catch (e) {
         lastErr = String(e?.message || e);
         log(`  scene '${key}' attempt ${attempt}/${MAX}: ${lastErr.slice(0, 160)}`);
-        if (attempt < MAX) await delay(4000);
+        // Exponential backoff (4s, 8s, …) gives a hot rate limiter time to cool
+        // off — far more effective against 429s than retrying immediately.
+        if (attempt < MAX) await delay(4000 * attempt);
       }
     }
     if (buf) {
@@ -126,9 +128,9 @@ export async function generateShopScenes({
     } else {
       errors.push({ key, message: lastErr || "unknown" });
     }
-    // Space scenes out a little so a burst of calls doesn't trip the image
-    // model's per-minute rate limit (a common cause of whole-batch failures).
-    await delay(1200);
+    // Space scenes out so a burst of calls doesn't trip the image model's
+    // per-minute rate limit (a common cause of whole-batch failures).
+    await delay(2500);
   }
   return { scenes: out, errors };
 }

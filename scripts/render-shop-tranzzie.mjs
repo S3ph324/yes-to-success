@@ -89,8 +89,9 @@ if (!staged.length) { console.error("Could not stage any uploaded photos."); pro
 // ── AI product-placement scenes ───────────────────────────────────────────
 // Generate clean studio / lifestyle / dark close-up shots of the SAME frame
 // from the uploaded reference photo(s), then the cards composite over those.
-// Falls back to the raw upload for any scene that fails. Disable with
-// DASHBOARD_SHOP_NO_AI=1.
+// Uploads are reference-only (never shown). If a scene hits the rate limit we
+// reuse another GENERATED scene for that card; only a total failure aborts.
+// Disable AI entirely with DASHBOARD_SHOP_NO_AI=1.
 const sceneRelDir = path.posix.join("generated-shop", stamp);
 // Each photo card maps to ONE generated scene. The uploaded photos are
 // reference-only and are NEVER shown as a card — if a scene can't be generated
@@ -115,7 +116,10 @@ if (aiOn) {
   for (let pass = 1; pass <= 2; pass++) {
     const want = sceneKeys.filter((k) => !made[k]);
     if (!want.length) break;
-    if (pass === 2) console.log(`  retrying ${want.length} scene(s) that failed: ${want.join(", ")}…`);
+    if (pass === 2) {
+      console.log(`  rate limit hit — pausing, then retrying ${want.length} scene(s): ${want.join(", ")}…`);
+      await new Promise((r) => setTimeout(r, 6000)); // let the rate limiter recover before pass 2
+    }
     const { scenes, errors } = await generateShopScenes({
       refPaths: photos, project, location, outDir, keys: want, log: (m) => console.log(m),
     });
@@ -124,23 +128,38 @@ if (aiOn) {
   }
 
   const relOf = (k) => (made[k] ? path.posix.join(sceneRelDir, `${k}.png`) : "");
-  sceneRel = { hero: relOf("clean"), studio: relOf("life"), front: relOf("front"), detail: relOf("dark") };
 
-  // Every photo card REQUIRES its own generated scene. If any is still missing,
-  // stop — do NOT ship the raw uploaded photo as a finished card.
-  const missing = Object.values(CARD_SCENE).filter((k) => !made[k]);
-  if (missing.length) {
+  // Every photo card needs a GENERATED scene — uploads are reference-only and
+  // are never shown as a card. But don't waste a mostly-successful batch: if a
+  // scene hit the rate limit, BORROW another generated scene for that card
+  // (tone-aware: dark cards reuse a dark scene; the white front card prefers the
+  // front scene). Only abort if NOTHING generated at all.
+  const darkKeys = ["clean", "life", "dark"].filter((k) => made[k]); // dark-themed pool
+  const anyKeys = sceneKeys.filter((k) => made[k]);                  // everything generated
+  if (!anyKeys.length) {
     const reason = lastErrors?.[0]?.message || "the image model returned no image";
     console.error(
-      `\n✗ AI product scenes could not be generated (${missing.join(", ")}).\n` +
+      `\n✗ AI product scenes could not be generated at all.\n` +
       `  Reason: ${String(reason).slice(0, 200)}\n` +
-      `  Your uploaded photos are used ONLY as a reference for the AI and are never\n` +
-      `  shown as a card. Nothing was posted. This is usually a temporary image-model\n` +
-      `  rate limit or quota — please wait a moment and generate again.`,
+      `  Your uploaded photos are reference-only and were NOT used or posted.\n` +
+      `  This is usually a temporary image-model rate limit / quota — wait a bit and try again.`,
     );
     process.exit(1);
   }
-  console.log(`✓ ${Object.keys(made).length}/${sceneKeys.length} scene(s) generated`);
+  let di = 0;
+  const borrowDark = () =>
+    relOf(darkKeys.length ? darkKeys[di++ % darkKeys.length] : anyKeys[di++ % anyKeys.length]);
+  sceneRel = {
+    hero:   made.clean ? relOf("clean") : borrowDark(),
+    studio: made.life  ? relOf("life")  : borrowDark(),
+    detail: made.dark  ? relOf("dark")  : borrowDark(),
+    // white-bg card: prefer the front scene; only as a last resort reuse another.
+    front:  made.front ? relOf("front") : relOf(anyKeys[0]),
+  };
+  const gen = anyKeys.length;
+  console.log(gen < sceneKeys.length
+    ? `✓ ${gen}/${sceneKeys.length} scene(s) generated — reused a generated scene for the ${sceneKeys.length - gen} that hit the rate limit (no raw photo used)`
+    : `✓ ${gen}/${sceneKeys.length} scene(s) generated`);
 }
 
 // ── Card plan ─────────────────────────────────────────────────────────────
