@@ -1821,8 +1821,12 @@ app.post("/api/broll/analyze", brollVideoUpload, async (req, res) => {
   n = Math.max(1, Math.min(40, n));
   const idea = String(req.body?.idea || "").trim();
   const scriptText = String(req.body?.script || "").trim();
+  // mode: "story" (full narrative video) routes to the story director; default
+  // "broll" (cutaways). Same staged pipeline either way.
+  const mode = req.body?.mode === "story" ? "story" : "broll";
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
   const args = ["scripts/broll-analyze.mjs", "--aspect", aspect, "--count", String(n), "--stamp", stamp];
+  if (mode === "story") args.push("--mode", "story");
   let tmpFile = null;
   let kind = "source";
   if (req.file) {
@@ -1848,7 +1852,7 @@ app.post("/api/broll/analyze", brollVideoUpload, async (req, res) => {
     if (tmpFile) fs.unlink(tmpFile).catch(() => {});
     return;
   }
-  startBrollSteps([args], `▶ B-Roll: analyzing ${kind} → ${n} scene(s), ${aspect}…`);
+  startBrollSteps([args], `▶ ${mode === "story" ? "Video" : "B-Roll"}: analyzing ${kind} → ${n} scene(s), ${aspect}…`);
   res.json({ ok: true, stamp });
 });
 
@@ -2576,7 +2580,7 @@ function fmtStamp(s){
 function goBatches(){TAB='batches';render();}
 function toggleAdv(){const b=document.getElementById('adv-btn'),d=document.getElementById('adv-body');if(b)b.classList.toggle('open');if(d)d.classList.toggle('open');}
 async function buildNav(){
-  const tabs=[['generate','⚡ Generate'],['batches','📂 Batches'],['queue','✅ Queue'],['broll','🎬 B-Roll'],['brand','🎨 Brand'],['topics','📝 Topics'],['chars','👤 Characters']];
+  const tabs=[['generate','⚡ Generate'],['batches','📂 Batches'],['queue','✅ Queue'],['broll','🎬 B-Roll'],['video','🎥 Video'],['brand','🎨 Brand'],['topics','📝 Topics'],['chars','👤 Characters']];
   if(CLIENT==='tranzzie')tabs.push(['glasses','\\ud83d\\udd76\\ufe0f Eyeglasses']);
   // Show pending count badge on Queue tab
   let qBadge='';
@@ -2607,6 +2611,7 @@ async function render(){
   if(TAB==='batches')return viewBatches();
   if(TAB==='queue')return viewQueue();
   if(TAB==='broll')return viewBroll();
+  if(TAB==='video')return viewBroll('story');
 }
 let es;
 async function viewGenerate(){
@@ -4415,7 +4420,8 @@ async function viewBatches(){
     body:JSON.stringify({client:CLIENT})});toast('Opening export folder…');};
   paint();
 }
-async function viewBroll(){
+async function viewBroll(mode){
+  mode=mode==='story'?'story':'broll';const isStory=mode==='story';
   const [chars,ENV]=await Promise.all([
     api('/api/characters'),
     api('/api/env').catch(()=>({})),
@@ -4430,16 +4436,20 @@ async function viewBroll(){
    +chars.map(c=>'<option value="'+c.id+'">'+c.name+' ('+c.client+', '
     +((c.photos||[]).length)+' photo'+(((c.photos||[]).length)===1?'':'s')+')</option>').join('');
   $('#view').innerHTML=
-   '<div class="card"><h2>B-Roll Maker</h2>'
-   +'<div class="muted" style="margin:-6px 0 16px">Start from an idea, a script, or a video. The AI plans a connected storyboard you '
-   +'<b style="color:var(--txt)">review before any frames are generated</b>, then renders the first frame + a paired video prompt for each scene. '
-   +'Veo auto-animation is OFF — you make the video in your own tool.</div>'
+   '<div class="card"><h2>'+(isStory?'Video Maker':'B-Roll Maker')+'</h2>'
+   +'<div class="muted" style="margin:-6px 0 16px">'
+   +(isStory
+     ? 'Turn an idea or a script into a full video. The AI plans a connected, scene-by-scene storyboard you <b style="color:var(--txt)">review before any frames are generated</b>, then renders the first frame + a paired video prompt for each scene. Veo auto-animation is OFF — you assemble the video in your own tool.'
+     : 'Start from an idea, a script, or a video. The AI plans a connected storyboard you <b style="color:var(--txt)">review before any frames are generated</b>, then renders the first frame + a paired video prompt for each scene. Veo auto-animation is OFF — you make the video in your own tool.')
+   +'</div>'
    +'<div id="br_input">'
    +'<div class="bx-tools" style="margin-bottom:14px">'
    +'<button class="sec" id="br_t_i">Idea</button>'
    +'<button class="sec" id="br_t_s">Script</button>'
-   +'<button class="sec" id="br_t_v">Video</button>'
-   +'<button class="sec" id="br_t_c">Use Claude <span style="opacity:.7;font-size:10px;letter-spacing:.06em;text-transform:uppercase">· any size</span></button></div>'
+   +(isStory?''
+     :'<button class="sec" id="br_t_v">Video</button>'
+      +'<button class="sec" id="br_t_c">Use Claude <span style="opacity:.7;font-size:10px;letter-spacing:.06em;text-transform:uppercase">· any size</span></button>')
+   +'</div>'
    +'<div id="br_src_i"><label>Idea</label>'
    +'<textarea id="br_idea" placeholder="One or two lines — e.g. why discipline beats motivation for busy parents" style="min-height:90px"></textarea>'
    +'<div class="muted" style="margin-top:6px;font-size:12px">The AI drafts a short script from this first, then builds the storyboard you review.</div></div>'
@@ -4471,7 +4481,7 @@ async function viewBroll(){
    +'</div>'
    +'<div id="br_story"></div>'
    +'<pre id="br_log" style="display:none"></pre></div>'
-   +'<div class="bx-head"><h2 style="margin:0">Sets</h2><div class="bx-tools">'
+   +'<div class="bx-head"><h2 style="margin:0">'+(isStory?'Projects':'Sets')+'</h2><div class="bx-tools">'
    +'<button class="sec" id="br_ref">Refresh</button></div></div><div id="br_sets"></div>';
   const showSrc=()=>{
     const set=(id,on)=>{const e=$('#'+id);if(e)e.style.display=on?'':'none';};
@@ -4513,8 +4523,8 @@ async function viewBroll(){
   }
   $('#br_t_i').onclick=()=>{src='idea';showSrc();};
   $('#br_t_s').onclick=()=>{src='script';showSrc();};
-  $('#br_t_v').onclick=()=>{src='video';showSrc();};
-  $('#br_t_c').onclick=()=>{src='claude';showSrc();};
+  {const _v=$('#br_t_v');if(_v)_v.onclick=()=>{src='video';showSrc();};}
+  {const _c=$('#br_t_c');if(_c)_c.onclick=()=>{src='claude';showSrc();};}
   // Repaint when any of the settings the prompt depends on change.
   ['br_aspect','br_count','br_char'].forEach(id=>{
     const el=$('#'+id);if(el)el.addEventListener('change',()=>{if(src==='claude')paintClaudePrompt();});
@@ -4551,7 +4561,7 @@ async function viewBroll(){
   }
   $('#br_go').onclick=()=>{
     const aspect=$('#br_aspect').value,count=$('#br_count').value||'8',charId=$('#br_char').value;
-    const fd=new FormData();fd.append('aspect',aspect);fd.append('count',count);fd.append('characterId',charId);
+    const fd=new FormData();fd.append('aspect',aspect);fd.append('count',count);fd.append('characterId',charId);fd.append('mode',mode);
     let sizeMB=0;
     if(src==='video'){const f=$('#br_video').files[0];
       if(!f)return alert('Choose a video file');
@@ -4659,8 +4669,8 @@ async function viewBroll(){
   }
   $('#br_ref').onclick=()=>{_apiCache.delete('/api/broll/sets');loadSets();};
   async function loadSets(){
-    const sets=await api('/api/broll/sets');
-    if(!sets.length){$('#br_sets').innerHTML='<p class="muted">No b-roll sets yet.</p>';return;}
+    const sets=(await api('/api/broll/sets')).filter(S=>(((S.meta&&S.meta.mode)||'broll')===mode));
+    if(!sets.length){$('#br_sets').innerHTML='<p class="muted">'+(isStory?'No video projects yet.':'No b-roll sets yet.')+'</p>';return;}
     $('#br_sets').innerHTML=sets.map(S=>{
       const m=S.meta||{};
       const shots=S.shots.map(sh=>{

@@ -34,6 +34,10 @@ const scriptArg = flag("--script", "");
 const videoArg = flag("--video", "");
 const ideaArg = flag("--idea", ""); // a file holding a short IDEA → drafted into a script first
 const stampArg = flag("--stamp", ""); // caller-controlled stamp (the dashboard pins it so it can reference the set across stages)
+// mode: "broll" (cutaway shots illustrating a source) | "story" (sequential
+// narrative SCENES that ARE the video). Swaps the director prompt + framing.
+const mode = flag("--mode", "broll") === "story" ? "story" : "broll";
+const unit = mode === "story" ? "scene" : "b-roll shot";
 if (!scriptArg && !videoArg && !ideaArg) {
   console.error("Provide --idea <file>, --script <file> or --video <file>");
   process.exit(1);
@@ -78,11 +82,15 @@ if (ideaArg) {
   const dr = await draftAi.models.generateContent({
     model: MODEL,
     contents: [{ role: "user", parts: [{ text:
-      `IDEA:\n${ideaText}\n\nWrite a short spoken-word VOICEOVER SCRIPT for a ` +
+      `IDEA:\n${ideaText}\n\nWrite a short ${mode === "story"
+        ? "NARRATIVE video script — a tiny story with a beginning, middle, and end"
+        : "spoken-word VOICEOVER SCRIPT"} for a ` +
       `${aspect} short-form social video that delivers this idea. Natural Taglish ` +
-      `is welcome. Open with a hook, make 2–4 concrete points, and close with a ` +
+      `is welcome. Open with a hook, ${mode === "story"
+        ? "build through 2–4 story beats"
+        : "make 2–4 concrete points"}, and close with a ` +
       `memorable line. Keep it tight (roughly ${Math.max(40, count * 8)}–` +
-      `${count * 16} words). Output ONLY the spoken script text — no title, no ` +
+      `${count * 16} words). Output ONLY the script text — no title, no ` +
       `scene directions, no labels, no quotation marks.` }] }],
     config: { temperature: 0.85 },
   });
@@ -206,23 +214,34 @@ if (!videoPart) {
 
 // ── build the director instruction ────────────────────────────────────────
 const director = await fs.readFile(
-  path.join(projectRoot, "scripts", "broll-director.md"),
+  path.join(projectRoot, "scripts", mode === "story" ? "story-director.md" : "broll-director.md"),
   "utf-8",
 );
+const charNote = mode === "story"
+  ? (charMode === "reference-image"
+      ? " — a reference image WILL be attached. The character is the PROTAGONIST: feature them in MOST scenes (usesCharacter: true), centered and emoting as the story needs. Do not describe them — use the placeholder and the preserve-the-reference instruction."
+      : " — no character. Tell the story through places, objects, hands and environments; set usesCharacter: false on every scene.")
+  : (charMode === "reference-image"
+      ? " — a reference image WILL be attached; do not describe the character, use the placeholder and the preserve-the-reference instruction"
+      : " — no character reference is attached yet. Still set usesCharacter per shot: true ONLY when a recurring on-camera PERSON is genuinely the subject of that beat; false for scene / object / place cutaways (most b-roll). This lets the user optionally add a character afterwards.");
+const countLine = mode === "story"
+  ? `- Produce EXACTLY ${count} scenes, in story order, that together form ONE complete narrative arc (hook → development → payoff/CTA). Each scene cuts into the next.`
+  : `- Produce EXACTLY ${count} shots, in story order, each connected to a real beat.`;
+const timingLine = mode === "story"
+  ? '- This is an original narrative — set every timecode to "".'
+  : sourceKind === "VIDEO TRANSCRIPT"
+    ? "- The source has [m:ss–m:ss] timecodes — set each shot's timecode to when its line is said."
+    : sourceKind === "VIDEO"
+      ? "- The source is a video you can watch and listen to directly. For each shot, set timecode (m:ss) to the moment in the video the b-roll should cover. Use the visuals AND the spoken audio to find the beats."
+      : '- No timing in the source — set every timecode to "".';
 const dynamic = `
 
 ## THIS RUN
 - Source type: ${sourceKind}
 - Aspect ratio: ${aspect} (state it in EVERY image and video prompt)
-- Character mode: ${charMode}${charMode === "reference-image" ? " — a reference image WILL be attached; do not describe the character, use the placeholder and the preserve-the-reference instruction" : " — no character reference is attached yet. Still set usesCharacter per shot: true ONLY when a recurring on-camera PERSON is genuinely the subject of that beat; false for scene / object / place cutaways (most b-roll). This lets the user optionally add a character afterwards."}
-- Produce EXACTLY ${count} shots, in story order, each connected to a real beat.
-${
-  sourceKind === "VIDEO TRANSCRIPT"
-    ? "- The source has [m:ss–m:ss] timecodes — set each shot's timecode to when its line is said."
-    : sourceKind === "VIDEO"
-      ? "- The source is a video you can watch and listen to directly. For each shot, set timecode (m:ss) to the moment in the video the b-roll should cover. Use the visuals AND the spoken audio to find the beats."
-      : "- No timing in the source — set every timecode to \"\"."
-}
+- Character mode: ${charMode}${charNote}
+${countLine}
+${timingLine}
 `;
 
 const ai = new GoogleGenAI({ vertexai: true, project, location });
@@ -240,16 +259,17 @@ const shotObj = {
 };
 
 console.log(
-  `Analyzing ${sourceKind.toLowerCase()} → ${count} b-roll shot(s), ${aspect}, character: ${charMode} …`,
+  `Analyzing ${sourceKind.toLowerCase()} → ${count} ${unit}(s), ${aspect}, character: ${charMode} …`,
 );
 const start = Date.now();
 const userParts = videoPart
   ? [
       videoPart,
       {
-        text:
-          "Watch this video carefully — every frame and all spoken audio — " +
-          "and produce the connected b-roll shot list per the system instruction.",
+        text: mode === "story"
+          ? "Watch this video and adapt it into the connected narrative scene list per the system instruction."
+          : "Watch this video carefully — every frame and all spoken audio — " +
+            "and produce the connected b-roll shot list per the system instruction.",
       },
     ]
   : [{ text: `SOURCE (${sourceKind}):\n\n${sourceText}` }];
@@ -298,6 +318,7 @@ await fs.writeFile(
     {
       meta: {
         aspect,
+        mode,
         count: shots.length,
         characterId: charMode === "none" ? "" : characterId,
         charMode,
@@ -316,7 +337,7 @@ await fs.writeFile(
   ),
 );
 const dt = ((Date.now() - start) / 1000).toFixed(1);
-console.log(`\n✓ ${shots.length} shot(s) in ${dt}s\n  → ${outPath}\n`);
+console.log(`\n✓ ${shots.length} ${unit}(s) in ${dt}s\n  → ${outPath}\n`);
 for (const s of shots.slice(0, 6))
   console.log(`  ${s.n}. ${s.title}${s.timecode ? ` [${s.timecode}]` : ""}`);
 if (shots.length > 6) console.log(`  …and ${shots.length - 6} more`);
