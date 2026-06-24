@@ -2196,7 +2196,7 @@ button.sec:hover{border-color:var(--gold);color:var(--txt)}
 pre{background:#0d0d0f;border:1px solid var(--line);border-radius:10px;padding:15px;max-height:240px;
 overflow:auto;font-size:12px;line-height:1.6;white-space:pre-wrap;color:#b9b9bf}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
-figure{margin:0;background:#0d0d0f;border:1px solid var(--line);border-radius:12px;overflow:hidden;
+figure{margin:0;min-width:0;background:#0d0d0f;border:1px solid var(--line);border-radius:12px;overflow:hidden;
 position:relative;transition:border-color .2s}
 figure:hover{border-color:var(--line2)}
 /* Fixed thumbnail height keeps layout compact even while images are loading */
@@ -4682,9 +4682,9 @@ async function viewBroll(mode){
       const shots=S.shots.map(sh=>{
         const a='/broll-asset/'+encodeURIComponent(S.stamp)+'/shot-'+String(sh.n).padStart(2,'0')+'.png';
         const img=sh.hasFrame
-          ?'<figure><img loading="lazy" src="'+a+'"><a class="dl" href="'+a+'?dl=1" download>↓ PNG</a></figure>'
-          :'<figure><div class="frame ph" style="aspect-ratio:4/5;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:11px">no frame</div></figure>';
-        return '<div style="margin-bottom:14px">'+img
+          ?'<figure><img loading="lazy" style="width:100%;height:300px;object-fit:contain;background:#0d0d0f;display:block" src="'+a+'"><a class="dl" href="'+a+'?dl=1" download>↓ PNG</a></figure>'
+          :'<figure><div class="frame ph" style="height:300px;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:11px">no frame</div></figure>';
+        return '<div style="margin-bottom:14px;min-width:0">'+img
          +'<div style="margin-top:8px;font-size:13px;font-weight:600">'+sh.n+'. '+(sh.title||'').replace(/[<>]/g,'')
          +(sh.usesCharacter?' <span class="charbadge" style="background:#1c1f26;color:#b48bff;font-size:9px;padding:2px 7px;border-radius:4px;text-transform:uppercase">char</span>':'')+'</div>'
          +(sh.timecode?'<div class="muted" style="font-size:11px">'+sh.timecode+'</div>':'')
