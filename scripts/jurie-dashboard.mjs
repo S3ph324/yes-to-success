@@ -1930,11 +1930,15 @@ app.post("/api/broll/character", brollCharUpload.array("ref", 6), async (req, re
   const refsDir = path.join(projectRoot, "public", "broll-characters", stamp, "refs");
   let have = [];
   try { have = (await fs.readdir(refsDir)).filter((f) => /\.(png|jpe?g|webp|heic|heif)$/i.test(f)); } catch { /* none */ }
-  if (!have.length) return res.status(400).json({ error: "Upload at least one reference photo." });
+  // Reference photos are OPTIONAL — with none, the AI invents ONE consistent
+  // character from the typed description and/or the storyboard context.
+  const desc = String(req.body?.description || "").trim().slice(0, 600);
   if (!guard(req, res)) return;
+  const charArgs = ["scripts/broll-character.mjs", "--stamp", stamp, "--aspect", aspect];
+  if (desc) charArgs.push("--desc", desc);
   startBrollSteps(
-    [["scripts/broll-character.mjs", "--stamp", stamp, "--aspect", aspect]],
-    `▶ B-Roll: generating character for ${stamp} (${have.length} ref photo${have.length === 1 ? "" : "s"})…`,
+    [charArgs],
+    `▶ ${stamp}: generating character ${have.length ? `(${have.length} ref photo${have.length === 1 ? "" : "s"})` : (desc ? "(from description)" : "(to fit the story)")}…`,
   );
   res.json({ ok: true, stamp });
 });
@@ -4610,11 +4614,13 @@ async function viewBroll(mode){
       +'<div style="font-size:14px;font-weight:600;margin-bottom:4px">Character '
       +(sc?'<span style="color:#7ee787;font-size:12px;font-weight:500">✓ ready — used in person scenes</span>':'<span class="muted" style="font-size:12px;font-weight:400">(optional)</span>')+'</div>'
       +'<div class="muted" style="font-size:12px;margin-bottom:10px">'+(m.charDetected?'Some scenes feature a person. ':'')
-      +'Upload a few clear reference photos and the AI generates ONE consistent character to use across those scenes. Regenerate until it looks right.</div>'
+      +'Reference photos are <b style="color:var(--txt)">optional</b> — upload a few to lock a real person, or just describe the character, or leave both blank and the AI invents one that fits the story. Either way it makes ONE consistent character to reuse across scenes. Regenerate until it looks right.</div>'
       +'<div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">'
       +(charPrev?'<div>'+charPrev+'</div>':'')
       +'<div style="flex:1;min-width:220px">'
+      +'<label class="muted" style="font-size:11px">Reference photos (optional)</label>'
       +'<input type="file" id="br_char_refs" accept="image/*" multiple style="font-size:12px">'
+      +'<textarea id="br_char_desc" placeholder="Describe the character (optional) — e.g. a tired 30s Filipina mom, warm eyes, simple house clothes" style="min-height:60px;margin-top:8px;font-size:12px"></textarea>'
       +'<div style="margin-top:10px"><button class="go" id="br_char_go" style="padding:8px 14px;font-size:12px">'+(sc?'Regenerate character':'Generate character')+'</button></div>'
       +'<div id="br_char_msg" class="muted" style="font-size:11px;margin-top:6px"></div>'
       +'</div></div></div>';
@@ -4641,10 +4647,10 @@ async function viewBroll(mode){
     const cg=$('#br_char_go');
     if(cg)cg.onclick=()=>{
       const inp=$('#br_char_refs');const files=inp&&inp.files?[].slice.call(inp.files):[];
-      if(!files.length)return alert('Choose at least one reference photo');
-      const fd=new FormData();files.forEach(f=>fd.append('ref',f));
+      const dq=$('#br_char_desc');const desc=(dq&&dq.value||'').trim();
+      const fd=new FormData();files.forEach(f=>fd.append('ref',f));if(desc)fd.append('description',desc);
       const L=$('#br_log');L.style.display='block';L.textContent='Generating character…\\n';
-      cg.disabled=true;const msg=$('#br_char_msg');if(msg)msg.textContent='Uploading & generating…';
+      cg.disabled=true;const msg=$('#br_char_msg');if(msg)msg.textContent=files.length?'Uploading & generating…':'Generating…';
       const ctl=brStreamLog(L,(ok)=>{if(ok){loadStoryboard();}else{cg.disabled=false;if(msg)msg.textContent='Generation failed — see the log.';}});
       fetch('/api/broll/character?stamp='+encodeURIComponent(brStamp),{method:'POST',body:fd})
         .then(r=>r.json().then(j=>({ok:r.ok,j:j})))
