@@ -1016,6 +1016,23 @@ let job = null;
 let jobTimer = null; // auto-kill timer — prevents permanent lock on hung Gemini calls
 const JOB_TIMEOUT_MS = 12 * 60 * 1000; // 12 minutes max per job
 
+// A job is only REALLY running if its child process is still alive. If the child
+// already exited / was killed but the lock wasn't cleared (a crash, a missed
+// 'exit' event, a server hiccup), the lock is STALE — reap it so it can never
+// permanently block new jobs. This is the durable fix for "a job is already
+// running" sticking even when nothing is actually running.
+function jobActuallyRunning() {
+  if (!job?.running) return false;
+  const ch = job.child;
+  if (ch && (ch.exitCode !== null || ch.signalCode !== null || ch.killed)) {
+    if (jobTimer) { clearTimeout(jobTimer); jobTimer = null; }
+    job.running = false;
+    log("⚠ Cleared a stale job lock — the previous job had already exited.");
+    return false;
+  }
+  return true; // genuinely running (or child not attached yet — brief spawn window)
+}
+
 // ── Generation queue ────────────────────────────────────────────────────────
 // Generate requests submitted while a batch is running wait here and start
 // automatically (FIFO) when the current job finishes — fire-and-forget
@@ -1253,7 +1270,7 @@ app.post("/api/generate", extraRefUpload.fields([
     : `${c.label} · ${n} poster(s)` + (t ? ` · "${t.slice(0, 40)}"` : "");
   // Busy → queue the request instead of rejecting it; it starts automatically
   // when the current batch finishes.
-  if (job?.running) {
+  if (jobActuallyRunning()) {
     if (genQueue.length >= GEN_QUEUE_MAX)
       return res.status(429).json({ error: `Generation queue is full (${GEN_QUEUE_MAX} waiting). Try again later.` });
     genQueue.push({ id: `g-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, label, spec });
@@ -1653,6 +1670,22 @@ app.post("/api/reveal", async (req, res) => {
 const BROLL_BASE = EXPORT_BASE
   ? path.join(EXPORT_BASE, "broll")
   : path.join(projectRoot, "..", "..", "brolls", "generated");
+
+// Ensure the ephemeral working JSON exists in out/ for the staged frames/
+// character steps, restoring it from the persistent volume copy if a container
+// restart wiped out/. Returns the out/ path (stem stays unique per set so frame
+// filenames don't collide) or null if the set can't be found anywhere.
+async function ensureSetInOut(stamp) {
+  const outPath = path.join(projectRoot, "out", `broll-${stamp}.json`);
+  try { await fs.access(outPath); return outPath; } catch { /* missing — try to restore */ }
+  const vpath = path.join(BROLL_BASE, stamp, "analyzed.json");
+  try {
+    await fs.access(vpath);
+    await fs.mkdir(path.dirname(outPath), { recursive: true });
+    await fs.copyFile(vpath, outPath);
+    return outPath;
+  } catch { return null; }
+}
 const brollUpload = multer({
   storage: multer.diskStorage({
     destination: async (_r, _f, cb) => {
@@ -1813,8 +1846,8 @@ function startBrollSteps(steps, label) {
 // Stage 1 — analyze only: idea | script | video → storyboard json in out/.
 // The dashboard pins the stamp so it can reference the set across stages.
 app.post("/api/broll/analyze", brollVideoUpload, async (req, res) => {
-  if (job?.running)
-    return res.status(409).json({ error: "A job is already running." });
+  if (jobActuallyRunning())
+    return res.status(409).json({ error: "A job is already running. If it seems stuck, hit Unlock to reset." });
   const aspect = req.body?.aspect === "16:9" ? "16:9" : "9:16";
   let n = parseInt(req.body?.count, 10);
   if (!Number.isFinite(n)) n = 8;
@@ -1860,13 +1893,14 @@ app.post("/api/broll/analyze", brollVideoUpload, async (req, res) => {
   res.json({ ok: true, stamp });
 });
 
-// Hydrate a set (storyboard) — prefer the working json in out/, else a
-// delivered manifest.
+// Hydrate a set (storyboard) — prefer the working json in out/, then the volume
+// copy (survives restarts), then a delivered manifest.
 app.get("/api/broll/set/:stamp", async (req, res) => {
   const stamp = String(req.params.stamp || "");
   if (!safeStamp(stamp)) return res.status(400).json({ error: "bad stamp" });
   for (const p of [
     path.join(projectRoot, "out", `broll-${stamp}.json`),
+    path.join(BROLL_BASE, stamp, "analyzed.json"),
     path.join(BROLL_BASE, stamp, "manifest.json"),
   ]) {
     try {
@@ -1881,14 +1915,13 @@ app.get("/api/broll/set/:stamp", async (req, res) => {
 // Stage 3 — generate first frames for an analyzed set, then build the
 // deliverable so the finished set shows up in SETS.
 app.post("/api/broll/frames", async (req, res) => {
-  if (job?.running)
-    return res.status(409).json({ error: "A job is already running." });
+  if (jobActuallyRunning())
+    return res.status(409).json({ error: "A job is already running. If it seems stuck, hit Unlock to reset." });
   const stamp = String(req.query.stamp || req.body?.stamp || "");
   if (!safeStamp(stamp)) return res.status(400).json({ error: "bad stamp" });
-  const jsonPath = path.join(projectRoot, "out", `broll-${stamp}.json`);
-  try {
-    await fs.access(jsonPath);
-  } catch {
+  // Restore the working JSON from the volume if a restart wiped out/.
+  const jsonPath = await ensureSetInOut(stamp);
+  if (!jsonPath) {
     return res.status(404).json({ error: "Analyzed set not found — run analyze first." });
   }
   if (!guard(req, res)) return;
@@ -1918,17 +1951,20 @@ const brollCharStore = multer.diskStorage({
 const brollCharUpload = multer({ storage: brollCharStore, limits: { fileSize: 25 * 1024 * 1024 } });
 
 app.post("/api/broll/character", brollCharUpload.array("ref", 6), async (req, res) => {
-  if (job?.running)
-    return res.status(409).json({ error: "A job is already running." });
+  if (jobActuallyRunning())
+    return res.status(409).json({ error: "A job is already running. If it seems stuck, hit Unlock to reset." });
   const stamp = String(req.query.stamp || "");
   if (!safeStamp(stamp)) return res.status(400).json({ error: "bad stamp" });
-  const jsonPath = path.join(projectRoot, "out", `broll-${stamp}.json`);
+  // Restore the working JSON from the volume if a restart wiped out/, so
+  // broll-character (which reads out/broll-<stamp>.json) can find the set.
+  const jsonPath = await ensureSetInOut(stamp);
+  if (!jsonPath) {
+    return res.status(404).json({ error: "Analyzed set not found — run analyze first." });
+  }
   let aspect = "9:16";
   try {
     aspect = (JSON.parse(await fs.readFile(jsonPath, "utf-8")).meta || {}).aspect || "9:16";
-  } catch {
-    return res.status(404).json({ error: "Analyzed set not found — run analyze first." });
-  }
+  } catch { /* keep default aspect */ }
   // Convert any HEIC (iPhone) refs in place so the model + previews can read them.
   for (const f of req.files || []) await convertHeicInPlace(f.path).catch(() => {});
   const refsDir = path.join(projectRoot, "public", "broll-characters", stamp, "refs");

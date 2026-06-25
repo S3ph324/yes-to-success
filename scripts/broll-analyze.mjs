@@ -336,6 +336,20 @@ await fs.writeFile(
     2,
   ),
 );
+// Also persist to the Railway volume so the analyzed set survives a container
+// restart or an out/ cleanup (out/ is ephemeral). The staged flow restores this
+// for the frames/character stages — without it you get "Analyzed set not found".
+const exportDir = process.env.BROLL_EXPORT_DIR;
+if (exportDir) {
+  try {
+    const vdir = path.join(exportDir, stamp);
+    await fs.mkdir(vdir, { recursive: true });
+    await fs.copyFile(outPath, path.join(vdir, "analyzed.json"));
+  } catch (e) {
+    console.warn(`  (could not persist analyzed set to volume: ${e?.message || e})`);
+  }
+}
+
 const dt = ((Date.now() - start) / 1000).toFixed(1);
 console.log(`\n✓ ${shots.length} ${unit}(s) in ${dt}s\n  → ${outPath}\n`);
 for (const s of shots.slice(0, 6))
