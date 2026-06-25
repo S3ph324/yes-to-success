@@ -216,7 +216,10 @@ let prevTweetBackdrop = null; // last tweet backdrop, so random picks avoid repe
 for (const q of quotes) {
   i += 1;
   // Assign style round-robin: quote 1 → styles[0], quote 2 → styles[1], etc.
-  const posterStyle = POSTER_STYLES[(i - 1) % POSTER_STYLES.length];
+  // useFlatBg quotes carry no AI photo → render the dedicated no-photo "flat"
+  // design (dark bg + gold stripe, type-forward) so they look intentional
+  // instead of a cinematic card with an empty/fallback background.
+  const posterStyle = q.useFlatBg ? "flat" : POSTER_STYLES[(i - 1) % POSTER_STYLES.length];
   // Aspect ratio: dashboard distribution wins over whatever the content step
   // wrote (it always defaults to 4:5); falls back to per-quote/4:5 if unset.
   const aspectRatio = ASPECT_PLAN ? ASPECT_PLAN[i - 1] : (q.aspectRatio || "4:5");
@@ -245,9 +248,11 @@ for (const q of quotes) {
     : "JurieQuoteCard";
   // Never ship a blank photo poster. Showcase (eyeglasses) and standard quote
   // posters REQUIRE a background image; advice/tweet are intentionally text-only
-  // cards. If the background failed to generate for this entry (no bgPath, or
-  // the file is gone), skip it rather than render an empty gradient card.
-  const needsBg = isShowcase || (!isAdvice && !isTweet);
+  // cards, and useFlatBg quotes (~20% of Jurie quotes) intentionally render with
+  // a flat background and NO photo. If a photo-poster's background failed to
+  // generate (no bgPath, or the file is gone), skip it rather than render an
+  // empty card — but never skip an intentional flat-bg / text-only poster.
+  const needsBg = (isShowcase || (!isAdvice && !isTweet)) && !q.useFlatBg;
   if (needsBg) {
     const bgAbs = q.bgPath
       ? (q.bgPath.startsWith("/") ? q.bgPath : path.join(projectRoot, "public", q.bgPath))
