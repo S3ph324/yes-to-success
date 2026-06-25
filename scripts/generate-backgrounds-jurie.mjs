@@ -332,10 +332,20 @@ const refParts = [];
 const subjectPhotos = eyeglassesMode
   ? eyeglasses?.photos || []
   : character?.photos || [];
-const refSources =
-  extraRefs.length > 0
-    ? extraRefs.slice(0, 3).map((p) => ({ abs: true, p }))
-    : subjectPhotos.slice(0, 3).map((p) => ({ abs: false, p }));
+// Reference photos for the subject. EYEGLASSES: the frame photos are the
+// subject; an explicit extra ref overrides them. CHARACTER: the SELECTED
+// character anchors identity and ALWAYS comes first — per-batch extra refs only
+// fill remaining slots (supplement), they must NOT silently replace the
+// character. (Bug fix: an extra ref used to override the character entirely, so
+// "selected character" was ignored and a random face came out.)
+const refSources = eyeglassesMode
+  ? (extraRefs.length > 0
+      ? extraRefs.slice(0, 3).map((p) => ({ abs: true, p }))
+      : subjectPhotos.slice(0, 3).map((p) => ({ abs: false, p })))
+  : [
+      ...subjectPhotos.map((p) => ({ abs: false, p })),
+      ...extraRefs.map((p) => ({ abs: true, p })),
+    ].slice(0, 3);
 for (const { abs, p } of refSources) {
   // Resolve from the volume (persistPublic — where dashboard-uploaded photos
   // land) FIRST, then fall back to the image's public/ (character photos that
