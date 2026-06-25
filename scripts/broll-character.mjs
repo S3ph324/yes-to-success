@@ -73,35 +73,46 @@ try {
     .filter(Boolean).join("\n").slice(0, 1200);
 } catch { /* set json may not exist yet */ }
 
+// Hard photorealism guard — the invented/clean character kept coming back
+// cartoonish. Force a REAL photograph and ban every stylized look unless the
+// user's description explicitly asks for one.
+const REALISM =
+  " PHOTOREALISTIC — this must look like a REAL photograph of a REAL human being, " +
+  "shot on a full-frame DSLR with an 85mm portrait lens: lifelike skin with natural " +
+  "texture and pores, real individual hair strands, true-to-life lighting and a " +
+  "shallow depth of field. It is NOT an illustration, cartoon, anime, comic, " +
+  "caricature, 3D render, CGI, Pixar/video-game character, painting, drawing or " +
+  "sketch — a genuine candid photograph, indistinguishable from one taken by a " +
+  "camera. Do NOT stylize or illustrate unless explicitly asked.";
+
 let prompt, parts;
 if (refParts.length) {
   prompt =
-    "Create ONE clean, consistent CHARACTER REFERENCE portrait of the SAME person " +
-    "shown in the provided photo(s). Preserve their face, hair, skin tone and " +
+    "Create ONE clean, consistent CHARACTER REFERENCE photograph of the SAME real " +
+    "person shown in the provided photo(s). Preserve their face, hair, skin tone and " +
     "identity EXACTLY — it must obviously be the same person. " +
     (desc ? `Art direction: ${desc}. ` : "") +
     "Front-facing, head-and-shoulders to upper body, calm natural expression, " +
     "looking toward the camera. Plain neutral soft-grey studio backdrop, soft even " +
-    "lighting, photorealistic, sharp focus on the face. The person is fully and " +
-    "tastefully clothed. No text, logos, or watermarks anywhere. This is a clean " +
-    "reference image used to keep the character consistent across later scenes.";
+    "lighting, sharp focus on the face. The person is fully and tastefully clothed. " +
+    "No text, logos, or watermarks anywhere. A clean reference image used to keep " +
+    "the character consistent across later scenes." + REALISM;
   parts = [...refParts, { text: prompt }];
 } else {
   const who = desc
     ? desc
     : storyCtx
-      ? "a character that naturally fits the story below"
-      : "a relatable, friendly everyday Filipino character";
+      ? "a person who naturally fits the story below"
+      : "a relatable, friendly everyday Filipino person";
   prompt =
-    `Invent ONE specific, believable individual and render a clean, consistent ` +
-    `CHARACTER REFERENCE portrait of them: ${who}. ` +
-    (storyCtx ? `The character should fit this video:\n${storyCtx}\n` : "") +
-    "Commit to ONE concrete look — a specific face, hair, age and everyday wardrobe " +
-    "— so the SAME person can be reused across every scene. Front-facing, " +
-    "head-and-shoulders to upper body, calm natural expression, looking toward the " +
-    "camera. Plain neutral soft-grey studio backdrop, soft even lighting, " +
-    "photorealistic, sharp focus on the face. Fully and tastefully clothed. No " +
-    "text, logos, or watermarks anywhere.";
+    `A photorealistic studio PHOTOGRAPH of a real person — ${who}. ` +
+    (storyCtx ? `They should fit this video:\n${storyCtx}\n` : "") +
+    "Commit to ONE concrete, believable look — a specific real face, hair, age and " +
+    "everyday wardrobe — so the SAME person can be reused across every scene. " +
+    "Front-facing, head-and-shoulders to upper body, calm natural expression, " +
+    "looking toward the camera. Plain neutral soft-grey studio backdrop, soft even " +
+    "lighting, sharp focus on the face. Fully and tastefully clothed. No text, " +
+    "logos, or watermarks anywhere." + REALISM;
   parts = [{ text: prompt }];
 }
 
