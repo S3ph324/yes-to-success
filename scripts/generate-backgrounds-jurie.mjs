@@ -337,14 +337,20 @@ const refSources =
     ? extraRefs.slice(0, 3).map((p) => ({ abs: true, p }))
     : subjectPhotos.slice(0, 3).map((p) => ({ abs: false, p }));
 for (const { abs, p } of refSources) {
-  const full = abs ? p : path.join(persistPublic, p);
-  try {
-    const buf = await fs.readFile(full);
-    refParts.push({
-      inlineData: { mimeType: mimeFor(p), data: buf.toString("base64") },
-    });
-  } catch {
-    console.warn(`  ref photo missing, skipping: ${p}`);
+  // Resolve from the volume (persistPublic — where dashboard-uploaded photos
+  // land) FIRST, then fall back to the image's public/ (character photos that
+  // are committed to the repo and ship with the deploy). Without the fallback a
+  // committed-but-not-volume-uploaded reference goes missing on Railway, so the
+  // character is dropped and the scene gets a generic stranger.
+  const cands = abs ? [p] : [path.join(persistPublic, p), path.join(projectRoot, "public", p)];
+  let buf = null;
+  for (const full of cands) {
+    try { buf = await fs.readFile(full); break; } catch { /* try next location */ }
+  }
+  if (buf) {
+    refParts.push({ inlineData: { mimeType: mimeFor(p), data: buf.toString("base64") } });
+  } else {
+    console.warn(`  ref photo missing (checked volume + image), skipping: ${p}`);
   }
 }
 const hasRef = refParts.length > 0;
