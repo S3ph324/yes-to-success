@@ -220,7 +220,7 @@ const director = await fs.readFile(
 const charNote = mode === "story"
   ? (charMode === "reference-image"
       ? " — a reference image WILL be attached. The character is the PROTAGONIST: feature them in MOST scenes (usesCharacter: true), centered and emoting as the story needs. Do not describe them — use the placeholder and the preserve-the-reference instruction."
-      : " — no character. Tell the story through places, objects, hands and environments; set usesCharacter: false on every scene.")
+      : " — no character reference attached YET, but this is a NARRATIVE: build it around ONE recurring PROTAGONIST who carries the story and set usesCharacter: true on every scene they appear in (most scenes). Use the placeholder \"the character (use the provided reference image)\" for them and describe everything else; the user attaches or invents a consistent character before frames are generated. Do NOT reduce the story to object/B-roll cutaways.")
   : (charMode === "reference-image"
       ? " — a reference image WILL be attached; do not describe the character, use the placeholder and the preserve-the-reference instruction"
       : " — no character reference is attached yet. Still set usesCharacter per shot: true ONLY when a recurring on-camera PERSON is genuinely the subject of that beat; false for scene / object / place cutaways (most b-roll). This lets the user optionally add a character afterwards.");

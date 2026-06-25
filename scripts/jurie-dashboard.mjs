@@ -1824,9 +1824,13 @@ app.post("/api/broll/analyze", brollVideoUpload, async (req, res) => {
   // mode: "story" (full narrative video) routes to the story director; default
   // "broll" (cutaways). Same staged pipeline either way.
   const mode = req.body?.mode === "story" ? "story" : "broll";
+  // The selected character MUST reach analyze — without it every run is
+  // charMode "none" (no protagonist, object-only scenes that read like b-roll).
+  const characterId = String(req.body?.characterId || "").trim();
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
   const args = ["scripts/broll-analyze.mjs", "--aspect", aspect, "--count", String(n), "--stamp", stamp];
   if (mode === "story") args.push("--mode", "story");
+  if (characterId && characterId !== "none") args.push("--character", characterId);
   let tmpFile = null;
   let kind = "source";
   if (req.file) {
