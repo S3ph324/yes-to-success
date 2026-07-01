@@ -1,6 +1,6 @@
 {
   "name": "remotion-app",
-  "version": "0.29.52",
+  "version": "0.30.0",
   "description": "My Remotion video",
   "repository": {},
   "license": "UNLICENSED",
@@ -21,6 +21,8 @@
     "react-dom": "19.2.3",
     "remotion": "4.0.459",
     "tailwindcss": "4.0.0",
+    "youtube-transcript": "^1.3.1",
+    "yt-search": "^2.13.1",
     "zod": "4.3.6"
   },
   "devDependencies": {

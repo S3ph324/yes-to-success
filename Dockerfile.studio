@@ -2,7 +2,7 @@
 # Multi-client Quote Poster Studio + B-Roll (scripts/jurie-dashboard.mjs).
 # Separate from the existing Dockerfile (which ships server.mjs) — do not
 # merge. Includes Chromium deps for Remotion rendering.
-# (Redeploy trigger — v0.31.0: B-Roll guided flow — idea→script, storyboard gate, character gen.)
+# (Redeploy trigger — v0.30.0: Format Hacker — deconstruct viral ads → client storyboards.)
 
 FROM node:20-bookworm-slim AS base
 

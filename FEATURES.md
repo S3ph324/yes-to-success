@@ -1,7 +1,7 @@
 # Quote Poster Studio — Features & System Reference
 
 > Living documentation of what the automation / web app does.
-> Reflects **v0.29.52**. Update the version line when features change.
+> Reflects **v0.30.0**. Update the version line when features change.
 
 A **multi-client content factory** for social-media brands. You give it a topic;
 it writes the copy in your brand voice, generates imagery with AI, renders
@@ -46,6 +46,7 @@ Topic / idea
 | ✅ **Queue** | Review each poster, approve/decline, copy captions, download |
 | 🎬 **B-Roll** | Idea / script / **video** → connected cutaway storyboard + first frames |
 | 🎥 **Video** | Idea / script → **full narrative** storyboard + first frames |
+| 💡 **Format Hacker** | Screenshot / URL / auto-discover a viral ad → **Format Blueprint** + 2 client-voiced storyboards → send to B-Roll/Video |
 | 🎨 **Brand** | Brand presets (colors, logo, established tag) |
 | 📝 **Topics** | Saved topic ideas |
 | 👤 **Characters** | Manage AI face references per character |
@@ -95,6 +96,15 @@ Single login (`admin1`), persistent sessions across refresh/redeploy.
   scene. **B-Roll** = disconnected cutaways (`broll-director.md`); **Video** =
   one coherent narrative with a protagonist (`story-director.md`). Veo
   auto-animation is wired but **off** (you assemble the video yourself).
+- **Format Hacker** (Gemini 2.5 Flash multimodal) — deconstructs a trending ad
+  from a **screenshot** (inline vision — bypasses anti-bot walls), a **pasted
+  URL** (Jina reader proxy, no headless browser), or an **auto-discovered**
+  breakdown video (`yt-search` + `youtube-transcript`, with a Gemini-knowledge
+  fallback when the scrape is blocked — e.g. on Railway's IP). Outputs a
+  niche-agnostic **Format Blueprint** (visual strategy + copywriting formula +
+  why it worked) and **2 storyboards** adapted to the selected client's voice
+  (Jurie brand-safety: never names/quotes real people). Each concept hands off
+  into the existing B-Roll/Video storyboard flow (`hack-director.md`).
 
 ---
 
@@ -113,6 +123,7 @@ Single login (`admin1`), persistent sessions across refresh/redeploy.
 | `broll-character.mjs` | Generate ONE consistent character (upload/describe/invent) |
 | `broll-frames.mjs` | First-frame image per scene (applies the character) |
 | `broll-deliverable.mjs` | Build the review HTML + manifest |
+| `lib/format-hacker.mjs` | Format Hacker: multimodal ad deconstruction → blueprint + 2 storyboards |
 | `jurie-dashboard.mjs` | The web app (Express, ~5k lines, single inline SPA) |
 | `lib/client.mjs` | GCP env + client resolution | 
 | `lib/aspect-plan.mjs` | Deterministic aspect-ratio distribution |
@@ -120,6 +131,7 @@ Single login (`admin1`), persistent sessions across refresh/redeploy.
 ### Director prompts (`scripts/`)
 - `broll-director.md` — cutaway b-roll director.
 - `story-director.md` — narrative-scene (full video) director.
+- `hack-director.md` — Format Hacker Master Creative Director.
 
 ### Compositions (`src/QuoteCard/`)
 `JurieQuoteCard`, `ProductShowcaseCard`, `ShopListingCard`, `AdviceCard`,

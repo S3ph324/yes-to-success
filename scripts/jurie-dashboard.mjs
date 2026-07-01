@@ -21,6 +21,7 @@ import url from "node:url";
 import heicConvert from "heic-convert";
 import { registerTryonRoutes } from "./tryon-routes.mjs";
 import { registerEyeglassAngleRoutes } from "./eyeglasses-angles-routes.mjs";
+import { hackFormat } from "./lib/format-hacker.mjs";
 
 // iPhone photos default to HEIC/HEIF, which (a) browsers other than Safari
 // cannot render in <img> — previews show as broken/black squares — and
@@ -141,7 +142,10 @@ const PORT = parseInt(
 
 const app = express();
 app.set("trust proxy", true);
-app.use(express.json());
+// 16 MB ceiling so the Format Hacker can accept a base64-encoded ad screenshot
+// in a JSON body (a 2–4 MB image is ~3–6 MB of base64). Other routes send tiny
+// JSON, so the higher cap is harmless for a single-user private studio.
+app.use(express.json({ limit: "16mb" }));
 
 // ── Single-user login gate ────────────────────────────────────────────────
 // One account only. Username defaults to "admin1"; the password is checked
@@ -1802,6 +1806,33 @@ app.post(
   },
 );
 
+// ── Format Hacker ─────────────────────────────────────────────────────────
+// Deconstruct a viral ad (screenshot | pasted URL | auto-discovered breakdown)
+// with Gemini multimodal, then adapt it into 2 client-voiced video storyboards.
+// Runs INLINE (a single awaited Gemini call) — deliberately NOT routed through
+// the SSE `job` singleton, so the B-Roll/Video queue is never blocked by it.
+app.post("/api/hack-format", async (req, res) => {
+  const client = req.body?.client === "tranzzie" ? "tranzzie" : "jurie";
+  const method = String(req.body?.method || "").trim();
+  if (!["image", "url", "auto"].includes(method))
+    return res.status(400).json({ error: "Pick an input method." });
+  const image = typeof req.body?.image === "string" ? req.body.image : "";
+  const mimeType = String(req.body?.mimeType || "image/png");
+  const url = String(req.body?.url || "").trim();
+  if (method === "image" && image.length < 32)
+    return res.status(400).json({ error: "Upload a screenshot of the ad first." });
+  if (method === "url" && !/^https?:\/\//i.test(url))
+    return res.status(400).json({ error: "Paste a valid http(s) link." });
+  if (!guard(req, res)) return; // daily/hourly cost cap — this is a paid Gemini call
+  try {
+    const out = await hackFormat({ client, method, imageBase64: image, mimeType, url });
+    res.json({ ok: true, ...out });
+  } catch (e) {
+    log(`✗ Format Hacker: ${e?.message || e}`);
+    res.status(502).json({ error: e?.message || "Format Hacker failed. Try again." });
+  }
+});
+
 // ── Staged B-Roll flow (analyze → review → frames) ────────────────────────
 // Run a SEQUENCE of node B-Roll scripts as ONE job, streaming logs over the
 // shared SSE channel. Stops on the first non-zero exit. (analyze = 1 step;
@@ -2624,7 +2655,7 @@ function fmtStamp(s){
 function goBatches(){TAB='batches';render();}
 function toggleAdv(){const b=document.getElementById('adv-btn'),d=document.getElementById('adv-body');if(b)b.classList.toggle('open');if(d)d.classList.toggle('open');}
 async function buildNav(){
-  const tabs=[['generate','⚡ Generate'],['batches','📂 Batches'],['queue','✅ Queue'],['broll','🎬 B-Roll'],['video','🎥 Video'],['brand','🎨 Brand'],['topics','📝 Topics'],['chars','👤 Characters']];
+  const tabs=[['generate','⚡ Generate'],['batches','📂 Batches'],['queue','✅ Queue'],['broll','🎬 B-Roll'],['video','🎥 Video'],['hacker','💡 Format Hacker'],['brand','🎨 Brand'],['topics','📝 Topics'],['chars','👤 Characters']];
   if(CLIENT==='tranzzie')tabs.push(['glasses','\\ud83d\\udd76\\ufe0f Eyeglasses']);
   // Show pending count badge on Queue tab
   let qBadge='';
@@ -2656,6 +2687,7 @@ async function render(){
   if(TAB==='queue')return viewQueue();
   if(TAB==='broll')return viewBroll();
   if(TAB==='video')return viewBroll('story');
+  if(TAB==='hacker')return viewHacker();
 }
 let es;
 async function viewGenerate(){
@@ -4464,6 +4496,115 @@ async function viewBatches(){
     body:JSON.stringify({client:CLIENT})});toast('Opening export folder…');};
   paint();
 }
+async function viewHacker(){
+  const cls=await api('/api/clients');
+  let hkClient=(cls.find(c=>c.id===CLIENT)?CLIENT:((cls[0]&&cls[0].id)||'jurie'));
+  let method='image';        // image | url | auto
+  let imgB64='';let imgMime='image/png';
+  const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const clientOpts=cls.map(c=>'<option value="'+c.id+'"'+(c.id===hkClient?' selected':'')+'>'+esc(c.label)+'</option>').join('');
+  const spin='<span class="spinner" style="width:14px;height:14px;border:2px solid rgba(244,180,0,.3);border-top-color:var(--gold);border-radius:50%;display:inline-block;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px"></span>';
+  $('#view').innerHTML=
+   '<div class="card"><h2>💡 Format Hacker</h2>'
+   +'<div class="muted" style="margin:-6px 0 16px">Deconstruct a winning ad or viral post from ANY niche — its visual layout AND its copywriting formula — then rebuild it as ready-to-shoot video storyboards in the selected brand voice.</div>'
+   +'<div class="row" style="margin-bottom:14px"><div style="flex:0 0 240px"><label>Client</label>'
+   +'<select id="hk_client">'+clientOpts+'</select></div></div>'
+   +'<div class="bx-tools" style="margin-bottom:14px">'
+   +'<button class="sec" id="hk_t_i">📸 Screenshot</button>'
+   +'<button class="sec" id="hk_t_u">🔗 Paste Link</button>'
+   +'<button class="sec" id="hk_t_a">🔥 Auto-Discover</button>'
+   +'</div>'
+   +'<div id="hk_src_i"><label>Ad screenshot</label>'
+   +'<div id="hk_drop" style="border:1px dashed var(--line2);border-radius:10px;padding:20px;text-align:center;cursor:pointer;color:var(--mut)">'
+   +'<div id="hk_file_lbl">Click or drop a screenshot of the ad here</div>'
+   +'<div id="hk_prev" style="display:none;margin-top:12px"></div></div>'
+   +'<input id="hk_file" type="file" accept="image/*" style="display:none">'
+   +'<div class="muted" style="margin-top:6px;font-size:12px">The reliable path — a screenshot bypasses login and anti-bot walls. Max 15 MB.</div></div>'
+   +'<div id="hk_src_u" style="display:none"><label>Ad / post URL</label>'
+   +'<input id="hk_url" type="text" placeholder="https://...">'
+   +'<div class="muted" style="margin-top:6px;font-size:12px">We read the public text of the page. Social login-walls may block it — use a screenshot if so.</div></div>'
+   +'<div id="hk_src_a" style="display:none"><div class="muted" style="line-height:1.6">Let the AI find a proven winning ad format for the selected niche and rebuild it. If a live breakdown cannot be fetched, it synthesizes a proven format from knowledge.</div></div>'
+   +'<p style="margin:16px 0"><button class="go" id="hk_go">Deconstruct →</button></p>'
+   +'<div id="hk_status" style="min-height:20px;margin-bottom:6px"></div>'
+   +'<div id="hk_out"></div>'
+   +'</div>';
+  $('#hk_client').onchange=e=>{hkClient=e.target.value;CLIENT=hkClient;try{localStorage.setItem('qps_client',CLIENT);}catch(_){}buildNav();};
+  const showMethod=()=>{
+    const set=(id,on)=>{const el=$('#'+id);if(el)el.style.display=on?'':'none';};
+    const brd=(id,on)=>{const el=$('#'+id);if(el)el.style.borderColor=on?'var(--gold)':'';};
+    set('hk_src_i',method==='image');set('hk_src_u',method==='url');set('hk_src_a',method==='auto');
+    brd('hk_t_i',method==='image');brd('hk_t_u',method==='url');brd('hk_t_a',method==='auto');
+    const go=$('#hk_go');if(go)go.textContent=method==='auto'?'🔥 Find Winning Ad Formats':'Deconstruct →';
+  };
+  $('#hk_t_i').onclick=()=>{method='image';showMethod();};
+  $('#hk_t_u').onclick=()=>{method='url';showMethod();};
+  $('#hk_t_a').onclick=()=>{method='auto';showMethod();};
+  showMethod();
+  const readFile=f=>{
+    if(!f)return;
+    if(f.type.indexOf('image/')!==0){alert('Please choose an image file.');return;}
+    if(f.size>15*1024*1024){alert('That image is too large (max 15 MB). Use a smaller screenshot.');return;}
+    const fr=new FileReader();
+    fr.onload=()=>{const s=String(fr.result||'');const i=s.indexOf(',');imgB64=i>=0?s.slice(i+1):s;imgMime=f.type||'image/png';
+      const pv=$('#hk_prev');if(pv){pv.style.display='';pv.innerHTML='<img src="'+s+'" style="max-width:200px;max-height:200px;border-radius:10px;border:1px solid var(--line2)">';}
+      const lb=$('#hk_file_lbl');if(lb)lb.textContent=f.name;};
+    fr.readAsDataURL(f);
+  };
+  $('#hk_file').onchange=()=>readFile($('#hk_file').files&&$('#hk_file').files[0]);
+  {const dz=$('#hk_drop');if(dz){dz.onclick=()=>$('#hk_file').click();
+    dz.addEventListener('dragover',e=>{e.preventDefault();dz.style.borderColor='var(--gold)';});
+    dz.addEventListener('dragleave',()=>{dz.style.borderColor='var(--line2)';});
+    dz.addEventListener('drop',e=>{e.preventDefault();dz.style.borderColor='var(--line2)';
+      const f=(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]);readFile(f);});}}
+  const sceneRow=(sc,i)=>'<div style="border-left:2px solid var(--gold);padding:6px 0 6px 12px;margin:10px 0">'
+    +'<div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em">Scene '+(i+1)+'</div>'
+    +'<div style="margin-top:3px"><b>On-screen:</b> '+esc(sc.onScreenText)+'</div>'
+    +'<div style="margin-top:2px"><b>Camera:</b> '+esc(sc.cameraAction)+'</div>'
+    +'<div style="margin-top:2px"><b>VO:</b> '+esc(sc.voiceover)+'</div></div>';
+  const sendToEngine=(sb,mode)=>{
+    const L=[];L.push(sb.title||'Untitled');if(sb.hook)L.push('Hook: '+sb.hook);
+    (sb.scenes||[]).forEach((sc,i)=>{L.push('');L.push('Scene '+(i+1));
+      if(sc.onScreenText)L.push('On-screen text: '+sc.onScreenText);
+      if(sc.cameraAction)L.push('Camera: '+sc.cameraAction);
+      if(sc.voiceover)L.push('Voiceover: '+sc.voiceover);});
+    const defChar=(cls.find(c=>c.id===hkClient)||{}).characterId||'';
+    window._hackHandoff={script:L.join('\\n'),count:(sb.scenes||[]).length||8,characterId:defChar};
+    CLIENT=hkClient;try{localStorage.setItem('qps_client',CLIENT);}catch(_){}
+    buildNav().then(()=>{TAB=(mode==='story'?'video':'broll');render();});
+  };
+  const renderResult=j=>{
+    const bp=j.blueprint||{};const boards=j.adaptedStoryboards||[];
+    let html='<div class="card" style="margin-top:16px"><h2>🧬 Format Blueprint</h2>'
+      +(j.synthesized?'<div class="muted" style="margin:-4px 0 12px">No live source could be fetched — this is a proven format synthesized from knowledge.</div>':'')
+      +'<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Visual strategy</div>'+esc(bp.visualStrategy)+'</div>'
+      +'<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Copywriting formula</div>'+esc(bp.copywritingFormula)+'</div>'
+      +'<div><div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Why it worked</div>'+esc(bp.whyItWorked)+'</div></div>';
+    boards.forEach((sb,bi)=>{
+      html+='<div class="card" style="margin-top:16px"><h2 style="margin-bottom:2px">🎬 '+esc(sb.title)+'</h2>'
+        +'<div class="muted" style="margin:2px 0 10px"><b style="color:var(--txt)">Hook:</b> '+esc(sb.hook)+'</div>'
+        +(sb.scenes||[]).map((sc,i)=>sceneRow(sc,i)).join('')
+        +'<div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">'
+        +'<button class="go" data-eng="story" data-bi="'+bi+'">Send to Video Engine →</button>'
+        +'<button class="sec" data-eng="broll" data-bi="'+bi+'">Send to B-Roll Engine →</button></div></div>';
+    });
+    $('#hk_out').innerHTML=html;
+    Array.prototype.forEach.call(document.querySelectorAll('#hk_out button[data-eng]'),b=>{
+      b.onclick=()=>sendToEngine(boards[+b.dataset.bi],b.dataset.eng);});
+  };
+  $('#hk_go').onclick=()=>{
+    const body={client:hkClient,method:method};
+    if(method==='image'){if(!imgB64){alert('Upload a screenshot of the ad first.');return;}body.image=imgB64;body.mimeType=imgMime;}
+    else if(method==='url'){const u=($('#hk_url').value||'').trim();if(!/^https?:\\/\\//i.test(u)){alert('Paste a valid link starting with http.');return;}body.url=u;}
+    const btn=$('#hk_go');btn.disabled=true;
+    $('#hk_status').innerHTML=spin+'Deconstructing ad psychology and visuals…';
+    $('#hk_out').innerHTML='';
+    fetch('/api/hack-format',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+      .then(r=>r.json()).then(j=>{btn.disabled=false;$('#hk_status').innerHTML='';
+        if(!j||j.error){$('#hk_status').innerHTML='<span style="color:#ff6b6b">'+esc((j&&j.error)||'Something went wrong. Try again.')+'</span>';return;}
+        renderResult(j);})
+      .catch(()=>{btn.disabled=false;$('#hk_status').innerHTML='<span style="color:#ff6b6b">Network error. Try again.</span>';});
+  };
+}
 async function viewBroll(mode){
   mode=mode==='story'?'story':'broll';const isStory=mode==='story';
   const [chars,ENV]=await Promise.all([
@@ -4575,6 +4716,16 @@ async function viewBroll(mode){
     if(el)el.addEventListener('input',()=>{if(src==='claude')paintClaudePrompt();});
   });
   showSrc();
+  // ── Format Hacker handoff ── if a concept was "Sent to Engine", prefill the
+  // Script field so the user can review + hit Analyze (the normal staged flow).
+  if(window._hackHandoff){
+    const H=window._hackHandoff;window._hackHandoff=null;
+    src='script';showSrc();
+    const st=$('#br_script');if(st)st.value=H.script||'';
+    if(H.count){const cn=$('#br_count');if(cn)cn.value=Math.max(1,Math.min(40,H.count));}
+    if(H.characterId){const ch=$('#br_char');if(ch&&Array.prototype.some.call(ch.options,o=>o.value===H.characterId))ch.value=H.characterId;}
+    const inp=$('#br_input');if(inp)inp.scrollIntoView({behavior:'smooth',block:'start'});
+  }
   // Wire up the Claude-mode buttons — use a flag so re-visiting this tab
   // does not stack duplicate listeners (each visit re-calls viewBroll).
   if(!window._brClickWired){window._brClickWired=true;
