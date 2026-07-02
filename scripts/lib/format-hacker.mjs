@@ -142,17 +142,19 @@ async function extractFromUrl(url) {
         r.status +
         "). Try a screenshot of the ad instead.",
     );
-  const txt = (await r.text()).slice(0, 12000).trim();
+  const raw = await r.text();
+  // Capture the FULL post/thread, not just a snippet (was 12k).
+  const txt = raw.slice(0, 30000).trim();
   if (!txt)
     throw new Error(
       "That link returned no readable text. Try a screenshot of the ad instead.",
     );
-  // Best-effort: pull the first real image URL out of the Jina markdown so the
-  // UI can show a visual of what was analyzed (bonus — the link is the main thing).
-  let image = "";
-  const im = txt.match(/!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/);
-  if (im) image = im[1];
-  return { text: txt, image };
+  // Best-effort: pull up to 3 image URLs from the Jina markdown for the UI.
+  const images = [];
+  const re = /!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/g;
+  let m;
+  while ((m = re.exec(raw)) && images.length < 3) images.push(m[1]);
+  return { text: txt, images };
 }
 
 // Method C — auto-discover a "winning ads breakdown" video and pull its
@@ -166,6 +168,8 @@ async function extractAuto() {
     "best tiktok ads strategy breakdown",
     "viral ad breakdown copywriting",
   ];
+  const MAX = 4; // gather several winning examples, not just one
+  const collected = [];
   try {
     const [ytMod, txMod] = await Promise.all([
       import("yt-search"),
@@ -174,43 +178,37 @@ async function extractAuto() {
     const ytSearch = ytMod.default || ytMod;
     const YoutubeTranscript =
       txMod.YoutubeTranscript || txMod.default || txMod;
+    const seen = new Set();
     for (const q of queries) {
+      if (collected.length >= MAX) break;
       let vids = [];
       try {
         const r = await ytSearch(q);
-        vids = ((r && r.videos) || []).slice(0, 5);
+        vids = ((r && r.videos) || []).slice(0, 8);
       } catch {
         continue;
       }
       for (const v of vids) {
+        if (collected.length >= MAX) break;
+        if (!v.videoId || seen.has(v.videoId)) continue;
+        seen.add(v.videoId);
         try {
           const parts = await YoutubeTranscript.fetchTranscript(v.videoId);
-          const text = parts
-            .map((p) => p.text)
-            .join(" ")
-            .slice(0, 12000)
-            .trim();
+          // Smaller per-item cap since we now combine several examples.
+          const text = parts.map((p) => p.text).join(" ").slice(0, 6000).trim();
           if (text.length > 200) {
-            return {
-              text:
-                'BREAKDOWN VIDEO: "' +
-                (v.title || "") +
-                '"\n\nTRANSCRIPT:\n' +
-                text,
-              fellBack: false,
-              source: {
-                kind: "video",
-                title: v.title || "",
-                url: v.url || "https://www.youtube.com/watch?v=" + v.videoId,
-                videoId: v.videoId || "",
-                thumbnail:
-                  v.thumbnail ||
-                  v.image ||
-                  (v.videoId
-                    ? "https://i.ytimg.com/vi/" + v.videoId + "/hqdefault.jpg"
-                    : ""),
-              },
-            };
+            collected.push({
+              title: v.title || "",
+              url: v.url || "https://www.youtube.com/watch?v=" + v.videoId,
+              videoId: v.videoId || "",
+              thumbnail:
+                v.thumbnail ||
+                v.image ||
+                (v.videoId
+                  ? "https://i.ytimg.com/vi/" + v.videoId + "/hqdefault.jpg"
+                  : ""),
+              transcript: text,
+            });
           }
         } catch {
           /* no transcript for this one — try the next */
@@ -220,7 +218,18 @@ async function extractAuto() {
   } catch {
     /* modules absent or search unavailable — fall through to synthesis */
   }
-  return { text: "", fellBack: true, source: null };
+  if (collected.length === 0) return { text: "", fellBack: true, sources: [] };
+  const text = collected
+    .map((c, i) => `EXAMPLE ${i + 1} — "${c.title}":\n${c.transcript}`)
+    .join("\n\n---\n\n");
+  const sources = collected.map((c) => ({
+    kind: "video",
+    title: c.title,
+    url: c.url,
+    videoId: c.videoId,
+    thumbnail: c.thumbnail,
+  }));
+  return { text, fellBack: false, sources };
 }
 
 export async function hackFormat({ client, method, imageBase64, mimeType, url }) {
@@ -234,22 +243,24 @@ export async function hackFormat({ client, method, imageBase64, mimeType, url })
   let imagePart = null;
   let sourceText = "";
   let synthesize = false;
-  let source = null; // { kind, url?, title?, thumbnail?, image? } — what the UI shows as "what it analyzed"
+  let sources = []; // [{ kind, url?, title?, thumbnail?, images? }] — the "what it analyzed" card
+  let multi = false;
 
   if (method === "image") {
     const data = String(imageBase64 || "").replace(/^data:[^;]+;base64,/, "");
     if (data.length < 32) throw new Error("No screenshot was provided.");
     imagePart = { inlineData: { mimeType: mimeType || "image/png", data } };
-    source = { kind: "image" }; // the frontend already has the screenshot to display
+    sources = [{ kind: "image" }]; // the frontend already has the screenshot to display
   } else if (method === "url") {
     const u = await extractFromUrl(url);
     sourceText = u.text;
-    source = { kind: "link", url, image: u.image || "" };
+    sources = [{ kind: "link", url, images: (u.images || []).slice(0, 3) }];
   } else if (method === "auto") {
     const a = await extractAuto();
     sourceText = a.text;
     synthesize = a.fellBack;
-    source = a.source || null;
+    sources = a.sources || [];
+    multi = sources.length > 1;
   } else {
     throw new Error("Unknown input method.");
   }
@@ -275,14 +286,24 @@ export async function hackFormat({ client, method, imageBase64, mimeType, url })
       },
     ];
   } else if (sourceText) {
+    const task = multi
+      ? "The text above contains MULTIPLE winning examples (separated by ---). " +
+        "Find the FORMAT they SHARE — the recurring visual + copywriting pattern " +
+        "across them — and build the blueprint from that common pattern (not just " +
+        "one example). Then adapt it into 2 storyboards for the client per the " +
+        "system instruction. Output the JSON object only."
+      : "Deconstruct this content (visual format + copywriting formula), then " +
+        "adapt it into 2 storyboards for the client per the system instruction. " +
+        "Output the JSON object only.";
     userParts = [
       {
         text:
-          "VIRAL SOURCE (extracted text):\n\n" +
+          (multi
+            ? "WINNING EXAMPLES (extracted text):\n\n"
+            : "VIRAL SOURCE (extracted text):\n\n") +
           sourceText +
-          "\n\n---\n\nDeconstruct this content (visual format + copywriting " +
-          "formula), then adapt it into 2 storyboards for the client per the " +
-          "system instruction. Output the JSON object only.",
+          "\n\n---\n\n" +
+          task,
       },
     ];
   } else {
@@ -354,5 +375,5 @@ export async function hackFormat({ client, method, imageBase64, mimeType, url })
   if (boards.length === 0)
     throw new Error("The AI did not return any storyboards — please try again.");
 
-  return { blueprint, adaptedStoryboards: boards, synthesized: synthesize, source };
+  return { blueprint, adaptedStoryboards: boards, synthesized: synthesize, sources };
 }

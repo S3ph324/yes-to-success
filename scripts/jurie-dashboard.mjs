@@ -4586,23 +4586,26 @@ async function viewHacker(){
     CLIENT=hkClient;try{localStorage.setItem('qps_client',CLIENT);}catch(_){}
     buildNav().then(()=>{TAB=(mode==='story'?'video':'broll');render();});
   };
-  const sourceCard=(src,prev)=>{
-    if(!src)return '';
-    let inner='';
-    if(src.kind==='image'&&prev){inner='<img src="'+prev+'" style="max-width:220px;max-height:220px;border-radius:10px;border:1px solid var(--line2)">';}
-    else if(src.kind==='video'){
-      inner=(src.thumbnail?'<a href="'+escAttr(src.url)+'" target="_blank" rel="noopener"><img src="'+escAttr(src.thumbnail)+'" style="max-width:280px;border-radius:10px;border:1px solid var(--line2)"></a>':'')
-        +'<div style="margin-top:8px"><a href="'+escAttr(src.url)+'" target="_blank" rel="noopener" style="color:var(--gold)">▶ '+esc(src.title||'Watch the source video')+'</a></div>';}
-    else if(src.kind==='link'){
-      inner=(src.image?'<a href="'+escAttr(src.url)+'" target="_blank" rel="noopener"><img src="'+escAttr(src.image)+'" style="max-width:280px;border-radius:10px;border:1px solid var(--line2)"></a>':'')
-        +'<div style="margin-top:8px;word-break:break-all"><a href="'+escAttr(src.url)+'" target="_blank" rel="noopener" style="color:var(--gold)">🔗 '+esc(src.url)+'</a></div>';}
-    if(!inner)return '';
-    return '<div class="card" style="margin-top:16px"><h2>🔎 What it analyzed</h2>'+inner+'</div>';
+  const oneSource=(src,prev)=>{
+    if(src.kind==='image'&&prev)return '<img src="'+prev+'" style="max-width:220px;max-height:220px;border-radius:10px;border:1px solid var(--line2)">';
+    if(src.kind==='video')return '<div style="display:inline-block;vertical-align:top;width:200px;margin:0 12px 12px 0">'
+      +(src.thumbnail?'<a href="'+escAttr(src.url)+'" target="_blank" rel="noopener"><img src="'+escAttr(src.thumbnail)+'" style="width:200px;border-radius:10px;border:1px solid var(--line2)"></a>':'')
+      +'<div style="margin-top:5px;font-size:12px;line-height:1.35"><a href="'+escAttr(src.url)+'" target="_blank" rel="noopener" style="color:var(--gold)">▶ '+esc(src.title||'source')+'</a></div></div>';
+    if(src.kind==='link')return (src.images||[]).slice(0,3).map(u=>'<a href="'+escAttr(src.url)+'" target="_blank" rel="noopener"><img src="'+escAttr(u)+'" style="max-width:180px;border-radius:10px;border:1px solid var(--line2);margin:0 8px 8px 0"></a>').join('')
+      +'<div style="margin-top:4px;word-break:break-all"><a href="'+escAttr(src.url)+'" target="_blank" rel="noopener" style="color:var(--gold)">🔗 '+esc(src.url)+'</a></div>';
+    return '';
+  };
+  const sourceCard=(sources,prev)=>{
+    if(!sources||!sources.length)return '';
+    const items=sources.map(s=>oneSource(s,prev)).filter(Boolean).join('');
+    if(!items)return '';
+    const label=sources.length>1?('🔎 What it analyzed ('+sources.length+' examples)'):'🔎 What it analyzed';
+    return '<div class="card" style="margin-top:16px"><h2>'+label+'</h2>'+items+'</div>';
   };
   const renderResult=(j,prev)=>{
     const bp=j.blueprint||{};const boards=j.adaptedStoryboards||[];
     let html='<div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="sec" id="hk_clear">✕ Clear results</button></div>';
-    html+=sourceCard(j.source,prev);
+    html+=sourceCard(j.sources||(j.source?[j.source]:[]),prev);
     html+='<div class="card" style="margin-top:16px"><h2>🧬 Format Blueprint</h2>'
       +(j.synthesized?'<div class="muted" style="margin:-4px 0 12px">No live source could be fetched — this is a proven format synthesized from knowledge.</div>':'')
       +'<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Visual strategy</div>'+esc(bp.visualStrategy)+'</div>'
