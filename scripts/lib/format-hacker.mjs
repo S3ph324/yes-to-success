@@ -129,7 +129,12 @@ async function extractFromUrl(url) {
     throw new Error(
       "That link returned no readable text. Try a screenshot of the ad instead.",
     );
-  return txt;
+  // Best-effort: pull the first real image URL out of the Jina markdown so the
+  // UI can show a visual of what was analyzed (bonus — the link is the main thing).
+  let image = "";
+  const im = txt.match(/!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/);
+  if (im) image = im[1];
+  return { text: txt, image };
 }
 
 // Method C — auto-discover a "winning ads breakdown" video and pull its
@@ -175,6 +180,18 @@ async function extractAuto() {
                 '"\n\nTRANSCRIPT:\n' +
                 text,
               fellBack: false,
+              source: {
+                kind: "video",
+                title: v.title || "",
+                url: v.url || "https://www.youtube.com/watch?v=" + v.videoId,
+                videoId: v.videoId || "",
+                thumbnail:
+                  v.thumbnail ||
+                  v.image ||
+                  (v.videoId
+                    ? "https://i.ytimg.com/vi/" + v.videoId + "/hqdefault.jpg"
+                    : ""),
+              },
             };
           }
         } catch {
@@ -185,7 +202,7 @@ async function extractAuto() {
   } catch {
     /* modules absent or search unavailable — fall through to synthesis */
   }
-  return { text: "", fellBack: true };
+  return { text: "", fellBack: true, source: null };
 }
 
 export async function hackFormat({ client, method, imageBase64, mimeType, url }) {
@@ -199,17 +216,22 @@ export async function hackFormat({ client, method, imageBase64, mimeType, url })
   let imagePart = null;
   let sourceText = "";
   let synthesize = false;
+  let source = null; // { kind, url?, title?, thumbnail?, image? } — what the UI shows as "what it analyzed"
 
   if (method === "image") {
     const data = String(imageBase64 || "").replace(/^data:[^;]+;base64,/, "");
     if (data.length < 32) throw new Error("No screenshot was provided.");
     imagePart = { inlineData: { mimeType: mimeType || "image/png", data } };
+    source = { kind: "image" }; // the frontend already has the screenshot to display
   } else if (method === "url") {
-    sourceText = await extractFromUrl(url);
+    const u = await extractFromUrl(url);
+    sourceText = u.text;
+    source = { kind: "link", url, image: u.image || "" };
   } else if (method === "auto") {
     const a = await extractAuto();
     sourceText = a.text;
     synthesize = a.fellBack;
+    source = a.source || null;
   } else {
     throw new Error("Unknown input method.");
   }
@@ -305,5 +327,5 @@ export async function hackFormat({ client, method, imageBase64, mimeType, url })
   if (boards.length === 0)
     throw new Error("The AI did not return any storyboards — please try again.");
 
-  return { blueprint, adaptedStoryboards: boards, synthesized: synthesize };
+  return { blueprint, adaptedStoryboards: boards, synthesized: synthesize, source };
 }

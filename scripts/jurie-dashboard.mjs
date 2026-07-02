@@ -4501,7 +4501,10 @@ async function viewHacker(){
   let hkClient=(cls.find(c=>c.id===CLIENT)?CLIENT:((cls[0]&&cls[0].id)||'jurie'));
   let method='image';        // image | url | auto
   let imgB64='';let imgMime='image/png';
+  const last=window._hkLast||null;   // last result — survives tab switches, cleared on refresh or Clear
+  if(last){hkClient=last.client||hkClient;method=last.method||method;}
   const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const escAttr=s=>esc(s).replace(/"/g,'&quot;');
   const clientOpts=cls.map(c=>'<option value="'+c.id+'"'+(c.id===hkClient?' selected':'')+'>'+esc(c.label)+'</option>').join('');
   const spin='<span class="spinner" style="width:14px;height:14px;border:2px solid rgba(244,180,0,.3);border-top-color:var(--gold);border-radius:50%;display:inline-block;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px"></span>';
   $('#view').innerHTML=
@@ -4572,9 +4575,24 @@ async function viewHacker(){
     CLIENT=hkClient;try{localStorage.setItem('qps_client',CLIENT);}catch(_){}
     buildNav().then(()=>{TAB=(mode==='story'?'video':'broll');render();});
   };
-  const renderResult=j=>{
+  const sourceCard=(src,prev)=>{
+    if(!src)return '';
+    let inner='';
+    if(src.kind==='image'&&prev){inner='<img src="'+prev+'" style="max-width:220px;max-height:220px;border-radius:10px;border:1px solid var(--line2)">';}
+    else if(src.kind==='video'){
+      inner=(src.thumbnail?'<a href="'+escAttr(src.url)+'" target="_blank" rel="noopener"><img src="'+escAttr(src.thumbnail)+'" style="max-width:280px;border-radius:10px;border:1px solid var(--line2)"></a>':'')
+        +'<div style="margin-top:8px"><a href="'+escAttr(src.url)+'" target="_blank" rel="noopener" style="color:var(--gold)">▶ '+esc(src.title||'Watch the source video')+'</a></div>';}
+    else if(src.kind==='link'){
+      inner=(src.image?'<a href="'+escAttr(src.url)+'" target="_blank" rel="noopener"><img src="'+escAttr(src.image)+'" style="max-width:280px;border-radius:10px;border:1px solid var(--line2)"></a>':'')
+        +'<div style="margin-top:8px;word-break:break-all"><a href="'+escAttr(src.url)+'" target="_blank" rel="noopener" style="color:var(--gold)">🔗 '+esc(src.url)+'</a></div>';}
+    if(!inner)return '';
+    return '<div class="card" style="margin-top:16px"><h2>🔎 What it analyzed</h2>'+inner+'</div>';
+  };
+  const renderResult=(j,prev)=>{
     const bp=j.blueprint||{};const boards=j.adaptedStoryboards||[];
-    let html='<div class="card" style="margin-top:16px"><h2>🧬 Format Blueprint</h2>'
+    let html='<div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="sec" id="hk_clear">✕ Clear results</button></div>';
+    html+=sourceCard(j.source,prev);
+    html+='<div class="card" style="margin-top:16px"><h2>🧬 Format Blueprint</h2>'
       +(j.synthesized?'<div class="muted" style="margin:-4px 0 12px">No live source could be fetched — this is a proven format synthesized from knowledge.</div>':'')
       +'<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Visual strategy</div>'+esc(bp.visualStrategy)+'</div>'
       +'<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Copywriting formula</div>'+esc(bp.copywritingFormula)+'</div>'
@@ -4588,6 +4606,7 @@ async function viewHacker(){
         +'<button class="sec" data-eng="broll" data-bi="'+bi+'">Send to B-Roll Engine →</button></div></div>';
     });
     $('#hk_out').innerHTML=html;
+    const cl=$('#hk_clear');if(cl)cl.onclick=()=>{window._hkLast=null;$('#hk_out').innerHTML='';};
     Array.prototype.forEach.call(document.querySelectorAll('#hk_out button[data-eng]'),b=>{
       b.onclick=()=>sendToEngine(boards[+b.dataset.bi],b.dataset.eng);});
   };
@@ -4601,9 +4620,12 @@ async function viewHacker(){
     fetch('/api/hack-format',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
       .then(r=>r.json()).then(j=>{btn.disabled=false;$('#hk_status').innerHTML='';
         if(!j||j.error){$('#hk_status').innerHTML='<span style="color:#ff6b6b">'+esc((j&&j.error)||'Something went wrong. Try again.')+'</span>';return;}
-        renderResult(j);})
+        const prev=(method==='image')?('data:'+imgMime+';base64,'+imgB64):'';
+        window._hkLast={client:hkClient,method:method,result:j,prev:prev};
+        renderResult(j,prev);})
       .catch(()=>{btn.disabled=false;$('#hk_status').innerHTML='<span style="color:#ff6b6b">Network error. Try again.</span>';});
   };
+  if(last&&last.result){renderResult(last.result,last.prev||'');}
 }
 async function viewBroll(mode){
   mode=mode==='story'?'story':'broll';const isStory=mode==='story';

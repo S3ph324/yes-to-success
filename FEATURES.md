@@ -1,7 +1,7 @@
 # Quote Poster Studio — Features & System Reference
 
 > Living documentation of what the automation / web app does.
-> Reflects **v0.30.0**. Update the version line when features change.
+> Reflects **v0.30.1**. Update the version line when features change.
 
 A **multi-client content factory** for social-media brands. You give it a topic;
 it writes the copy in your brand voice, generates imagery with AI, renders
@@ -103,8 +103,11 @@ Single login (`admin1`), persistent sessions across refresh/redeploy.
   fallback when the scrape is blocked — e.g. on Railway's IP). Outputs a
   niche-agnostic **Format Blueprint** (visual strategy + copywriting formula +
   why it worked) and **2 storyboards** adapted to the selected client's voice
-  (Jurie brand-safety: never names/quotes real people). Each concept hands off
-  into the existing B-Roll/Video storyboard flow (`hack-director.md`).
+  (Jurie brand-safety: never names/quotes real people). The results show **what
+  it analyzed** (uploaded screenshot / found-video thumbnail + YouTube link /
+  pasted link) and **persist across tab switches** until you Clear or refresh.
+  Each concept hands off into the existing B-Roll/Video storyboard flow
+  (`hack-director.md`).
 
 ---
 
