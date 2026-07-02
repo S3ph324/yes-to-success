@@ -1,6 +1,6 @@
 {
   "name": "remotion-app",
-  "version": "0.31.2",
+  "version": "0.32.0",
   "description": "My Remotion video",
   "repository": {},
   "license": "UNLICENSED",
@@ -59,7 +59,9 @@
     "start": "node scripts/server.mjs",
     "dashboard:dev": "cd dashboard && npm run dev",
     "dashboard:build": "cd dashboard && npm run build",
-    "dashboard": "npm run dashboard:build && npm run server"
+    "dashboard": "npm run dashboard:build && npm run server",
+    "research": "node scripts/research-viral.mjs",
+    "research:report": "node scripts/research-viral.mjs --report-only"
   },
   "sideEffects": [
     "*.css"

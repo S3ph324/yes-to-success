@@ -1,7 +1,7 @@
 # Quote Poster Studio — Features & System Reference
 
 > Living documentation of what the automation / web app does.
-> Reflects **v0.31.2**. Update the version line when features change.
+> Reflects **v0.32.0**. Update the version line when features change.
 
 A **multi-client content factory** for social-media brands. You give it a topic;
 it writes the copy in your brand voice, generates imagery with AI, renders
@@ -94,6 +94,18 @@ Single login (`admin1`), persistent sessions across refresh/redeploy.
   cartoon/illustration unless explicitly asked).
 - **Aspect distribution** — set a % mix of 1:1 / 4:5 / 9:16 per batch;
   deterministic split (`lib/aspect-plan.mjs`).
+- **Viral Pattern Research Engine** (CLI, Jurie brand) — `npm run research
+  [-- --count N --topic "niche"]` collects public breakdown/strategy videos,
+  extracts **transferable patterns** (never copies; sources named internally
+  only) across 15 dimensions (hooks, first-3s, retention, curiosity, CTA,
+  pacing…), passes each through the brand filter (alignment score + 5-question
+  self-check + copycat warning), and grows a **persistent ranked DB**
+  (`research-data/patterns-db.json`, gitignored). Each run renders a dark
+  click-to-copy **HTML playbook** (`~/claude_code/research-reports/<stamp>/`):
+  top patterns → synthesis → 10 content ideas → 5 Taglish scripts (talking
+  head + b-roll, before/after) → soft CTAs → weekly content system.
+  `npm run research:report` regenerates from the DB without scraping. A studio
+  "Pattern Lab" tab is a planned follow-up.
 - **Storyboard wizards** (B-Roll + Video) — staged: analyze → review storyboard
   → add/invent character → generate first frames + a paired Veo video prompt per
   scene. **B-Roll** = disconnected cutaways (`broll-director.md`); **Video** =
@@ -137,6 +149,7 @@ Single login (`admin1`), persistent sessions across refresh/redeploy.
 | `broll-frames.mjs` | First-frame image per scene (applies the character) |
 | `broll-deliverable.mjs` | Build the review HTML + manifest |
 | `lib/format-hacker.mjs` | Format Hacker: multimodal ad deconstruction → blueprint + 2 storyboards |
+| `research-viral.mjs` | **CLI** research engine: public sources → pattern DB → playbook report (`npm run research`) |
 | `jurie-dashboard.mjs` | The web app (Express, ~5k lines, single inline SPA) |
 | `lib/client.mjs` | GCP env + client resolution | 
 | `lib/aspect-plan.mjs` | Deterministic aspect-ratio distribution |
