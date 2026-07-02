@@ -162,12 +162,22 @@ async function extractFromUrl(url) {
 // guarded: if the modules are missing, YouTube blocks the datacenter IP, or no
 // transcript is available, we return fellBack:true and let Gemini synthesize a
 // proven format from knowledge instead of hard-failing.
-async function extractAuto() {
-  const queries = [
-    "winning facebook ads breakdown marketing",
-    "best tiktok ads strategy breakdown",
-    "viral ad breakdown copywriting",
-  ];
+async function extractAuto(topic) {
+  const t = String(topic || "").trim();
+  // When the user gives a niche/topic, point the search AT it; otherwise use the
+  // generic "winning ads" queries.
+  const queries = t
+    ? [
+        `best ${t} ads breakdown`,
+        `${t} viral ad breakdown marketing`,
+        `winning ${t} tiktok ads strategy`,
+        `how to advertise ${t}`,
+      ]
+    : [
+        "winning facebook ads breakdown marketing",
+        "best tiktok ads strategy breakdown",
+        "viral ad breakdown copywriting",
+      ];
   const MAX = 4; // gather several winning examples, not just one
   const collected = [];
   try {
@@ -232,8 +242,9 @@ async function extractAuto() {
   return { text, fellBack: false, sources };
 }
 
-export async function hackFormat({ client, method, imageBase64, mimeType, url }) {
+export async function hackFormat({ client, method, imageBase64, mimeType, url, topic }) {
   client = client === "tranzzie" ? "tranzzie" : "jurie";
+  const t = String(topic || "").trim().slice(0, 200);
   const director = await loadText(path.join(scriptsDir, "hack-director.md"));
   const voice = await loadText(
     path.join(scriptsDir, "voice-profile-" + client + ".md"),
@@ -256,7 +267,7 @@ export async function hackFormat({ client, method, imageBase64, mimeType, url })
     sourceText = u.text;
     sources = [{ kind: "link", url, images: (u.images || []).slice(0, 3) }];
   } else if (method === "auto") {
-    const a = await extractAuto();
+    const a = await extractAuto(t);
     sourceText = a.text;
     synthesize = a.fellBack;
     sources = a.sources || [];
@@ -265,12 +276,23 @@ export async function hackFormat({ client, method, imageBase64, mimeType, url })
     throw new Error("Unknown input method.");
   }
 
+  // When the user typed a niche/topic/idea, both concepts must serve it — and if
+  // it's just a rough idea, use the proven format(s) to give it a working shape.
+  const topicBlock = t
+    ? '\n\n## USER\'S NICHE / IDEA (build BOTH adapted concepts to serve THIS)\n' +
+      'The user wants content about / for: "' + t + '".\n' +
+      'Both storyboards MUST be about this niche/idea. If it is a rough idea they ' +
+      'do not yet know how to execute, use the proven winning format(s) to give it ' +
+      'a working structure — make it THEIRS, but built on what already works.\n'
+    : "";
+
   const systemInstruction =
     director +
     "\n\n---\n\n" +
     (CLIENT_CLAUSE[client] || CLIENT_CLAUSE.jurie) +
     "\n\nClient niche: " +
     (CLIENT_NICHE[client] || "") +
+    topicBlock +
     "\n\n## CLIENT VOICE PROFILE (write the voiceover + on-screen text in THIS voice)\n\n" +
     (voice || "(voice profile unavailable — infer a natural brand voice.)");
 

@@ -1,7 +1,7 @@
 # Quote Poster Studio — Features & System Reference
 
 > Living documentation of what the automation / web app does.
-> Reflects **v0.31.1**. Update the version line when features change.
+> Reflects **v0.31.2**. Update the version line when features change.
 
 A **multi-client content factory** for social-media brands. You give it a topic;
 it writes the copy in your brand voice, generates imagery with AI, renders
@@ -105,8 +105,10 @@ Single login (`admin1`), persistent sessions across refresh/redeploy.
   **auto-discovered** set of breakdown videos (`yt-search` +
   `youtube-transcript` pulls up to 4 winning examples and synthesizes the format
   they SHARE, with a Gemini-knowledge fallback when the scrape is blocked — e.g.
-  on Railway's IP). Outputs a
-  niche-agnostic **Format Blueprint** (visual strategy + copywriting formula +
+  on Railway's IP). An optional **niche / topic / idea** field steers the scrape
+  (search targets that niche) AND the adaptation — drop a rough idea you do not
+  know how to execute and it finds proven content and rebuilds it into something
+  that is yours but works. Outputs a niche-agnostic **Format Blueprint** (visual strategy + copywriting formula +
   why it worked) and **2 storyboards** adapted to the selected client's voice
   (Jurie brand-safety: never names/quotes real people). Each concept is
   shoot-ready and skimmable: a one-line **content idea**, the hook, scenes with

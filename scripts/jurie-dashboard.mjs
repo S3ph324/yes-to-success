@@ -1819,13 +1819,14 @@ app.post("/api/hack-format", async (req, res) => {
   const image = typeof req.body?.image === "string" ? req.body.image : "";
   const mimeType = String(req.body?.mimeType || "image/png");
   const url = String(req.body?.url || "").trim();
+  const topic = String(req.body?.topic || "").trim().slice(0, 200);
   if (method === "image" && image.length < 32)
     return res.status(400).json({ error: "Upload a screenshot of the ad first." });
   if (method === "url" && !/^https?:\/\//i.test(url))
     return res.status(400).json({ error: "Paste a valid http(s) link." });
   if (!guard(req, res)) return; // daily/hourly cost cap — this is a paid Gemini call
   try {
-    const out = await hackFormat({ client, method, imageBase64: image, mimeType, url });
+    const out = await hackFormat({ client, method, imageBase64: image, mimeType, url, topic });
     res.json({ ok: true, ...out });
   } catch (e) {
     log(`✗ Format Hacker: ${e?.message || e}`);
@@ -4526,7 +4527,10 @@ async function viewHacker(){
    +'<div id="hk_src_u" style="display:none"><label>Ad / post URL</label>'
    +'<input id="hk_url" type="text" placeholder="https://...">'
    +'<div class="muted" style="margin-top:6px;font-size:12px">We read the public text of the page. Social login-walls may block it — use a screenshot if so.</div></div>'
-   +'<div id="hk_src_a" style="display:none"><div class="muted" style="line-height:1.6">Let the AI find a proven winning ad format for the selected niche and rebuild it. If a live breakdown cannot be fetched, it synthesizes a proven format from knowledge.</div></div>'
+   +'<div id="hk_src_a" style="display:none">'
+   +'<label>Niche / topic / your idea (optional)</label>'
+   +'<input id="hk_topic" type="text" placeholder="e.g. skincare for men — or: I want to promote my coffee shop but do not know how">'
+   +'<div class="muted" style="margin-top:6px;line-height:1.6">Point the scraper at a specific niche, or drop your rough idea — it finds proven content and turns it into something that is yours but works. If a live breakdown cannot be fetched, it synthesizes a proven format from knowledge.</div></div>'
    +'<p style="margin:16px 0"><button class="go" id="hk_go">Deconstruct →</button></p>'
    +'<div id="hk_status" style="min-height:20px;margin-bottom:6px"></div>'
    +'<div id="hk_out"></div>'
@@ -4543,6 +4547,7 @@ async function viewHacker(){
   $('#hk_t_u').onclick=()=>{method='url';showMethod();};
   $('#hk_t_a').onclick=()=>{method='auto';showMethod();};
   showMethod();
+  if(last&&last.topic){const tpi=$('#hk_topic');if(tpi)tpi.value=last.topic;}
   const readFile=f=>{
     if(!f)return;
     if(f.type.indexOf('image/')!==0){alert('Please choose an image file.');return;}
@@ -4635,7 +4640,9 @@ async function viewHacker(){
         navigator.clipboard.writeText((sb.caption||'')+tg).then(()=>{const o=b.textContent;b.textContent='Copied ✓';setTimeout(()=>{b.textContent=o;},1500);},()=>alert('Clipboard blocked — select and copy manually.'));};});
   };
   $('#hk_go').onclick=()=>{
+    const tp=method==='auto'?(($('#hk_topic')||{}).value||'').trim():'';
     const body={client:hkClient,method:method};
+    if(tp)body.topic=tp;
     if(method==='image'){if(!imgB64){alert('Upload a screenshot of the ad first.');return;}body.image=imgB64;body.mimeType=imgMime;}
     else if(method==='url'){const u=($('#hk_url').value||'').trim();if(!/^https?:\\/\\//i.test(u)){alert('Paste a valid link starting with http.');return;}body.url=u;}
     const btn=$('#hk_go');btn.disabled=true;
@@ -4645,7 +4652,7 @@ async function viewHacker(){
       .then(r=>r.json()).then(j=>{btn.disabled=false;$('#hk_status').innerHTML='';
         if(!j||j.error){$('#hk_status').innerHTML='<span style="color:#ff6b6b">'+esc((j&&j.error)||'Something went wrong. Try again.')+'</span>';return;}
         const prev=(method==='image')?('data:'+imgMime+';base64,'+imgB64):'';
-        window._hkLast={client:hkClient,method:method,result:j,prev:prev};
+        window._hkLast={client:hkClient,method:method,topic:tp,result:j,prev:prev};
         renderResult(j,prev);})
       .catch(()=>{btn.disabled=false;$('#hk_status').innerHTML='<span style="color:#ff6b6b">Network error. Try again.</span>';});
   };
