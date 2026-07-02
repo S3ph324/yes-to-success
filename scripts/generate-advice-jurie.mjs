@@ -66,11 +66,11 @@ const bannedLine = brief?.bannedPhrases?.length
   : "";
 
 // ── Shared craft rules ──────────────────────────────────────────────────────
-// These encode the PROVEN content-creator patterns (hook-retain-reward, the
-// value-equation way of framing value, ruthless concision, give-real-value) —
-// but rendered 100% as Jurie's OWN warm Taglish voice. We never name, quote,
-// tag, or imitate any outside person/guru in the output; only the underlying
-// craft is borrowed.
+// These encode PROVEN content-creator patterns (hook-retain-reward, ruthless
+// concision, authentic first-person insight) — rendered 100% as Jurie's OWN
+// warm, DIRECT Taglish voice. She is transparent that deep guidance has value
+// (no "free tips / secret hack" bait). We never name, quote, tag, or imitate
+// any outside person/guru in the output; only the underlying craft is borrowed.
 const CRAFT = `
 COPY CRAFT — the "DAILY BUILDER" format (the studied Facebook page style),
 written entirely in JURIE'S warm Taglish voice.
@@ -98,8 +98,17 @@ THE SIGNATURE MOVES (use them — this is the style to copy):
   boring." White space is the design — never a paragraph block.
 - IDENTITY framing. Not just "gawin mo 'to" — "ito ang ginagawa ng umaangat."
   The reader self-selects into the worldview.
-- Topic stays in Jurie's lane: AI + systems for Filipino business owners. Sell
-  the dream in the hook; deliver a boring, repeatable mechanism in the body.
+- Topic stays in Jurie's lane: AI + systems for Filipino business owners.
+- AUTHENTIC & FIRST-PERSON. Write from Jurie's real experience, observations,
+  and realizations ("ito ang natutunan ko, ito ang nakita ko"), not a copied
+  guru act. Direct — no paligoy-ligoy.
+- TRANSPARENT VALUE, NOT FREE-BAIT. Never frame it as "FREE TIPS/VALUE/SECRET"
+  or a "secret hack", and never pretend to hand over a whole system in one post.
+  Give REAL awareness, insight, and direction (the WHAT and the WHY, plus a
+  concrete starting point) — that is genuinely valuable. Be honest that the deep
+  implementation/guidance has a price; OCCASIONALLY (not every post) say so
+  plainly, never salesy. "Ang libre ay simula; may lalim pa na may halaga."
+  Never claim "lahat ng libre walang silbi."
 - EMPATHY, NEVER SHAME. No fake guarantees, no "get rich quick."
 ${bannedLine}`;
 
@@ -127,8 +136,9 @@ FORMAT — DAILY-BUILDER ADVICE CARD, 100% in JURIE'S OWN voice. NEVER quote,
 name, tag, or reference anyone. Structure, top → bottom:
 - hook: THE HERO — the biggest line, read first. Use one of the hook formulas
   above and ROTATE them across the batch. 5–11 words. The scroll-stopper.
-- lines: 3–5 concrete points beneath it (each ≤8 words, no ellipsis). Each adds
-  its OWN value — real actions, small numbers, the actual how. You MAY run the
+- lines: 3–5 concrete points beneath it (each ≤8 words, no ellipsis). Each gives
+  real INSIGHT / AWARENESS / DIRECTION — the what and the why, or a concrete
+  starting point (not the entire step-by-step system). You MAY run the
   repetition-then-turn rhythm across these lines. (Square shows the first 3;
   taller 4:5 / 9:16 posters show more.)
 - payoff: the closing MANTRA — one short quotable reframe they'd save. Jurie's
@@ -152,9 +162,13 @@ const CAPTION_RULES = `
 CAPTION (Facebook) — improved with the studied formulas:
 - Open with a HOOK in the first line (a question, a relatable scene, or a
   confession) — never a description. This is what stops the scroll.
-- Then 2–4 short lines or a tiny dash list that delivers the actual value.
+- Then 2–4 short lines or a tiny dash list that delivers real insight/direction
+  in Jurie's first-person voice (awareness + the why + a starting point — not
+  the whole system).
 - Close on the same quotable payoff as the card, then ONE soft CTA
-  (e.g. "Comment 'AI' para ituro ko sa'yo kung paano."). No fake guarantees.
+  (e.g. "Comment 'AI' para ituro ko kung saan magsisimula."). No fake
+  guarantees. OCCASIONALLY (not every caption) be transparent that the deeper
+  implementation/guidance is paid — naturally, never salesy.
 - Conversational Taglish. Short lines, generous breaks — NOT a paragraph wall.`;
 
 const systemInstruction = `${voiceProfile}

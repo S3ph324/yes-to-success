@@ -4559,17 +4559,28 @@ async function viewHacker(){
     dz.addEventListener('dragleave',()=>{dz.style.borderColor='var(--line2)';});
     dz.addEventListener('drop',e=>{e.preventDefault();dz.style.borderColor='var(--line2)';
       const f=(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]);readFile(f);});}}
-  const sceneRow=(sc,i)=>'<div style="border-left:2px solid var(--gold);padding:6px 0 6px 12px;margin:10px 0">'
-    +'<div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em">Scene '+(i+1)+'</div>'
-    +'<div style="margin-top:3px"><b>On-screen:</b> '+esc(sc.onScreenText)+'</div>'
-    +'<div style="margin-top:2px"><b>Camera:</b> '+esc(sc.cameraAction)+'</div>'
-    +'<div style="margin-top:2px"><b>VO:</b> '+esc(sc.voiceover)+'</div></div>';
+  // A scene as a compact, scannable block: header (Scene N · shot · duration),
+  // then labelled lines. B-roll only shows when present, to keep it uncluttered.
+  const sceneMeta=sc=>{const a=[];if(sc.shot)a.push(esc(sc.shot));if(sc.duration)a.push(esc(sc.duration));return a.length?' · '+a.join(' · '):'';};
+  const line=(lbl,val)=>val?'<div style="margin-top:3px"><span style="color:var(--mut)">'+lbl+'</span> — '+esc(val)+'</div>':'';
+  const sceneRow=(sc,i)=>'<div style="border-left:2px solid var(--gold);padding:7px 0 7px 12px;margin:9px 0">'
+    +'<div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Scene '+(i+1)+sceneMeta(sc)+'</div>'
+    +line('On-screen',sc.onScreenText)
+    +line('Voiceover',sc.voiceover)
+    +line('Camera',sc.cameraAction)
+    +line('B-roll',sc.bRoll)
+    +'</div>';
   const sendToEngine=(sb,mode)=>{
-    const L=[];L.push(sb.title||'Untitled');if(sb.hook)L.push('Hook: '+sb.hook);
-    (sb.scenes||[]).forEach((sc,i)=>{L.push('');L.push('Scene '+(i+1));
+    const L=[];L.push(sb.title||'Untitled');
+    if(sb.contentIdea)L.push('Idea: '+sb.contentIdea);
+    if(sb.hook)L.push('Hook: '+sb.hook);
+    (sb.scenes||[]).forEach((sc,i)=>{L.push('');
+      L.push('Scene '+(i+1)+(sc.shot?' ('+sc.shot+(sc.duration?', '+sc.duration:'')+')':''));
       if(sc.onScreenText)L.push('On-screen text: '+sc.onScreenText);
+      if(sc.voiceover)L.push('Voiceover: '+sc.voiceover);
       if(sc.cameraAction)L.push('Camera: '+sc.cameraAction);
-      if(sc.voiceover)L.push('Voiceover: '+sc.voiceover);});
+      if(sc.bRoll)L.push('B-roll: '+sc.bRoll);});
+    if(sb.caption){L.push('');L.push('Caption: '+sb.caption);}
     const defChar=(cls.find(c=>c.id===hkClient)||{}).characterId||'';
     window._hackHandoff={script:L.join('\\n'),count:(sb.scenes||[]).length||8,characterId:defChar};
     CLIENT=hkClient;try{localStorage.setItem('qps_client',CLIENT);}catch(_){}
@@ -4598,9 +4609,16 @@ async function viewHacker(){
       +'<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Copywriting formula</div>'+esc(bp.copywritingFormula)+'</div>'
       +'<div><div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Why it worked</div>'+esc(bp.whyItWorked)+'</div></div>';
     boards.forEach((sb,bi)=>{
-      html+='<div class="card" style="margin-top:16px"><h2 style="margin-bottom:2px">🎬 '+esc(sb.title)+'</h2>'
-        +'<div class="muted" style="margin:2px 0 10px"><b style="color:var(--txt)">Hook:</b> '+esc(sb.hook)+'</div>'
+      const tags=(sb.hashtags||[]).map(h=>'#'+String(h).replace(/^#/,'')).join(' ');
+      html+='<div class="card" style="margin-top:16px"><h2 style="margin-bottom:4px">🎬 '+esc(sb.title)+'</h2>'
+        +(sb.contentIdea?'<div style="margin:0 0 12px;font-size:13px"><span style="color:var(--mut)">💡 Idea — </span>'+esc(sb.contentIdea)+'</div>':'')
+        +'<div style="background:rgba(232,182,74,.08);border:1px solid var(--line2);border-radius:8px;padding:8px 11px;margin-bottom:8px"><div style="color:var(--mut);font-size:10px;text-transform:uppercase;letter-spacing:.06em">Hook</div><div style="margin-top:2px">'+esc(sb.hook)+'</div></div>'
         +(sb.scenes||[]).map((sc,i)=>sceneRow(sc,i)).join('')
+        +(sb.caption?'<div style="margin-top:12px;border-top:1px solid var(--line2);padding-top:12px">'
+          +'<div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">📝 Ready-to-post caption</div>'
+          +'<div style="white-space:pre-wrap">'+esc(sb.caption)+'</div>'
+          +(tags?'<div style="margin-top:6px;color:#7fb2ff">'+esc(tags)+'</div>':'')
+          +'<button class="sec" data-cap="'+bi+'" style="margin-top:9px">Copy caption</button></div>':'')
         +'<div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">'
         +'<button class="go" data-eng="story" data-bi="'+bi+'">Send to Video Engine →</button>'
         +'<button class="sec" data-eng="broll" data-bi="'+bi+'">Send to B-Roll Engine →</button></div></div>';
@@ -4609,6 +4627,9 @@ async function viewHacker(){
     const cl=$('#hk_clear');if(cl)cl.onclick=()=>{window._hkLast=null;$('#hk_out').innerHTML='';};
     Array.prototype.forEach.call(document.querySelectorAll('#hk_out button[data-eng]'),b=>{
       b.onclick=()=>sendToEngine(boards[+b.dataset.bi],b.dataset.eng);});
+    Array.prototype.forEach.call(document.querySelectorAll('#hk_out button[data-cap]'),b=>{
+      b.onclick=()=>{const sb=boards[+b.dataset.cap];const tg=(sb.hashtags&&sb.hashtags.length)?('\\n\\n'+sb.hashtags.map(h=>'#'+String(h).replace(/^#/,'')).join(' ')):'';
+        navigator.clipboard.writeText((sb.caption||'')+tg).then(()=>{const o=b.textContent;b.textContent='Copied ✓';setTimeout(()=>{b.textContent=o;},1500);},()=>alert('Clipboard blocked — select and copy manually.'));};});
   };
   $('#hk_go').onclick=()=>{
     const body={client:hkClient,method:method};

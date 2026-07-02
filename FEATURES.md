@@ -1,7 +1,7 @@
 # Quote Poster Studio — Features & System Reference
 
 > Living documentation of what the automation / web app does.
-> Reflects **v0.30.1**. Update the version line when features change.
+> Reflects **v0.31.0**. Update the version line when features change.
 
 A **multi-client content factory** for social-media brands. You give it a topic;
 it writes the copy in your brand voice, generates imagery with AI, renders
@@ -81,7 +81,10 @@ Single login (`admin1`), persistent sessions across refresh/redeploy.
 
 - **Copy** (Gemini 2.5 Flash) — quotes / advice / tweets / scripts in each
   client's voice; Taglish; brand-safe rules (Jurie: replicate creator frameworks
-  in Jurie's own voice, **never quote/name real people**).
+  in Jurie's own voice, **never quote/name real people**). Jurie's voice is
+  **authentic + first-person + direct** — no "free tips/secret hack" bait;
+  transparent that deeper guidance has value (occasionally explicit it's paid);
+  rotates classic pain→reframe with first-person realization posts.
 - **Imagery** (Gemini 2.5 Flash Image / "Nano Banana") — scene backgrounds,
   product scenes, and character reference portraits.
 - **Character system** — each client has reference face photos; the **selected
@@ -103,7 +106,10 @@ Single login (`admin1`), persistent sessions across refresh/redeploy.
   fallback when the scrape is blocked — e.g. on Railway's IP). Outputs a
   niche-agnostic **Format Blueprint** (visual strategy + copywriting formula +
   why it worked) and **2 storyboards** adapted to the selected client's voice
-  (Jurie brand-safety: never names/quotes real people). The results show **what
+  (Jurie brand-safety: never names/quotes real people). Each concept is
+  shoot-ready and skimmable: a one-line **content idea**, the hook, scenes with
+  **shot type + duration + spoken voiceover + optional b-roll**, and a
+  **ready-to-post caption + hashtags** (Copy button). The results show **what
   it analyzed** (uploaded screenshot / found-video thumbnail + YouTube link /
   pasted link) and **persist across tab switches** until you Clear or refresh.
   Each concept hands off into the existing B-Roll/Video storyboard flow

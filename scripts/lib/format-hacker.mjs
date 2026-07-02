@@ -29,7 +29,14 @@ const CLIENT_CLAUSE = {
     "Rebuild the format as a Taglish (natural Tagalog + English) mentorship / " +
     "business short-video storyboard in Jurie's voice for Filipino MSME owners, " +
     "freelancers and side-hustlers. Warm, never shaming — validate effort, then " +
-    "reframe. BRAND SAFETY (hard rule): NEVER name, quote, tag, @-mention or " +
+    "reframe. VOICE: authentic and FIRST-PERSON, from Jurie's real experience and " +
+    "observations ('ito ang natutunan ko, ito ang nakita ko'); direct, no " +
+    "paligoy-ligoy. NO free-bait or fake 'secret hack' framing, and do NOT pretend " +
+    "to hand over a whole system in one video — give real awareness, insight and " +
+    "direction, and be transparent that the deep implementation/guidance has value " +
+    "(one concept MAY be explicit that it is paid — naturally, never salesy). Rotate " +
+    "BOTH angles across the 2 concepts: a classic pain->AI reframe AND a first-person " +
+    "realization. BRAND SAFETY (hard rule): NEVER name, quote, tag, @-mention or " +
     "reference any real person, brand or creator in the output — every line ships " +
     "as Jurie's own words. Borrow the format's structure and psychology, not any " +
     "names.",
@@ -50,23 +57,34 @@ const CLIENT_NICHE = {
 };
 
 // ── response schema (mirrors the user-facing contract) ──────────────────────
+// One shot in a storyboard. Kept shoot-ready: a shot type + rough duration, the
+// literal on-screen caption, the ACTUAL spoken voiceover, concrete camera
+// direction, and an optional b-roll cutaway idea.
 const sceneObj = {
   type: Type.OBJECT,
   properties: {
-    cameraAction: { type: Type.STRING },
-    onScreenText: { type: Type.STRING },
-    voiceover: { type: Type.STRING },
+    shot: { type: Type.STRING }, // Close-up / Medium / Wide / Screen-rec / POV / B-roll / Text card
+    duration: { type: Type.STRING }, // rough length, e.g. "3s"
+    onScreenText: { type: Type.STRING }, // literal caption/overlay for this beat
+    voiceover: { type: Type.STRING }, // the exact words spoken (real lines, not a description)
+    cameraAction: { type: Type.STRING }, // concrete framing / movement / subject action / setting
+    bRoll: { type: Type.STRING }, // optional cutaway idea ("" if none)
   },
-  required: ["cameraAction", "onScreenText", "voiceover"],
+  required: ["shot", "onScreenText", "voiceover", "cameraAction"],
 };
+// One adapted concept: the plain-language idea, the hook, the scene list, and a
+// ready-to-post caption + hashtags — so a busy creator can skim and shoot.
 const storyboardObj = {
   type: Type.OBJECT,
   properties: {
-    title: { type: Type.STRING },
-    hook: { type: Type.STRING },
+    title: { type: Type.STRING }, // short punchy concept name
+    contentIdea: { type: Type.STRING }, // one sentence: the angle + who it is for
+    hook: { type: Type.STRING }, // first-3-seconds hook line
     scenes: { type: Type.ARRAY, items: sceneObj },
+    caption: { type: Type.STRING }, // ready-to-post caption in the client voice
+    hashtags: { type: Type.ARRAY, items: { type: Type.STRING } }, // 4-6 relevant tags
   },
-  required: ["title", "hook", "scenes"],
+  required: ["title", "contentIdea", "hook", "scenes", "caption"],
 };
 const RESPONSE_SCHEMA = {
   type: Type.OBJECT,
@@ -317,11 +335,20 @@ export async function hackFormat({ client, method, imageBase64, mimeType, url })
     : [];
   boards = boards.slice(0, 2).map((b) => ({
     title: String(b?.title || "Untitled concept"),
+    contentIdea: String(b?.contentIdea || ""),
     hook: String(b?.hook || ""),
+    caption: String(b?.caption || ""),
+    hashtags: (Array.isArray(b?.hashtags) ? b.hashtags : [])
+      .map((h) => String(h).replace(/^#/, "").trim())
+      .filter(Boolean)
+      .slice(0, 8),
     scenes: (Array.isArray(b?.scenes) ? b.scenes : []).map((s) => ({
-      cameraAction: String(s?.cameraAction || ""),
+      shot: String(s?.shot || ""),
+      duration: String(s?.duration || ""),
       onScreenText: String(s?.onScreenText || ""),
       voiceover: String(s?.voiceover || ""),
+      cameraAction: String(s?.cameraAction || ""),
+      bRoll: String(s?.bRoll || ""),
     })),
   }));
   if (boards.length === 0)

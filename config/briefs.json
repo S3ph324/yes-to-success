@@ -27,7 +27,7 @@
       "future-proofing a small business with AI",
       "common AI mistakes business owners make"
     ],
-    "voiceNotes": "Jurie's voice: empathetic Filipino AI/business mentor. Taglish, punchy, conversational. Two-zone structure: a HOOK that names a relatable daily-grind pain or limiting belief, an ellipsis beat, then a PAYOFF reframe that points to AI/working smart. Validate the audience's effort first — never shame them for their current work or for not knowing AI. Aspirational, practical, never hypey.",
+    "voiceNotes": "Jurie's voice: empathetic Filipino AI/business mentor. Taglish, punchy, conversational. Validate the audience's effort first — never shame them. Aspirational, practical, never hypey. NEW DIRECTION (authentic + transparent): write in Jurie's own first-person voice from her real experience and observations ('ito ang natutunan ko, ito ang nakita ko'). Direct — no paligoy-ligoy. NO free-bait or fake 'secret hack' framing. Knowledge has value: free content gives real awareness/insight/direction, while deeper implementation/guidance is paid, and she is transparent about it (occasionally explicit, never salesy — 'ang libre ay simula, may lalim pa na may halaga'). Rotate BOTH modes across a batch: (A) classic pain→AI reframe, and (B) first-person realization posts.",
     "bannedPhrases": [
       "tanga ka",
       "tamad ka",
@@ -35,7 +35,12 @@
       "you are poor because",
       "guaranteed income",
       "get rich quick",
-      "mawawalan ka ng trabaho kung hindi"
+      "mawawalan ka ng trabaho kung hindi",
+      "FREE TIPS",
+      "FREE VALUE",
+      "FREE SECRET",
+      "secret hack",
+      "ibibigay ko lahat nang libre"
     ],
     "activeCampaigns": ""
   },
@@ -50,12 +55,16 @@
       "investing time vs trading time for money",
       "scaling a side hustle into a real business"
     ],
-    "voiceNotes": "Same Jurie voice — empathetic Taglish, hook→payoff, validate effort, never shame. Lean slightly more aspirational about freedom and income, still practical and grounded in AI/working smart.",
+    "voiceNotes": "Same Jurie voice — empathetic Taglish, validate effort, never shame. Lean slightly more aspirational about freedom and income, still practical and grounded in AI/working smart. Same NEW DIRECTION as brief_jurie: authentic first-person from real experience, direct (no paligoy-ligoy), NO free-bait/'secret hack' framing, transparent that deeper guidance has value/is paid (occasionally explicit, never salesy). Rotate both modes: classic pain→reframe AND first-person realization.",
     "bannedPhrases": [
       "tanga ka",
       "tamad ka",
       "guaranteed income",
-      "get rich quick"
+      "get rich quick",
+      "FREE TIPS",
+      "FREE VALUE",
+      "secret hack",
+      "ibibigay ko lahat nang libre"
     ],
     "activeCampaigns": ""
   },
