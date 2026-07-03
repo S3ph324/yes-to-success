@@ -1,7 +1,7 @@
 # Quote Poster Studio — Features & System Reference
 
 > Living documentation of what the automation / web app does.
-> Reflects **v0.32.0**. Update the version line when features change.
+> Reflects **v0.33.0**. Update the version line when features change.
 
 A **multi-client content factory** for social-media brands. You give it a topic;
 it writes the copy in your brand voice, generates imagery with AI, renders
@@ -70,7 +70,7 @@ Single login (`admin1`), persistent sessions across refresh/redeploy.
 | Type (`posterType`) | Composition | Description |
 |---|---|---|
 | `eyeglasses` | `ProductShowcaseCard` | AI product/model posters of a specific frame; cinematic, on-poster type, wardrobe + photorealism guards, text bottom-anchored with a blur scrim. |
-| `shop` | `ShopListingCard` | Upload a frame photo → AI generates branded product scenes (hero, front-on-white, studio, detail, specs) as 1:1 e-commerce cards. |
+| `shop` | `ShopListingCard` + `FeatureInfographicCard` | **Virtual Photography Studio**: manage frame **varieties** (colorways, each with its own reference photos), pick **quantities per shot type** (Hero / Simple / Model / Extreme Close-up / Feature-Infographic / multi-variant Group / Specs card), identical sets or mixed. Every prompt carries a pro-eyewear-photographer persona; model shots keep the wardrobe guard; feature cards get programmatic SVG tech overlays (Essilor-style). Max 12 AI shots per batch. Full deep-dive: `TIKTOK-SHOP.md`. |
 
 ### Both clients
 - **B-Roll sets** and **Video storyboards** (staged wizards, see §6).

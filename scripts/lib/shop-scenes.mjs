@@ -1,11 +1,19 @@
-// AI product-placement scene generation for the TikTok Shop cards.
+// AI product-photography generation for the TikTok Shop cards ("Virtual
+// Photography Studio").
 //
 // Takes the seller's uploaded eyeglasses-frame photo(s) as a REFERENCE and uses
-// Gemini image (gemini-2.5-flash-image / "Nano Banana") to generate clean
-// product-placement scenes of the SAME EXACT frame — a white studio shot, a
-// lifestyle flat-lay, and a dark macro close-up — which the ShopListingCard
-// then brands. The frame being sold must not be altered, so every prompt locks
-// the product to the reference.
+// Gemini image (gemini-2.5-flash-image / "Nano Banana") to shoot clean
+// product-placement scenes of the SAME EXACT frame. The frame being sold must
+// not be altered, so every prompt locks the product to the reference.
+//
+// Two APIs:
+//   generateShopShots({ jobs })   — dynamic: each job = { id, prompt, refParts }
+//   generateShopScenes({ ... })   — legacy fixed 4-scene wrapper (old 5-card path)
+//
+// Prompt builders (buildShotPrompt) cover the studio shot menu: hero, simple,
+// closeup, feature, model, group — each with variations cycled by shot index so
+// quantities > 1 produce distinct photography, and all carrying the
+// professional-photographer persona.
 import { GoogleGenAI } from "@google/genai";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -15,89 +23,213 @@ const mimeFor = (p) => {
   return e === ".png" ? "image/png" : e === ".webp" ? "image/webp" : e === ".heic" || e === ".heif" ? "image/heic" : "image/jpeg";
 };
 
-// Hard product-fidelity lock appended to every scene prompt.
-const FRAME_LOCK =
+// ── Persona + product-fidelity locks ────────────────────────────────────────
+// Prepended to EVERY scene prompt: the AI acts as a commercial eyewear
+// photographer, not a generic image generator.
+export const PHOTOGRAPHER_PERSONA =
+  "You are a world-class, professional commercial eyewear photographer and " +
+  "luxury retouching expert. You know exactly which camera bodies, macro " +
+  "lenses (e.g., 100mm f/2.8), lighting modifiers (softboxes, rim lights, " +
+  "snoots), and angles best highlight frame acetate, metal hinges, and lens " +
+  "clarity. Output photorealistic, award-winning commercial imagery. ";
+
+// Product fidelity — applies to every shot type (models included).
+const PRODUCT_LOCK =
   " CRITICAL — the eyeglasses are a REAL product being sold: reproduce the EXACT " +
   "pair shown in the reference photo(s). Match the frame SHAPE, COLOUR, MATERIAL, " +
   "rim thickness, temples and hinges EXACTLY. Do NOT redesign, recolour, restyle, " +
   "swap, or invent a different pair. " +
   // The seller's photos are casual snapshots with a lens DISPLAY STICKER / brand
-  // logo (e.g. a 'North Face' lens sticker) — that is temporary packaging, not the
-  // product. Gemini kept it because 'match exactly' fought 'no logos'; this carve-
-  // out resolves it: keep the frame, clean the lenses.
+  // logo — temporary packaging, not the product. Keep the frame, clean the lenses.
   "IMPORTANT — render the lenses perfectly CLEAN and CLEAR: REMOVE any display " +
   "stickers, brand logos, retailer labels, price tags, holograms or printed text " +
   "that appear on the lenses or frame in the reference (e.g. a lens sticker) — " +
   "those are temporary packaging and must NOT appear in the result. This is a " +
   "fresh studio RE-SHOOT, not a copy of the reference snapshot. " +
-  "No people, no faces, no hands, no mannequins. " +
   "Absolutely NO text, letters, numbers, logos, labels or watermarks anywhere. " +
   "Photorealistic commercial product photography, ultra-clean, sharp, high detail, 1:1 square.";
 
-export const SHOP_SCENES = {
-  // Used by the hero + variant cards (clean cutout-style product on white).
-  clean:
-    "Premium studio product photograph: the eyeglasses LARGE and centred, filling " +
+// Applied to every shot type EXCEPT model shoots.
+const NO_PEOPLE = " No people, no faces, no hands, no mannequins.";
+
+// Person-generating guards — same text as the eyeglasses-showcase pipeline.
+// MANDATORY on every model prompt (see the wardrobe incident write-up).
+const WARDROBE_RULE =
+  " WARDROBE — MANDATORY: the model is FULLY CLOTHED in stylish, well-fitted, " +
+  "tasteful everyday or smart-casual clothing suitable for a mainstream, " +
+  "family-friendly eyewear advertisement — for example a shirt, blouse, knit, " +
+  "sweater, blazer, jacket, or crew-neck tee, with a modest neckline and the " +
+  "shoulders, chest and torso COVERED BY CLOTHING at all times. ABSOLUTELY " +
+  "NO nudity, no topless, no bare chest, no bare shoulders, no exposed " +
+  "underwear, no lingerie, no swimwear, no suggestive or revealing outfits. " +
+  "If any of those appear the image is WRONG and unusable.";
+const FINISHED_LOOK_RULE =
+  " FINISH — this is a FINISHED, fully-retouched, professionally art-directed " +
+  "advertising campaign photograph: a final, published magazine / billboard " +
+  "image with flawless studio-grade retouching and deliberate composition. " +
+  "It is NOT a behind-the-scenes, test, candid, casual, or mid-shoot snapshot, " +
+  "and the model is NOT in the act of putting on or fiddling with the glasses — " +
+  "the frames are already worn, settled, and perfectly in place.";
+
+// ── Shot-type prompt builders (variations cycle by shot index) ─────────────
+const HERO_VARIATIONS = [
+  "Premium studio product photograph: the eyeglasses LARGE and centred, filling " +
     "most of the frame, on a deep charcoal / near-black seamless studio backdrop, " +
     "dramatic soft key lighting with subtle reflections and a gentle shadow " +
-    "beneath, slight three-quarter angle. Moody, high-end, cinematic catalogue " +
-    "hero shot." + FRAME_LOCK,
-  // Dark moody lifestyle flat-lay for the studio card.
-  life:
-    "Premium lifestyle flat-lay product photograph: the eyeglasses resting at a " +
-    "natural angle on a dark slate or dark wood surface beside a minimal eyewear " +
-    "case, low-key moody lighting, deep soft shadows, elegant dark palette." + FRAME_LOCK,
-  // Dark dramatic macro for the detail card.
-  dark:
-    "Dramatic macro close-up product photograph: the eyeglasses on a dark charcoal " +
+    "beneath, slight three-quarter angle. Moody, high-end, cinematic catalogue hero shot.",
+  "Premium studio product photograph: the eyeglasses FLOATING weightlessly at a " +
+    "dynamic angle against a dark graphite backdrop, levitation product shot with " +
+    "a soft spotlight, crisp rim light tracing the frame edges, faint soft shadow " +
+    "far below. High-end, editorial, gravity-defying hero shot.",
+  "Premium product photograph: the eyeglasses resting on a low stone pedestal on " +
+    "warm cream marble, soft directional morning window light, long elegant " +
+    "shadows, warm luxurious palette. Quiet-luxury catalogue hero shot.",
+  "Premium studio product photograph: the eyeglasses centred on a glossy black " +
+    "acrylic surface with a mirror reflection beneath, a single focused snoot " +
+    "spotlight from above, deep black background. Dramatic spotlight hero shot.",
+];
+const SIMPLE_PROMPT =
+  "Clean e-commerce catalogue HERO product photograph, shot fresh in a studio: " +
+  "the eyeglasses FRONT-ON and fully open, standing upright and facing the camera, " +
+  "so BOTH lenses and the COMPLETE frame outline are entirely visible, symmetric " +
+  "and unobstructed — nothing cropped or cut off, the frame large and filling most " +
+  "of the width. " +
+  "COMPLETELY REPLACE and DISCARD the background, surface, table, wall, shadow and " +
+  "lighting from the reference photo. Render a brand-new PURE WHITE (#FFFFFF) " +
+  "seamless studio sweep with bright, soft, even high-key lighting and only a " +
+  "subtle soft contact shadow directly under the frame. Do NOT keep any grey, " +
+  "beige, wooden or coloured backdrop, table edge or window from the reference — " +
+  "the background must be solid clean white, edge to edge. " +
+  "This must look like a polished online-store / marketplace MAIN listing image on " +
+  "white, NOT a casual snapshot.";
+const CLOSEUP_VARIATIONS = [
+  "Dramatic macro close-up product photograph: the eyeglasses on a dark charcoal " +
     "slate surface, the temple and hinge in sharp focus, moody directional rim " +
-    "lighting with subtle reflections, high-end and premium." + FRAME_LOCK,
-  // Clean marketplace hero — front-on, fully visible, plain WHITE background.
-  // The classic online-store / TikTok-Shop main listing image.
-  front:
-    "Clean e-commerce catalogue HERO product photograph, shot fresh in a studio: " +
-    "the eyeglasses FRONT-ON and fully open, standing upright and facing the camera, " +
-    "so BOTH lenses and the COMPLETE frame outline are entirely visible, symmetric " +
-    "and unobstructed — nothing cropped or cut off, the frame large and filling most " +
-    "of the width. " +
-    // The reference is a casual snapshot on a grey table — Gemini kept that. Force
-    // a full background replacement onto pure white.
-    "COMPLETELY REPLACE and DISCARD the background, surface, table, wall, shadow and " +
-    "lighting from the reference photo. Render a brand-new PURE WHITE (#FFFFFF) " +
-    "seamless studio sweep with bright, soft, even high-key lighting and only a " +
-    "subtle soft contact shadow directly under the frame. Do NOT keep any grey, " +
-    "beige, wooden or coloured backdrop, table edge or window from the reference — " +
-    "the background must be solid clean white, edge to edge. " +
-    "This must look like a polished online-store / marketplace MAIN listing image on " +
-    "white, NOT a casual snapshot." + FRAME_LOCK,
-};
+    "lighting with subtle reflections, high-end and premium.",
+  "Extreme macro product photograph shot on a 100mm f/2.8 macro lens: the NOSE " +
+    "PADS and bridge of the eyeglasses in razor-sharp focus, the rest falling into " +
+    "creamy bokeh, dark studio backdrop, precise jewel-like lighting.",
+  "Extreme macro product photograph: the TEMPLE ARM and hinge mechanism in sharp " +
+    "focus showing the material finish and craftsmanship, shallow depth of field, " +
+    "dark premium backdrop with a warm accent rim light.",
+  "Extreme macro product photograph: the LENS EDGE and rim of the frame in sharp " +
+    "focus, light refracting cleanly through the lens bevel, deep dark background, " +
+    "cool precise studio lighting. Optical-precision detail shot.",
+];
+const FEATURE_PROMPT =
+  "A clean, ANGLED macro shot of the eyeglasses with the LENSES catching a soft " +
+  "sweep of light, shot on a 100mm macro lens. Minimalist studio background with a " +
+  "smooth, subtle gradient (soft grey or gentle warm tone), the glasses positioned " +
+  "off-centre at a dynamic three-quarter angle with GENEROUS clean NEGATIVE SPACE " +
+  "around and in front of the lenses — technical infographics will be overlaid on " +
+  "this image later, so keep the lens area and surrounding space clean, uncluttered " +
+  "and evenly lit. Premium optical-technology advertising style.";
+const MODEL_LOOKS = [
+  "a stylish Filipina woman in her late 20s with a warm, confident expression",
+  "a stylish Filipino man in his early 30s with a relaxed, self-assured look",
+  "a fresh-faced Filipina university student with a bright, natural smile",
+  "a distinguished Filipino professional in his 40s with a composed, approachable air",
+];
+const MODEL_SETTINGS = [
+  "a sunlit modern coffee shop by the window",
+  "a clean minimalist studio with a soft neutral backdrop",
+  "a bright contemporary office lounge",
+  "a golden-hour city street with soft bokeh lights",
+];
 
-// Generate the requested scenes. Returns { scenes, errors } — `scenes` is a map
-// { key: absPath } for the scenes that succeeded, `errors` is [{key, message}]
-// for the ones that didn't. The caller decides what to do with failures (the
-// shop pipeline retries then fails loudly rather than showing the raw upload).
-export async function generateShopScenes({
-  refPaths, project, location, outDir, keys = ["clean", "life", "dark"], log = () => {},
-}) {
-  const refParts = [];
-  for (const p of (refPaths || []).slice(0, 3)) {
+// Build the full prompt for one shot. `index` cycles the variations; `opts`:
+//   modelNote  — free-text override of the model description (model shots)
+//   varietyNames — array of colorway names (group shots)
+export function buildShotPrompt(type, index = 0, opts = {}) {
+  const i = Math.max(0, index);
+  if (type === "hero")
+    return PHOTOGRAPHER_PERSONA + HERO_VARIATIONS[i % HERO_VARIATIONS.length] + PRODUCT_LOCK + NO_PEOPLE;
+  if (type === "simple")
+    return PHOTOGRAPHER_PERSONA + SIMPLE_PROMPT + PRODUCT_LOCK + NO_PEOPLE;
+  if (type === "closeup")
+    return PHOTOGRAPHER_PERSONA + CLOSEUP_VARIATIONS[i % CLOSEUP_VARIATIONS.length] + PRODUCT_LOCK + NO_PEOPLE;
+  if (type === "feature")
+    return PHOTOGRAPHER_PERSONA + FEATURE_PROMPT + PRODUCT_LOCK + NO_PEOPLE;
+  if (type === "model") {
+    const look = (opts.modelNote || "").trim() || MODEL_LOOKS[i % MODEL_LOOKS.length];
+    const setting = MODEL_SETTINGS[i % MODEL_SETTINGS.length];
+    return (
+      PHOTOGRAPHER_PERSONA +
+      `Shot on an 85mm portrait lens: ${look}, wearing the exact eyeglasses from ` +
+      `the reference photos, in ${setting}. Cinematic lifestyle lighting, shallow ` +
+      "depth of field, the face and glasses in the UPPER-MIDDLE of the frame with " +
+      "clean space in the lower third. The eyeglasses are the clear focal " +
+      "accessory of the image — worn naturally, perfectly in place." +
+      WARDROBE_RULE +
+      FINISHED_LOOK_RULE +
+      PRODUCT_LOCK
+    );
+  }
+  if (type === "group") {
+    const names = (opts.varietyNames || []).filter(Boolean);
+    const n = Math.max(2, names.length);
+    return (
+      PHOTOGRAPHER_PERSONA +
+      `A creative premium flat-lay / staggered studio composition showing ${n} ` +
+      `COLORWAYS of the SAME eyeglasses frame model together in one shot` +
+      (names.length ? ` (${names.join(", ")})` : "") +
+      ". Arrange them elegantly — staggered heights, overlapping diagonals or a " +
+      "clean grid — on a premium dark or neutral studio surface with soft " +
+      "directional lighting. EVERY pair must have the IDENTICAL frame shape and " +
+      "design; ONLY the colour/material differs, and each colorway must match its " +
+      "labelled reference photos exactly. All pairs fully visible, none cropped." +
+      PRODUCT_LOCK +
+      NO_PEOPLE
+    );
+  }
+  throw new Error(`unknown shot type "${type}"`);
+}
+
+// Read reference photos into Gemini inline parts (max N, unreadable skipped).
+export async function buildRefParts(paths, max = 3) {
+  const parts = [];
+  for (const p of (paths || []).slice(0, max)) {
     try {
       const buf = await fs.readFile(p);
-      refParts.push({ inlineData: { mimeType: mimeFor(p), data: buf.toString("base64") } });
+      parts.push({ inlineData: { mimeType: mimeFor(p), data: buf.toString("base64") } });
     } catch { /* skip unreadable ref */ }
   }
-  if (!refParts.length) throw new Error("no readable reference photos");
+  return parts;
+}
 
+// Interleave labelled variety references for a GROUP shot, so the model binds
+// each colorway name to its photos:
+//   [ {text:"VARIETY 1 — 'Champagne'…"}, img, img, {text:"VARIETY 2 — …"}, img, … ]
+export async function buildGroupRefParts(varieties, perVariety = 2, maxVarieties = 4) {
+  const parts = [];
+  for (let i = 0; i < Math.min(varieties.length, maxVarieties); i++) {
+    const v = varieties[i];
+    const imgs = await buildRefParts(v.photos || [], perVariety);
+    if (!imgs.length) continue;
+    parts.push({ text: `VARIETY ${i + 1} — "${v.name}". Reference photos of this colorway:` });
+    parts.push(...imgs);
+  }
+  return parts;
+}
+
+// ── Generic shot runner ─────────────────────────────────────────────────────
+// jobs: [{ id, prompt, refParts }] → writes <outDir>/<id>.png per success.
+// Returns { made: {id: absPath}, errors: [{id, message}] }.
+// Keeps the proven anti-429 behavior: 3 attempts with exponential backoff
+// (4s, 8s) per job + 2.5s spacing between jobs.
+export async function generateShopShots({ jobs, project, location, outDir, log = () => {} }) {
   const ai = new GoogleGenAI({ vertexai: true, project, location });
   const model = process.env.REF_MODEL || "gemini-2.5-flash-image";
   await fs.mkdir(outDir, { recursive: true });
   const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  const out = {};
+  const made = {};
   const errors = [];
-  for (const key of keys) {
-    const prompt = SHOP_SCENES[key];
-    if (!prompt) continue;
+  for (const job of jobs) {
+    if (!job.refParts?.length) {
+      errors.push({ id: job.id, message: "no readable reference photos" });
+      continue;
+    }
     let buf = null;
     let lastErr = "";
     const MAX = 3;
@@ -106,31 +238,57 @@ export async function generateShopScenes({
         const t0 = Date.now();
         const resp = await ai.models.generateContent({
           model,
-          contents: [{ role: "user", parts: [...refParts, { text: prompt }] }],
+          contents: [{ role: "user", parts: [...job.refParts, { text: job.prompt }] }],
           config: { imageConfig: { aspectRatio: "1:1" } },
         });
         const parts = resp.candidates?.[0]?.content?.parts || [];
         for (const pt of parts) if (pt.inlineData?.data) { buf = Buffer.from(pt.inlineData.data, "base64"); break; }
         if (!buf) throw new Error("no image in response");
-        log(`  ✓ scene '${key}' (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+        log(`  ✓ shot '${job.id}' (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
       } catch (e) {
         lastErr = String(e?.message || e);
-        log(`  scene '${key}' attempt ${attempt}/${MAX}: ${lastErr.slice(0, 160)}`);
-        // Exponential backoff (4s, 8s, …) gives a hot rate limiter time to cool
-        // off — far more effective against 429s than retrying immediately.
+        log(`  shot '${job.id}' attempt ${attempt}/${MAX}: ${lastErr.slice(0, 160)}`);
+        // Exponential backoff gives a hot rate limiter time to cool off.
         if (attempt < MAX) await delay(4000 * attempt);
       }
     }
     if (buf) {
-      const fp = path.join(outDir, `${key}.png`);
+      const fp = path.join(outDir, `${job.id}.png`);
       await fs.writeFile(fp, buf);
-      out[key] = fp;
+      made[job.id] = fp;
     } else {
-      errors.push({ key, message: lastErr || "unknown" });
+      errors.push({ id: job.id, message: lastErr || "unknown" });
     }
-    // Space scenes out so a burst of calls doesn't trip the image model's
-    // per-minute rate limit (a common cause of whole-batch failures).
+    // Space jobs out so a burst of calls doesn't trip the per-minute limit.
     await delay(2500);
   }
-  return { scenes: out, errors };
+  return { made, errors };
+}
+
+// ── Legacy fixed 4-scene API (old 5-card pipeline; behavior unchanged) ─────
+export const SHOP_SCENES = {
+  clean: HERO_VARIATIONS[0] + PRODUCT_LOCK + NO_PEOPLE,
+  life:
+    "Premium lifestyle flat-lay product photograph: the eyeglasses resting at a " +
+    "natural angle on a dark slate or dark wood surface beside a minimal eyewear " +
+    "case, low-key moody lighting, deep soft shadows, elegant dark palette." +
+    PRODUCT_LOCK + NO_PEOPLE,
+  dark: CLOSEUP_VARIATIONS[0] + PRODUCT_LOCK + NO_PEOPLE,
+  front: SIMPLE_PROMPT + PRODUCT_LOCK + NO_PEOPLE,
+};
+
+export async function generateShopScenes({
+  refPaths, project, location, outDir, keys = ["clean", "life", "dark"], log = () => {},
+}) {
+  const refParts = await buildRefParts(refPaths, 3);
+  if (!refParts.length) throw new Error("no readable reference photos");
+  const jobs = keys
+    .filter((k) => SHOP_SCENES[k])
+    .map((k) => ({ id: k, prompt: SHOP_SCENES[k], refParts }));
+  const { made, errors } = await generateShopShots({ jobs, project, location, outDir, log });
+  // Old shape: scenes keyed by scene name, errors [{key, message}].
+  return {
+    scenes: made,
+    errors: errors.map((e) => ({ key: e.id, message: e.message })),
+  };
 }

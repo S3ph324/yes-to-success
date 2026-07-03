@@ -38,7 +38,7 @@ export type SpecId = (typeof SPEC_IDS)[number];
 
 export const shopListingCardSchema = z.object({
   photoSrc: z.string().default(""),
-  cardType: z.enum(["hero", "front", "studio", "detail", "variant", "specs"]).default("hero"),
+  cardType: z.enum(["hero", "front", "studio", "detail", "variant", "specs", "model", "group"]).default("hero"),
   specs: z.array(z.enum(SPEC_IDS)).default([]),
   productName: z.string().default(""),
   colorLabel: z.string().default(""),
@@ -92,7 +92,7 @@ const stroke = (c: string, w = 2) => ({ fill: "none", stroke: c, strokeWidth: w,
 
 type SpecDef = { id: SpecId; label: string; chip: string; line: string; icon: (c: string) => React.ReactNode };
 
-const SPECS: Record<SpecId, SpecDef> = {
+export const SPECS: Record<SpecId, SpecDef> = {
   anti_rad: {
     id: "anti_rad", label: "Anti-Radiation", chip: "Blocks Blue Light",
     line: "Filters blue light from screens for easier all-day wear.",
@@ -289,6 +289,54 @@ export const ShopListingCard: React.FC<ShopListingCardProps> = ({
         {featureLine && (
           <div style={{ position: "absolute", bottom: inset, left: inset, right: Math.round(width * 0.2), fontFamily: ARCHIVO, fontWeight: 400, fontSize: Math.round(22 * scale), color: "rgba(255,255,255,0.92)", lineHeight: 1.3, textShadow: tShadow }}>{featureLine}</div>
         )}
+      </AbsoluteFill>
+    );
+  }
+
+  // ── MODEL — worn by a model; text stays bottom-anchored, never on the face ─
+  if (cardType === "model") {
+    return (
+      <AbsoluteFill style={{ background: DARK, overflow: "hidden", opacity: fade, fontFamily: ARCHIVO }}>
+        {cover()}
+        {scrim}
+        <div style={{ position: "absolute", top: inset, left: inset }}>{logoEl(logoSize)}</div>
+        <div style={{ position: "absolute", left: inset, right: inset, bottom: Math.round(height * 0.055) }}>
+          {productName && (
+            <div style={{ fontFamily: ARCHIVO, fontWeight: 900, fontStretch: "125%", fontSize: Math.round(56 * scale), color: "#fff", textTransform: "uppercase", lineHeight: 1.0, letterSpacing: "0.01em", textShadow: tShadow }}>{productName}</div>
+          )}
+          {colorLabel && (
+            <div style={{ fontFamily: ARCHIVO, fontWeight: 700, fontSize: Math.round(20 * scale), letterSpacing: "0.28em", color: gold, textTransform: "uppercase", marginTop: Math.round(10 * scale), textShadow: tShadow }}>{colorLabel}</div>
+          )}
+        </div>
+      </AbsoluteFill>
+    );
+  }
+
+  // ── GROUP — multiple colorways in one shot ─────────────────────────────────
+  if (cardType === "group") {
+    const names = colorLabel.split(" · ").map((s) => s.trim()).filter(Boolean);
+    return (
+      <AbsoluteFill style={{ background: DARK, overflow: "hidden", opacity: fade, fontFamily: ARCHIVO }}>
+        {cover()}
+        {scrim}
+        <div style={{ position: "absolute", top: inset, left: inset }}>{logoEl(logoSize)}</div>
+        {names.length > 1 && (
+          <div style={{ position: "absolute", top: inset, right: inset, textAlign: "right", fontFamily: ARCHIVO, fontWeight: 700, fontSize: Math.round(15 * scale), letterSpacing: "0.3em", color: gold, textShadow: tShadow }}>
+            {names.length} COLORWAYS
+          </div>
+        )}
+        <div style={{ position: "absolute", left: inset, right: inset, bottom: Math.round(height * 0.055) }}>
+          {productName && (
+            <div style={{ fontFamily: ARCHIVO, fontWeight: 900, fontStretch: "125%", fontSize: Math.round(52 * scale), color: "#fff", textTransform: "uppercase", lineHeight: 1.0, textShadow: tShadow }}>{productName}</div>
+          )}
+          {names.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: Math.round(10 * scale), marginTop: Math.round(14 * scale) }}>
+              {names.map((n) => (
+                <span key={n} style={{ fontFamily: ARCHIVO, fontWeight: 700, fontSize: Math.round(17 * scale), letterSpacing: "0.12em", color: "#fff", textTransform: "uppercase", border: `2px solid ${gold}`, borderRadius: 999, padding: `${Math.round(7 * scale)}px ${Math.round(16 * scale)}px`, textShadow: tShadow }}>{n}</span>
+              ))}
+            </div>
+          )}
+        </div>
       </AbsoluteFill>
     );
   }

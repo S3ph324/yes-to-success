@@ -33,6 +33,11 @@ import {
   calcMetaShopListingCard,
 } from "./QuoteCard/ShopListingCard";
 import {
+  FeatureInfographicCard,
+  featureInfographicCardSchema,
+  calcMetaFeatureInfographicCard,
+} from "./QuoteCard/FeatureInfographicCard";
+import {
   AdviceCard,
   adviceCardSchema,
   calcMetaAdviceCard,
@@ -218,6 +223,29 @@ export const RemotionRoot: React.FC = () => {
           logoDarkSrc: "",
           brandGold: "#F4B400",
           brandRed: "#E11522",
+          aspectRatio: "1:1" as const,
+        }}
+      />
+
+      <Composition
+        id="FeatureInfographicCard"
+        component={FeatureInfographicCard}
+        durationInFrames={60}
+        fps={30}
+        width={1080}
+        height={1080}
+        schema={featureInfographicCardSchema}
+        calculateMetadata={calcMetaFeatureInfographicCard}
+        defaultProps={{
+          photoSrc: "",
+          specs: [],
+          productName: "",
+          claimLine: "",
+          brandName: "Tranzzie Eyeglasses",
+          logoSrc: "",
+          brandGold: "#F4B400",
+          focusX: 0.46,
+          focusY: 0.4,
           aspectRatio: "1:1" as const,
         }}
       />

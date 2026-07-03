@@ -76,7 +76,7 @@ const useAdviceFonts = () => {
 
 export const AdviceCard: React.FC<AdviceCardProps> = ({
   handle, avatarSrc, hook, lines, payoff,
-  theme, brandGold, brandRed,
+  theme, brandGold,
 }) => {
   useAdviceFonts();
   const frame = useCurrentFrame();

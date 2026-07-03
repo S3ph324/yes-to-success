@@ -2,7 +2,7 @@
 # Multi-client Quote Poster Studio + B-Roll (scripts/jurie-dashboard.mjs).
 # Separate from the existing Dockerfile (which ships server.mjs) — do not
 # merge. Includes Chromium deps for Remotion rendering.
-# (Redeploy trigger — v0.31.2: Format Hacker niche/topic/idea field steers scrape + adaptation.)
+# (Redeploy trigger — v0.33.0: TikTok Shop virtual photography studio — varieties, shot menu, model/group/feature.)
 
 FROM node:20-bookworm-slim AS base
 

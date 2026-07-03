@@ -1116,6 +1116,9 @@ app.post("/api/generate", extraRefUpload.fields([
   { name: "styleRef", maxCount: 1 },
   { name: "shopPhoto", maxCount: 10 },
   { name: "adviceAvatar", maxCount: 1 },
+  // Studio Builder varieties — multer.fields() needs fixed names, so the UI
+  // assigns each variety row an index (max 8 varieties × 6 photos).
+  ...Array.from({ length: 8 }, (_, i) => ({ name: `variantPhotos_${i}`, maxCount: 6 })),
 ]), async (req, res) => {
   const {
     client,
@@ -1161,15 +1164,62 @@ app.post("/api/generate", extraRefUpload.fields([
   // rotates the brief topics when none is given).
   const isAdvice = client === "jurie" && (posterType === "advice" || posterType === "tweet");
   if (!t && !isEyeglassesBatch && !isShop && !isAdvice) return res.status(400).json({ error: "Topic is required." });
-  if (isShop && !(filesMap.shopPhoto || []).length)
+  // Studio Builder plan (Virtual Photography Studio). Validated BEFORE the
+  // cost guard so a bad request never burns a rate-limit slot.
+  let shopPlanReq = null;
+  let shopVarietiesMeta = [];
+  const SHOP_SHOT_TYPES = ["hero", "simple", "model", "closeup", "feature", "group", "specs"];
+  if (isShop && req.body?.shopPlan) {
+    try { shopPlanReq = JSON.parse(req.body.shopPlan); } catch { shopPlanReq = null; }
+    if (!shopPlanReq) return res.status(400).json({ error: "Invalid studio plan." });
+    const seen = new Set();
+    for (const v of (Array.isArray(shopPlanReq.varieties) ? shopPlanReq.varieties : []).slice(0, 8)) {
+      const name = String(v?.name || "").trim().slice(0, 30);
+      const field = String(v?.field || "");
+      if (!name || !/^variantPhotos_[0-7]$/.test(field) || seen.has(field)) continue;
+      seen.add(field);
+      if (!(filesMap[field] || []).length) continue;
+      shopVarietiesMeta.push({ name, field });
+    }
+    if (!shopVarietiesMeta.length)
+      return res.status(400).json({ error: "Add at least one variety with a name and photos." });
+    const shots = {};
+    for (const ty of SHOP_SHOT_TYPES) shots[ty] = Math.max(0, Math.min(6, parseInt(shopPlanReq?.shots?.[ty], 10) || 0));
+    shots.specs = Math.min(1, shots.specs);
+    if (shopVarietiesMeta.length < 2) shots.group = 0;
+    const per = shots.hero + shots.simple + shots.model + shots.closeup + shots.feature;
+    const totalAi = (shopPlanReq.identicalSets ? per * shopVarietiesMeta.length : per) + shots.group;
+    if (totalAi < 1 && !shots.specs)
+      return res.status(400).json({ error: "Pick at least one shot in the shot menu." });
+    if (totalAi > 12)
+      return res.status(400).json({ error: `That's ${totalAi} AI shots — max 12 per batch (job time limit). Reduce quantities or varieties.` });
+    shopPlanReq._shots = shots;
+    shopPlanReq._totalAi = totalAi;
+  } else if (isShop && !(filesMap.shopPhoto || []).length) {
     return res.status(400).json({ error: "Upload at least one product photo." });
+  }
   if (!guard(req, res)) return;
 
   const extraRefPaths = (filesMap.extraRef || []).map((f) => f.path);
   const styleRefPath  = (filesMap.styleRef  || [])[0]?.path || "";
   // Shop product photos — convert any HEIC (iPhone) to JPEG so Remotion reads them.
   let shopPhotoPaths = [];
-  if (isShop) {
+  let shopPlanEnv = "";
+  if (isShop && shopPlanReq) {
+    const varieties = [];
+    for (const vm of shopVarietiesMeta) {
+      const photos = await Promise.all(
+        (filesMap[vm.field] || []).map((f) => convertHeicInPlace(f.path).catch(() => f.path)),
+      );
+      varieties.push({ name: vm.name, photos });
+    }
+    shopPlanEnv = JSON.stringify({
+      varieties,
+      shots: shopPlanReq._shots,
+      identicalSets: !!shopPlanReq.identicalSets,
+      modelNote: String(shopPlanReq.modelNote || "").trim().slice(0, 160),
+    });
+  } else if (isShop) {
     shopPhotoPaths = await Promise.all(
       (filesMap.shopPhoto || []).map((f) => convertHeicInPlace(f.path).catch(() => f.path)),
     );
@@ -1183,7 +1233,9 @@ app.post("/api/generate", extraRefUpload.fields([
   const glassesStyle = String(eyeglassesStyle || "showcase");
 
   const header = isShop
-    ? `▶ [${c.label}] TikTok Shop cards for "${String(shopProduct || "product").slice(0, 40)}" · ${shopPhotoPaths.length} photo(s)…`
+    ? shopPlanEnv
+      ? `▶ [${c.label}] Shop studio for "${String(shopProduct || "product").slice(0, 40)}" · ${shopVarietiesMeta.length} variet${shopVarietiesMeta.length === 1 ? "y" : "ies"} · ${shopPlanReq._totalAi} AI shot(s)${shopPlanReq._shots.specs ? " + specs card" : ""}…`
+      : `▶ [${c.label}] TikTok Shop cards for "${String(shopProduct || "product").slice(0, 40)}" · ${shopPhotoPaths.length} photo(s)…`
     : isAdvice
     ? `▶ [${c.label}] ${n} ${posterType === "tweet" ? "tweet-style" : "advice"} card(s)` + (t ? ` about "${t}"` : "") + "…"
     : `▶ [${c.label}] ${n} ${isEyeglasses ? "eyeglasses showcase " : ""}poster(s) about "${t}"` +
@@ -1246,6 +1298,7 @@ app.post("/api/generate", extraRefUpload.fields([
   if (aspectDist) env.DASHBOARD_ASPECT_DIST = String(aspectDist);
   // TikTok Shop product-listing inputs for render-shop-tranzzie.mjs.
   if (isShop) {
+    if (shopPlanEnv) env.DASHBOARD_SHOP_PLAN = shopPlanEnv; // studio mode
     env.DASHBOARD_SHOP_PHOTOS = JSON.stringify(shopPhotoPaths);
     let specArr = [];
     try { specArr = JSON.parse(shopSpecs || "[]"); } catch {}
@@ -2784,17 +2837,22 @@ async function viewGenerate(){
    // as a badge on the poster, never invented by the AI.
    +'<div id="ea_promo_cell" style="flex:1;display:none"><input id="ea_promo" maxlength="40" placeholder="Optional promo (e.g. 35% OFF until June 30)" style="width:100%;font-size:15px;padding:14px 16px"></div>'
    +'</div>'
-   // ── TikTok Shop panel (shown when poster type = shop) ─────────────────────
+   // ── TikTok Shop panel — Virtual Photography Studio ────────────────────────
    +'<div id="shop_box" style="display:none;margin-bottom:18px;padding:16px 18px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:12px">'
-   +'<div class="section-label" style="margin:0 0 6px">Product photos</div>'
-   +'<p class="muted" style="margin:0 0 10px;font-size:11px">Upload 1\\u20132 clear photos of the eyeglasses frame (plain, well-lit background is best). The tool uses AI to generate <b>studio, lifestyle & close-up product shots of your exact frame</b>, then brands them \\u2014 square 1:1 for TikTok Shop. The frame is kept as-is; the scenes around it are generated.</p>'
-   +'<label class="ea-drop" id="shop_drop" style="padding:22px 14px;display:block;text-align:center;border:1.5px dashed var(--line2);border-radius:10px;cursor:pointer;position:relative">'
-   +'<input type="file" id="shop_photos" accept="image/*" multiple style="position:absolute;inset:0;opacity:0;cursor:pointer">'
-   +'<span id="shop_photos_lbl" class="muted" style="font-size:13px">Click or drop product photos here</span></label>'
-   +'<div id="shop_thumbs" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px"></div>'
+   +'<div class="section-label" style="margin:0 0 6px">Frame varieties (colorways)</div>'
+   +'<p class="muted" style="margin:0 0 10px;font-size:11px">Each variety is ONE colorway of the same frame model with its own reference photos (1\\u20136 each; plain, well-lit shots work best). The AI re-shoots <b>your exact frame</b> in commercial scenes \\u2014 square 1:1 for TikTok Shop. Your uploads are reference-only and never posted.</p>'
+   +'<div id="shv_list"></div>'
+   +'<button type="button" class="sec" id="shv_add" style="margin-top:2px">\\uff0b Add variety</button>'
+   +'<div class="section-label" style="margin:18px 0 8px">Shot menu <span class="muted" style="font-size:11px;text-transform:none;letter-spacing:0">(pick how many of each)</span></div>'
+   +'<div id="shm_list"></div>'
+   +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px">'
+   +'<label style="display:inline-flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="shv_identical" style="width:auto;margin:0;accent-color:var(--gold)"> Render identical sets <span class="muted" style="font-size:11px">(full shot menu per variety)</span></label>'
+   +'<span id="shm_math" class="muted" style="font-size:12px;margin-left:auto"></span>'
+   +'</div>'
+   +'<div id="shm_modelnote" style="display:none;margin-top:12px"><label style="font-size:11px;display:block;margin-bottom:5px">Model look (optional)</label>'
+   +'<input id="shop_modelnote" maxlength="160" placeholder="e.g. a stylish Filipina in her 30s, office attire \\u2014 leave blank to rotate defaults" style="width:100%;padding:12px 14px"></div>'
    +'<div class="row" style="gap:12px;margin-top:16px">'
    +'<div style="flex:1"><label style="font-size:11px;display:block;margin-bottom:5px">Product / model name</label><input id="shop_product" maxlength="40" placeholder="e.g. Aria" style="width:100%;padding:12px 14px"></div>'
-   +'<div style="flex:1"><label style="font-size:11px;display:block;margin-bottom:5px">Colour label</label><input id="shop_color" maxlength="30" placeholder="e.g. Black / Gold" style="width:100%;padding:12px 14px"></div>'
    +'<div style="flex:1"><label style="font-size:11px;display:block;margin-bottom:5px">Material / finish</label><input id="shop_material" maxlength="30" placeholder="e.g. Lightweight Metal" style="width:100%;padding:12px 14px"></div>'
    +'</div>'
    +'<div class="section-label" style="margin:16px 0 8px">Lens specs <span class="muted" style="font-size:11px;text-transform:none;letter-spacing:0">(shown as feature icons + a spec card)</span></div>'
@@ -3067,28 +3125,99 @@ async function viewGenerate(){
   syncPtypeCards();
   paintSubject();
   // ── TikTok Shop photo preview + spec chips ───────────────────────────────
-  if($('#shop_photos')){
-    $('#shop_photos').onchange=()=>{
-      const fs=Array.from($('#shop_photos').files||[]).slice(0,5);
-      $('#shop_photos_lbl').textContent=fs.length?fs.length+' photo(s) selected':'Click or drop product photos here';
-      const tw=$('#shop_thumbs');tw.innerHTML='';
-      fs.forEach(f=>{const u=URL.createObjectURL(f);const d=document.createElement('div');
-        d.style.cssText='width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--line2);background:#0d0d0f';
-        d.innerHTML='<img src="'+u+'" style="width:100%;height:100%;object-fit:cover">';tw.appendChild(d);});
-    };
+  // ── TikTok Shop — Virtual Photography Studio wiring ──────────────────────
+  const shmDefs=[
+    ['hero','Hero Product','Dramatic lighting \\u2014 floating, pedestal, cinematic dark'],
+    ['simple','Simple Product','Front-on, pure white catalog background'],
+    ['model','Model Shoot','Worn by a photorealistic model (85mm portrait)'],
+    ['closeup','Extreme Close-up','Macro details \\u2014 hinges, nose pads, materials'],
+    ['feature','Feature / Infographic','Angled lens shot + programmatic tech overlays'],
+    ['group','Group Shot','Multiple colorways together (needs 2+ varieties)'],
+    ['specs','Specs Card','Text-only lens-features card \\u2014 no AI call'],
+  ];
+  const shmQty={hero:1,simple:1,model:0,closeup:1,feature:0,group:0,specs:1};
+  const shvGlyph='<path d="M10 32c0-5 4-8 9-8s9 3 9 9-4 10-9 10-9-4-9-11zm20 1c0-6 4-9 9-9s9 3 9 8-4 11-9 11-9-4-9-10zM28 30h4" fill="none" stroke="CLR" stroke-width="2.6" stroke-linecap="round"/>';
+  function shmThumb(t){
+    const wrap=(inner,bg)=>'<svg viewBox="0 0 58 58" width="54" height="54" style="border-radius:9px;background:'+(bg||'#141210')+';border:1px solid var(--line2);flex:none">'+inner+'</svg>';
+    const g=c=>shvGlyph.replace('CLR',c);
+    if(t==='hero')return wrap('<path d="M29 4L14 27h30z" fill="rgba(244,180,0,.16)"/>'+g('#F4B400'));
+    if(t==='simple')return wrap(g('#26221a'),'#f4f2ee');
+    if(t==='model')return wrap('<circle cx="29" cy="21" r="11" fill="none" stroke="#8a8a92" stroke-width="2.2"/><path d="M13 52c2-9 8-14 16-14s14 5 16 14" fill="none" stroke="#8a8a92" stroke-width="2.2"/><circle cx="24" cy="21" r="4.2" fill="none" stroke="#F4B400" stroke-width="2"/><circle cx="34" cy="21" r="4.2" fill="none" stroke="#F4B400" stroke-width="2"/><path d="M28 21h2" stroke="#F4B400" stroke-width="2"/>');
+    if(t==='closeup')return wrap('<circle cx="26" cy="26" r="14" fill="none" stroke="#F4B400" stroke-width="2.4"/><path d="M36 36l10 10" stroke="#F4B400" stroke-width="3" stroke-linecap="round"/><circle cx="26" cy="26" r="3" fill="#F4B400"/>');
+    if(t==='feature')return wrap('<circle cx="27" cy="27" r="8" fill="none" stroke="#e8f4ff" stroke-width="1.5" stroke-dasharray="1 4"/><circle cx="27" cy="27" r="14" fill="none" stroke="#F4B400" stroke-width="1.5" stroke-dasharray="1 5"/><circle cx="27" cy="27" r="2.4" fill="#fff"/><path d="M39 19h11M39 33h11" stroke="#e8f4ff" stroke-width="1.5"/>');
+    if(t==='group')return wrap('<g transform="translate(-5,-8) scale(.9)">'+g('#F4B400')+'</g><g transform="translate(9,12) scale(.9)">'+g('#8a8a92')+'</g>');
+    return wrap('<path d="M15 16h20M15 26h29M15 36h24M15 46h27" stroke="#F4B400" stroke-width="2.5" stroke-linecap="round"/>');
   }
-  // Drag-and-drop onto the shop dropzone → populate the file input + preview.
-  if($('#shop_drop')&&$('#shop_photos')){
-    const dz=$('#shop_drop');const hi=on=>{dz.style.borderColor=on?'var(--gold)':'var(--line2)';};
+  function shvCount(){return Array.from(document.querySelectorAll('#shv_list .shv_row')).filter(r=>((r.querySelector('.shv_name')||{}).value||'').trim()&&(((r.querySelector('.shv_files')||{}).files)||[]).length).length;}
+  function shmTotal(){
+    const per=shmQty.hero+shmQty.simple+shmQty.model+shmQty.closeup+shmQty.feature;
+    const v=Math.max(1,shvCount());
+    const ident=($('#shv_identical')||{}).checked;
+    return (ident?per*v:per)+((shvCount()>=2)?shmQty.group:0);
+  }
+  function shmPaint(){
+    Array.from(document.querySelectorAll('#shm_list .shm_row')).forEach(r=>{
+      const t=r.dataset.t;const q=r.querySelector('.shm_q');if(q)q.textContent=shmQty[t];
+      if(t==='group')r.style.opacity=shvCount()<2?'.45':'1';
+    });
+    const mn=$('#shm_modelnote');if(mn)mn.style.display=shmQty.model>0?'':'none';
+    const total=shmTotal();const m=$('#shm_math');
+    if(m){const ident=($('#shv_identical')||{}).checked;const v=shvCount()||1;
+      m.textContent=total+' AI shot(s)'+(shmQty.specs?' + specs card':'')+(ident?' \\u00b7 '+v+' variet'+(v===1?'y':'ies')+' \\u00d7 full menu':'')+' \\u00b7 ~'+Math.max(1,Math.ceil(total*0.7))+' min'+(total>12?' \\u2014 OVER THE 12-SHOT CAP':'');
+      m.style.color=total>12?'#ff6b6b':'';}
+  }
+  function shmRender(){
+    $('#shm_list').innerHTML=shmDefs.map(d=>'<div class="shm_row" data-t="'+d[0]+'" style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">'
+      +shmThumb(d[0])
+      +'<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700">'+d[1]+'</div><div class="muted" style="font-size:11.5px">'+d[2]+'</div></div>'
+      +'<div style="display:flex;align-items:center;gap:10px"><button type="button" class="sec shm_minus" style="width:34px;padding:6px 0">\\u2212</button>'
+      +'<span class="shm_q" style="min-width:18px;text-align:center;font-weight:800">'+shmQty[d[0]]+'</span>'
+      +'<button type="button" class="sec shm_plus" style="width:34px;padding:6px 0">\\uff0b</button></div></div>').join('');
+    Array.from(document.querySelectorAll('#shm_list .shm_row')).forEach(r=>{
+      const t=r.dataset.t;const max=(t==='specs')?1:6;
+      r.querySelector('.shm_minus').onclick=()=>{shmQty[t]=Math.max(0,shmQty[t]-1);shmPaint();};
+      r.querySelector('.shm_plus').onclick=()=>{if(t==='group'&&shvCount()<2)return toast('Add a second variety (with a name + photos) first',true);shmQty[t]=Math.min(max,shmQty[t]+1);shmPaint();};
+    });
+    shmPaint();
+  }
+  function shvWireRow(row){
+    const inp=row.querySelector('.shv_files');const lbl=row.querySelector('.shv_lbl');const tw=row.querySelector('.shv_thumbs');const dz=row.querySelector('.shv_drop');
+    const paint=()=>{const fs=Array.from(inp.files||[]).slice(0,6);
+      lbl.textContent=fs.length?fs.length+' photo(s)':'Click or drop photos';
+      tw.innerHTML='';fs.forEach(f=>{const u=URL.createObjectURL(f);const d=document.createElement('div');
+        d.style.cssText='width:46px;height:46px;border-radius:7px;overflow:hidden;border:1px solid var(--line2);background:#0d0d0f';
+        d.innerHTML='<img src="'+u+'" style="width:100%;height:100%;object-fit:cover">';tw.appendChild(d);});
+      shmPaint();};
+    inp.onchange=paint;
+    row.querySelector('.shv_name').addEventListener('input',shmPaint);
+    const hi=on=>{dz.style.borderColor=on?'var(--gold)':'var(--line2)';};
     dz.addEventListener('dragover',e=>{e.preventDefault();hi(true);});
     dz.addEventListener('dragleave',()=>hi(false));
-    dz.addEventListener('drop',e=>{
-      e.preventDefault();hi(false);
-      const files=Array.from((e.dataTransfer&&e.dataTransfer.files)||[]).filter(f=>f.type.indexOf('image/')===0).slice(0,5);
+    dz.addEventListener('drop',e=>{e.preventDefault();hi(false);
+      const files=Array.from((e.dataTransfer&&e.dataTransfer.files)||[]).filter(f=>f.type.indexOf('image/')===0).slice(0,6);
       if(!files.length)return;
-      try{const dt=new DataTransfer();files.forEach(f=>dt.items.add(f));$('#shop_photos').files=dt.files;}catch(_){}
-      $('#shop_photos').dispatchEvent(new Event('change'));
-    });
+      try{const dt=new DataTransfer();files.forEach(f=>dt.items.add(f));inp.files=dt.files;}catch(_){}
+      inp.dispatchEvent(new Event('change'));});
+    row.querySelector('.shv_del').onclick=()=>{row.remove();shmPaint();};
+  }
+  function shvAddRow(){
+    if(document.querySelectorAll('#shv_list .shv_row').length>=8)return toast('Max 8 varieties',true);
+    const row=document.createElement('div');row.className='shv_row';
+    row.style.cssText='display:flex;gap:12px;align-items:flex-start;margin-bottom:10px;padding:10px;border:1px solid var(--line2);border-radius:10px';
+    row.innerHTML='<div style="flex:0 0 190px"><label style="font-size:10.5px;display:block;margin-bottom:4px">Tag / colorway name</label>'
+      +'<input class="shv_name" maxlength="30" placeholder="e.g. Champagne" style="width:100%;padding:10px 12px">'
+      +'<button type="button" class="sec shv_del" style="margin-top:8px;font-size:11px;padding:5px 10px">\\u2715 Remove</button></div>'
+      +'<div style="flex:1"><label class="shv_drop" style="padding:14px 10px;display:block;text-align:center;border:1.5px dashed var(--line2);border-radius:9px;cursor:pointer;position:relative">'
+      +'<input type="file" class="shv_files" accept="image/*" multiple style="position:absolute;inset:0;opacity:0;cursor:pointer">'
+      +'<span class="shv_lbl muted" style="font-size:12.5px">Click or drop photos</span></label>'
+      +'<div class="shv_thumbs" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div></div>';
+    $('#shv_list').appendChild(row);shvWireRow(row);shmPaint();
+  }
+  if($('#shop_box')){
+    shmRender();
+    shvAddRow();
+    $('#shv_add').onclick=()=>shvAddRow();
+    const ident=$('#shv_identical');if(ident)ident.onchange=shmPaint;
   }
   document.querySelectorAll('input[name="shop_spec"]').forEach(c=>{
     const paint=()=>{c.closest('.spec-chip').style.borderColor=c.checked?'var(--gold)':'var(--line2)';
@@ -3387,8 +3516,22 @@ async function viewGenerate(){
     const isEyePoster = posterType === 'eyeglasses';
     const isShopPoster = posterType === 'shop';
     const isAdvicePoster = posterType === 'advice' || posterType === 'tweet';
-    const shopFiles = isShopPoster && $('#shop_photos') ? Array.from($('#shop_photos').files||[]).slice(0,5) : [];
-    if(isShopPoster && !shopFiles.length) return toast('Upload at least one product photo',true);
+    // Studio Builder: collect varieties (name + files) from the DOM rows.
+    let shopPlanObj=null,shopVarFiles=[];
+    if(isShopPoster){
+      const rows=Array.from(document.querySelectorAll('#shv_list .shv_row'));
+      const varieties=[];
+      rows.forEach(r=>{
+        const name=((r.querySelector('.shv_name')||{}).value||'').trim();
+        const files=Array.from(((r.querySelector('.shv_files')||{}).files)||[]).slice(0,6);
+        if(name&&files.length){varieties.push({name:name,field:'variantPhotos_'+varieties.length});shopVarFiles.push(files);}
+      });
+      if(!varieties.length) return toast('Add at least one variety with a name and photos',true);
+      const total=shmTotal();
+      if(total<1&&!shmQty.specs) return toast('Pick at least one shot in the shot menu',true);
+      if(total>12) return toast('That is '+total+' AI shots \\u2014 max 12 per batch. Reduce quantities or varieties.',true);
+      shopPlanObj={varieties:varieties,shots:{hero:shmQty.hero,simple:shmQty.simple,model:shmQty.model,closeup:shmQty.closeup,feature:shmQty.feature,group:shmQty.group,specs:shmQty.specs},identicalSets:!!(($('#shv_identical')||{}).checked),modelNote:(($('#shop_modelnote')||{}).value||'').trim()};
+    }
     // Topic required only for quote posters; optional for eyeglasses/advice; n/a for shop.
     const topic = isEyePoster
       ? ($('#ea_headline')&&$('#ea_headline').value.trim() || '')
@@ -3408,11 +3551,11 @@ async function viewGenerate(){
       if(av)fd.append('adviceAvatar',av);
       fd.append('characterId','');
     }else if(posterType==='shop'){
-      shopFiles.forEach(f=>fd.append('shopPhoto',f));
+      shopVarFiles.forEach((files,i)=>files.forEach(f=>fd.append('variantPhotos_'+i,f)));
+      fd.append('shopPlan',JSON.stringify(shopPlanObj));
       const specs=Array.from(document.querySelectorAll('input[name="shop_spec"]:checked')).map(c=>c.value);
       fd.append('shopSpecs',JSON.stringify(specs));
       fd.append('shopProduct',($('#shop_product')||{}).value||'');
-      fd.append('shopColor',($('#shop_color')||{}).value||'');
       fd.append('shopMaterial',($('#shop_material')||{}).value||'');
       fd.append('shopAspect',($('#shop_aspect')||{}).value||'1:1');
       fd.append('characterId','');
