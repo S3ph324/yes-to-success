@@ -400,17 +400,27 @@ const desc =
   (specPhrase ? `Features: ${specPhrase}.\n` : "") +
   `Lightweight, everyday eyewear. Free 15-day returns.\n` +
   `Shop now on TikTok. #Tranzzie #Eyeglasses #BlueLightGlasses`;
-await fs.writeFile(path.join(exportDir, "captions.txt"),
-  cardPlan.map((p, i) => `#${i + 1} (${p.type}${p.colorLabel ? ` · ${p.colorLabel}` : ""})\n${i === 0 ? desc : ""}\n${"-".repeat(40)}\n`).join("\n"));
+// Guarded: on a full volume these writes ENOSPC — warn and keep the clean
+// exit-code path instead of dying on an uncaughtException.
+try {
+  await fs.writeFile(path.join(exportDir, "captions.txt"),
+    cardPlan.map((p, i) => `#${i + 1} (${p.type}${p.colorLabel ? ` · ${p.colorLabel}` : ""})\n${i === 0 ? desc : ""}\n${"-".repeat(40)}\n`).join("\n"));
+} catch (e) {
+  console.warn(`  could not write captions.txt: ${e?.message || e}`);
+}
 
 // ── Contact-sheet gallery ─────────────────────────────────────────────────
 const rows = cardPlan.map((p, i) =>
   `<figure><img src="./${p.fname}"/><figcaption><b>#${i + 1}</b> ${p.type}${p.colorLabel ? ` · ${p.colorLabel}` : ""}</figcaption></figure>`,
 ).join("\n");
-await fs.writeFile(path.join(exportDir, "gallery.html"),
-  `<!doctype html><meta charset="utf-8"><title>Tranzzie shop cards ${stamp}</title>` +
-  `<style>body{background:#111;color:#eee;font-family:system-ui;margin:24px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}figure{margin:0;background:#1c1c1c;border-radius:8px;overflow:hidden}img{width:100%;display:block}figcaption{padding:9px 11px;font-size:13px;color:#bbb}</style>` +
-  `<h1>Tranzzie — ${cardPlan.length} shop cards — ${stamp}</h1><div class="grid">${rows}</div>`);
+try {
+  await fs.writeFile(path.join(exportDir, "gallery.html"),
+    `<!doctype html><meta charset="utf-8"><title>Tranzzie shop cards ${stamp}</title>` +
+    `<style>body{background:#111;color:#eee;font-family:system-ui;margin:24px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}figure{margin:0;background:#1c1c1c;border-radius:8px;overflow:hidden}img{width:100%;display:block}figcaption{padding:9px 11px;font-size:13px;color:#bbb}</style>` +
+    `<h1>Tranzzie — ${cardPlan.length} shop cards — ${stamp}</h1><div class="grid">${rows}</div>`);
+} catch (e) {
+  console.warn(`  could not write gallery.html: ${e?.message || e}`);
+}
 
 console.log(`\n✓ ${cardPlan.length - failed}/${cardPlan.length} card(s)\n  Export : ${exportDir}\n  Review : ${path.join(exportDir, "gallery.html")}`);
 if (failed) console.log(`  (${failed} failed — see warnings)`);

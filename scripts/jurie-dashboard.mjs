@@ -1369,10 +1369,38 @@ function startGenJob(spec) {
       const lowBar = Math.max(0.08, (totalGB || 0) * 0.12); // ~12% free, min 80 MB
       if (freeGB < lowBar)
         log("⚠ Volume nearly full — delete old batches in the Batches tab, or increase the Railway volume size. (Your batches are NOT auto-deleted.)");
+      // HARD FLOOR — with effectively zero space the render is guaranteed to
+      // ENOSPC *after* burning the whole Gemini budget (this happened: 8/8
+      // shots generated, then every card write failed). Fail fast BEFORE the
+      // child spawns so no AI quota is spent. We still never auto-delete —
+      // freeing space stays the user's call.
+      const minFree = Math.max(0.02, parseFloat(process.env.STUDIO_MIN_FREE_GB || "0.05") || 0.05);
+      if (freeGB < minFree) {
+        log(`✗ Volume is effectively FULL (${Math.round(freeGB * 1024)} MB free — need at least ${Math.round(minFree * 1024)} MB). Aborting BEFORE any AI generation so your image quota is not wasted.`);
+        log("  Free up space first — delete old batches in the Batches tab, or grow the Railway volume (click the volume → Live Resize) — then run this batch again.");
+        // Mark aborted; the .then() below skips the spawn and chains the queue.
+        // (Chaining HERE would race: startGenJob reassigns `job`, and the
+        // .then() would then see the new job as running and spawn this one.)
+        job.running = false;
+        job.code = 1;
+        job.abortedPreflight = true;
+      }
     }
   })();
   preflight.catch(() => {}).then(() => {
-    if (!job?.running) return; // cleared while pruning
+    if (!job?.running) {
+      // Preflight aborted (disk full): advance the queue like a normal exit
+      // would — each queued batch gets its own fail-fast + clear message.
+      if (job?.abortedPreflight) {
+        const nxt = genQueue.shift();
+        if (nxt) {
+          log(`▶ Starting queued batch: ${nxt.label} (${genQueue.length} more waiting)…`);
+          try { startGenJob(nxt.spec); }
+          catch (e) { log(`✗ Queued batch failed to start: ${e.message}`); }
+        }
+      }
+      return; // otherwise: cleared while pruning — keep old behavior
+    }
     const child = spawn("node", args, { cwd: projectRoot, env });
     job.child = child;
     const onData = (b) =>

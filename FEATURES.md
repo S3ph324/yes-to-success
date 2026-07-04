@@ -1,7 +1,7 @@
 # Quote Poster Studio — Features & System Reference
 
 > Living documentation of what the automation / web app does.
-> Reflects **v0.33.0**. Update the version line when features change.
+> Reflects **v0.34.1**. Update the version line when features change.
 
 A **multi-client content factory** for social-media brands. You give it a topic;
 it writes the copy in your brand voice, generates imagery with AI, renders
@@ -197,6 +197,11 @@ Single login (`admin1`), persistent sessions across refresh/redeploy.
 
 ## 8. Reliability & safety guards
 
+- **Fail-fast on a full volume** — the generate preflight aborts BEFORE any
+  Gemini call when free space is below a hard floor (default 50 MB, env
+  `STUDIO_MIN_FREE_GB`), so a full disk can't burn the image budget and then
+  fail at render. Exports are still never auto-deleted — freeing space stays
+  the user's call (Batches tab, or grow the Railway volume).
 - **Never ships blank posters** — a photo poster with a failed background is
   skipped (text-only `advice`/`tweet` and intentional `useFlatBg` flat posters
   are exempt and render normally).
