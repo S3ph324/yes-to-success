@@ -14,7 +14,7 @@
 // closeup, feature, model, group — each with variations cycled by shot index so
 // quantities > 1 produce distinct photography, and all carrying the
 // professional-photographer persona.
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -35,19 +35,26 @@ export const PHOTOGRAPHER_PERSONA =
 
 // Product fidelity — applies to every shot type (models included).
 const PRODUCT_LOCK =
-  " CRITICAL — the eyeglasses are a REAL product being sold: reproduce the EXACT " +
-  "pair shown in the reference photo(s). Match the frame SHAPE, COLOUR, MATERIAL, " +
-  "rim thickness, temples and hinges EXACTLY. Do NOT redesign, recolour, restyle, " +
-  "swap, or invent a different pair. " +
-  // The seller's photos are casual snapshots with a lens DISPLAY STICKER / brand
-  // logo — temporary packaging, not the product. Keep the frame, clean the lenses.
-  "IMPORTANT — render the lenses perfectly CLEAN and CLEAR: REMOVE any display " +
-  "stickers, brand logos, retailer labels, price tags, holograms or printed text " +
-  "that appear on the lenses or frame in the reference (e.g. a lens sticker) — " +
-  "those are temporary packaging and must NOT appear in the result. This is a " +
-  "fresh studio RE-SHOOT, not a copy of the reference snapshot. " +
-  "Absolutely NO text, letters, numbers, logos, labels or watermarks anywhere. " +
-  "Photorealistic commercial product photography, ultra-clean, sharp, high detail, 1:1 square.";
+  " PRODUCT FIDELITY — the eyeglasses are a REAL product being sold. Use the " +
+  "reference photo(s) ONLY to identify the exact frame DESIGN — its SHAPE, COLOUR, " +
+  "MATERIAL, rim thickness, temple/arm style and hinges — and reproduce that design " +
+  "EXACTLY. Do NOT redesign, recolour, restyle, swap or invent a different pair. " +
+  // Force a genuine re-shoot: Gemini otherwise anchors to the reference's small,
+  // casual, hand-held composition and effectively returns the input photo.
+  "But COMPLETELY IGNORE the reference's composition, framing, scale, camera angle, " +
+  "background, surface, hands and lighting — this is a BRAND-NEW professional studio " +
+  "photograph shot from scratch, NOT a copy, crop, filter or light edit of the " +
+  "reference snapshot. Recompose entirely. " +
+  // The seller's photos carry a lens DISPLAY STICKER and often an engraved brand
+  // name on the temple/arm — temporary packaging / third-party marks, not part of
+  // the product being sold. Strip them ALL.
+  "CLEAN THE PRODUCT: the lenses must be perfectly clean and clear, and there must " +
+  "be ZERO text, letters, numbers, brand names, logos, stickers, retailer labels, " +
+  "price tags, holograms or watermarks ANYWHERE in the final image — including any " +
+  "printed or ENGRAVED markings on the lenses, temples or arms visible in the " +
+  "reference (e.g. a lens sticker, or a brand name etched on the arm). Remove them all. " +
+  "Photorealistic, award-winning commercial product photography — ultra-sharp, crisp, " +
+  "high detail, correct proportions, 1:1 square.";
 
 // Applied to every shot type EXCEPT model shoots.
 const NO_PEOPLE = " No people, no faces, no hands, no mannequins.";
@@ -72,6 +79,11 @@ const FINISHED_LOOK_RULE =
   "the frames are already worn, settled, and perfectly in place.";
 
 // ── Shot-type prompt builders (variations cycle by shot index) ─────────────
+// The eyeglasses must dominate the hero — Gemini otherwise renders them small.
+const HERO_LEAD =
+  "The eyeglasses are the HERO of this image: render them LARGE, prominent and in " +
+  "TACK-SHARP focus, filling roughly 65–80% of the frame — never small, distant, " +
+  "soft, tilted-away or lost in the scene. ";
 const HERO_VARIATIONS = [
   "Premium studio product photograph: the eyeglasses LARGE and centred, filling " +
     "most of the frame, on a deep charcoal / near-black seamless studio backdrop, " +
@@ -102,28 +114,36 @@ const SIMPLE_PROMPT =
   "the background must be solid clean white, edge to edge. " +
   "This must look like a polished online-store / marketplace MAIN listing image on " +
   "white, NOT a casual snapshot.";
+// Get VERY close — these must read as extreme detail crops, not full-product shots.
+const CLOSEUP_LEAD =
+  "This is an EXTREME MACRO detail crop, NOT a full-product shot. Get extremely " +
+  "close — the single detail below must FILL 70–90% of the frame; the rest of the " +
+  "eyeglasses is out of frame or in soft bokeh. Shot on a 100mm f/2.8 macro lens at " +
+  "near 1:1 magnification, tack-sharp on the detail. ";
 const CLOSEUP_VARIATIONS = [
-  "Dramatic macro close-up product photograph: the eyeglasses on a dark charcoal " +
-    "slate surface, the temple and hinge in sharp focus, moody directional rim " +
-    "lighting with subtle reflections, high-end and premium.",
-  "Extreme macro product photograph shot on a 100mm f/2.8 macro lens: the NOSE " +
-    "PADS and bridge of the eyeglasses in razor-sharp focus, the rest falling into " +
-    "creamy bokeh, dark studio backdrop, precise jewel-like lighting.",
-  "Extreme macro product photograph: the TEMPLE ARM and hinge mechanism in sharp " +
-    "focus showing the material finish and craftsmanship, shallow depth of field, " +
-    "dark premium backdrop with a warm accent rim light.",
-  "Extreme macro product photograph: the LENS EDGE and rim of the frame in sharp " +
-    "focus, light refracting cleanly through the lens bevel, deep dark background, " +
-    "cool precise studio lighting. Optical-precision detail shot.",
+  "Detail: the HINGE and its screw where the temple meets the front, showing the " +
+    "metalwork and articulation, on a dark charcoal backdrop with moody directional " +
+    "rim lighting and subtle reflections. Jewel-like premium detail shot.",
+  "Detail: the NOSE PADS and bridge, showing the pad arms and the material of the " +
+    "bridge, dark studio backdrop, precise jewel-like lighting, the rest melting " +
+    "into creamy bokeh.",
+  "Detail: the TEMPLE ARM tip and its material finish/texture, showing the " +
+    "craftsmanship and any subtle sheen, shallow depth of field, dark premium " +
+    "backdrop with a warm accent rim light.",
+  "Detail: the LENS EDGE and frame rim, light refracting cleanly through the lens " +
+    "bevel, deep dark background, cool precise studio lighting. Optical-precision detail shot.",
 ];
 const FEATURE_PROMPT =
-  "A clean, ANGLED macro shot of the eyeglasses with the LENSES catching a soft " +
-  "sweep of light, shot on a 100mm macro lens. Minimalist studio background with a " +
-  "smooth, subtle gradient (soft grey or gentle warm tone), the glasses positioned " +
-  "off-centre at a dynamic three-quarter angle with GENEROUS clean NEGATIVE SPACE " +
-  "around and in front of the lenses — technical infographics will be overlaid on " +
-  "this image later, so keep the lens area and surrounding space clean, uncluttered " +
-  "and evenly lit. Premium optical-technology advertising style.";
+  "A clean, ANGLED studio macro of the eyeglasses with the LENSES catching a soft " +
+  "sweep of light, shot on a 100mm macro lens. COMPOSITION IS CRITICAL: place the " +
+  "eyeglasses so that ONE lens is the clear focal point, positioned in the " +
+  "LEFT-CENTRE of the frame — its centre roughly 38% from the left edge and 42% " +
+  "down from the top — angled at a dynamic three-quarter view, the lens surface " +
+  "clean and fully unobstructed. Keep the ENTIRE RIGHT HALF of the frame as clean, " +
+  "empty NEGATIVE SPACE: a smooth subtle gradient (soft cool grey or gentle warm " +
+  "tone), evenly lit and uncluttered — technical infographic graphics will be " +
+  "overlaid there later, so nothing else may sit in the right half. Premium " +
+  "optical-technology advertising style.";
 const MODEL_LOOKS = [
   "a stylish Filipina woman in her late 20s with a warm, confident expression",
   "a stylish Filipino man in his early 30s with a relaxed, self-assured look",
@@ -143,11 +163,11 @@ const MODEL_SETTINGS = [
 export function buildShotPrompt(type, index = 0, opts = {}) {
   const i = Math.max(0, index);
   if (type === "hero")
-    return PHOTOGRAPHER_PERSONA + HERO_VARIATIONS[i % HERO_VARIATIONS.length] + PRODUCT_LOCK + NO_PEOPLE;
+    return PHOTOGRAPHER_PERSONA + HERO_LEAD + HERO_VARIATIONS[i % HERO_VARIATIONS.length] + PRODUCT_LOCK + NO_PEOPLE;
   if (type === "simple")
     return PHOTOGRAPHER_PERSONA + SIMPLE_PROMPT + PRODUCT_LOCK + NO_PEOPLE;
   if (type === "closeup")
-    return PHOTOGRAPHER_PERSONA + CLOSEUP_VARIATIONS[i % CLOSEUP_VARIATIONS.length] + PRODUCT_LOCK + NO_PEOPLE;
+    return PHOTOGRAPHER_PERSONA + CLOSEUP_LEAD + CLOSEUP_VARIATIONS[i % CLOSEUP_VARIATIONS.length] + PRODUCT_LOCK + NO_PEOPLE;
   if (type === "feature")
     return PHOTOGRAPHER_PERSONA + FEATURE_PROMPT + PRODUCT_LOCK + NO_PEOPLE;
   if (type === "model") {
@@ -210,6 +230,48 @@ export async function buildGroupRefParts(varieties, perVariety = 2, maxVarieties
     parts.push(...imgs);
   }
   return parts;
+}
+
+// Vision: find the CENTRE of the most prominent eyeglass lens in a generated
+// feature image, as fractions {x,y} (0–1, top-left origin). The infographic
+// overlay anchors its rings + leader lines here so they land ON the real lens
+// regardless of where the image model actually placed the glasses. One cheap
+// gemini-2.5-flash call; falls back to a sensible left-centre default on any
+// failure so it never blocks a render.
+export async function detectLensFocus({ imagePath, project, location }) {
+  const fallback = { x: 0.4, y: 0.42 };
+  try {
+    const buf = await fs.readFile(imagePath);
+    const ai = new GoogleGenAI({ vertexai: true, project, location });
+    const resp = await ai.models.generateContent({
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+      contents: [{
+        role: "user",
+        parts: [
+          { inlineData: { mimeType: mimeFor(imagePath), data: buf.toString("base64") } },
+          { text: "This image shows a pair of eyeglasses. Give the position of the CENTRE of the single most prominent, clearest lens as fractions of the image dimensions (x = fraction from the left edge, y = fraction from the top; both 0 to 1)." },
+        ],
+      }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: { x: { type: Type.NUMBER }, y: { type: Type.NUMBER } },
+          required: ["x", "y"],
+        },
+        temperature: 0,
+      },
+    });
+    const j = JSON.parse(resp.text);
+    let x = Number(j.x), y = Number(j.y);
+    if (!isFinite(x) || !isFinite(y)) return fallback;
+    // Clamp into a safe band so rings/leader-lines never run off the canvas.
+    x = Math.max(0.14, Math.min(0.62, x));
+    y = Math.max(0.2, Math.min(0.7, y));
+    return { x, y };
+  } catch {
+    return fallback;
+  }
 }
 
 // ── Generic shot runner ─────────────────────────────────────────────────────

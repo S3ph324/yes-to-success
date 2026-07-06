@@ -31,6 +31,7 @@ import {
   buildGroupRefParts,
   buildRefParts,
   buildShotPrompt,
+  detectLensFocus,
   generateShopScenes,
   generateShopShots,
 } from "./lib/shop-scenes.mjs";
@@ -348,6 +349,13 @@ let failed = 0;
 for (let i = 0; i < cardPlan.length; i++) {
   const p = cardPlan[i];
   const outPath = path.join(exportDir, p.fname);
+  // Feature cards: detect where the lens actually is in the generated image so
+  // the overlay rings + leader lines land ON the glasses (not a hardcoded spot).
+  let featureFocus = { x: 0.4, y: 0.42 };
+  if (p.composition === "FeatureInfographicCard" && p.photoRel && gcpProject) {
+    featureFocus = await detectLensFocus({ imagePath: path.join(publicDir, p.photoRel), project: gcpProject, location: gcpLocation });
+    console.log(`  lens focus for ${p.fname}: ${featureFocus.x.toFixed(2)}, ${featureFocus.y.toFixed(2)}`);
+  }
   const inputProps = p.composition === "FeatureInfographicCard"
     ? {
         photoSrc: p.photoRel,
@@ -357,8 +365,8 @@ for (let i = 0; i < cardPlan.length; i++) {
         brandName: client.label || "Tranzzie Eyeglasses",
         logoSrc,
         brandGold,
-        focusX: 0.46,
-        focusY: 0.4,
+        focusX: featureFocus.x,
+        focusY: featureFocus.y,
         aspectRatio: aspect,
       }
     : {
