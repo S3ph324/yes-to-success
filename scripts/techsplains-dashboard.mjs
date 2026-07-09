@@ -15,6 +15,7 @@ import { createRequire } from "node:module";
 import { resolveClient, projectRoot } from "./lib/client.mjs";
 import { listStamps, loadBatch, safeExportPath } from "./lib/techsplains-batches.mjs";
 import { readQueue, setEntry, keyFor } from "./lib/techsplains-queue.mjs";
+import { computeSlots } from "./lib/techsplains-schedule.mjs";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -153,6 +154,84 @@ app.post("/api/approve", async (req, res) => {
     if (typeof caption === "string") patch.caption = caption;
     const entry = await setEntry(keyFor(stamp, file), patch);
     res.json({ ok: true, entry });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Queue: approved (or later) videos across all batches ------------------
+app.get("/api/queue", async (_req, res) => {
+  try {
+    const queue = await readQueue();
+    const stamps = await listStamps(EXPORT_DIR);
+    const items = [];
+    for (const stamp of stamps) {
+      const { videos } = await loadBatch(EXPORT_DIR, stamp);
+      for (const v of videos) {
+        const entry = queue[keyFor(stamp, v.file)];
+        if (!entry || !["approved", "ready", "scheduled", "posted"].includes(entry.status)) continue;
+        items.push({
+          stamp,
+          file: v.file,
+          title: v.title,
+          caption: entry.caption ?? v.caption,
+          status: entry.status,
+          scheduledAt: entry.scheduledAt || null,
+          bufferUrl: entry.bufferUrl || null,
+        });
+      }
+    }
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Compute posting slots. The techsplains-schedule lib is the single source of
+// truth for the date math — the browser asks the server rather than mirroring
+// it (perDay is clamped 1-4; the lib's spacing degrades above that).
+app.post("/api/queue/plan", (req, res) => {
+  const perDay = Math.min(4, Math.max(1, parseInt(req.body?.perDay, 10) || 1));
+  const timeOfDay = /^\d{2}:\d{2}$/.test(req.body?.timeOfDay) ? req.body.timeOfDay : "09:00";
+  const startDate = /^\d{4}-\d{2}-\d{2}$/.test(req.body?.startDate) ? req.body.startDate : undefined;
+  const count = Math.max(0, parseInt(req.body?.count, 10) || 0);
+  res.json({ slots: computeSlots({ perDay, timeOfDay, startDate, count }) });
+});
+
+// Persist per-item scheduled times (from the plan the client just computed).
+app.post("/api/queue/schedule", async (req, res) => {
+  const items = Array.isArray(req.body?.items) ? req.body.items : [];
+  try {
+    for (const it of items) {
+      if (!it.stamp || !it.file || !it.scheduledAt) continue;
+      await setEntry(keyFor(it.stamp, it.file), { scheduledAt: it.scheduledAt });
+    }
+    res.json({ ok: true, count: items.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Send approved videos to the posting queue. Task 8 will add direct Buffer
+// upload here; until Buffer is connected this is the manual-handoff fallback —
+// mark approved → ready so the operator queues the files into Buffer's
+// composer themselves. Autoposting only ever happens on THIS explicit action.
+app.post("/api/queue/send", async (_req, res) => {
+  try {
+    const queue = await readQueue();
+    const stamps = await listStamps(EXPORT_DIR);
+    let count = 0;
+    for (const stamp of stamps) {
+      const { videos } = await loadBatch(EXPORT_DIR, stamp);
+      for (const v of videos) {
+        const entry = queue[keyFor(stamp, v.file)];
+        if (entry?.status === "approved") {
+          await setEntry(keyFor(stamp, v.file), { status: "ready" });
+          count += 1;
+        }
+      }
+    }
+    res.json({ mode: "manual", sent: count, failed: 0, exportHint: EXPORT_DIR });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -168,9 +168,74 @@ function wireCard(stamp, v) {
   document.getElementById("x-" + id).onclick = () => set("rejected");
 }
 
-// ---- Queue (filled in Task 6) ----------------------------------------------
-function renderQueue() {
-  app.innerHTML = `<p class="muted">Queue — coming next.</p>`;
+// ---- Queue -----------------------------------------------------------------
+async function renderQueue() {
+  app.innerHTML = `<p class="muted">Loading queue…</p>`;
+  let items;
+  try { items = await api("/api/queue"); } catch (e) { app.innerHTML = `<p class="muted">Error: ${escapeHTML(e.message)}</p>`; return; }
+  if (!items.length) { app.innerHTML = `<p class="muted">Nothing approved yet. Approve videos in Review to queue them.</p>`; return; }
+
+  const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+  app.innerHTML = `
+    <div class="row">
+      <div><label>Posts per day</label><input id="q-per" type="number" value="1" min="1" max="4" style="width:120px"></div>
+      <div><label>Time of day</label><input id="q-time" type="time" value="09:00"></div>
+      <div><label>Start date</label><input id="q-start" type="date" value="${tomorrow}"></div>
+      <button class="btn ghost" id="q-plan">Auto-schedule</button>
+      <button class="btn" id="q-send">Add to posting queue</button>
+    </div>
+    <p class="muted" id="q-msg" style="margin-top:10px"></p>
+    <div class="grid" id="q-grid"></div>`;
+
+  const draw = () => {
+    document.getElementById("q-grid").innerHTML = items.map((it, i) => `
+      <div class="card">
+        <video src="/api/video/${it.stamp}/${encodeURIComponent(it.file)}" controls preload="metadata"></video>
+        <div class="body">
+          <h3>${escapeHTML(it.title)} <span class="badge ${it.status}">${it.status}</span></h3>
+          <label>Scheduled</label>
+          <input type="datetime-local" data-i="${i}" class="q-when"
+            value="${it.scheduledAt ? toLocalInput(it.scheduledAt) : ""}">
+          ${it.bufferUrl ? `<div class="muted" style="margin-top:6px"><a href="${it.bufferUrl}" target="_blank" style="color:var(--yellow)">View in Buffer ↗</a></div>` : ""}
+        </div>
+      </div>`).join("");
+    document.querySelectorAll(".q-when").forEach((el) =>
+      el.onchange = (e) => { items[+e.target.dataset.i].scheduledAt = new Date(e.target.value).toISOString(); });
+  };
+  draw();
+
+  document.getElementById("q-plan").onclick = async () => {
+    const r = await api("/api/queue/plan", { method: "POST", body: JSON.stringify({
+      perDay: +document.getElementById("q-per").value,
+      timeOfDay: document.getElementById("q-time").value,
+      startDate: document.getElementById("q-start").value,
+      count: items.length,
+    }) });
+    items.forEach((it, i) => (it.scheduledAt = r.slots[i]));
+    draw();
+  };
+
+  document.getElementById("q-send").onclick = async () => {
+    const msg = document.getElementById("q-msg");
+    await api("/api/queue/schedule", { method: "POST", body: JSON.stringify({ items: items.map((it) => ({ stamp: it.stamp, file: it.file, scheduledAt: it.scheduledAt })) }) });
+    msg.textContent = "Adding to queue…";
+    try {
+      const r = await api("/api/queue/send", { method: "POST", body: JSON.stringify({}) });
+      msg.textContent = r.mode === "manual"
+        ? `${r.sent} video(s) marked ready for manual posting. Files: ${r.exportHint}`
+        : `Scheduled ${r.sent} post(s) to Buffer.` + (r.failed ? ` ${r.failed} failed.` : "");
+      renderQueue();
+    } catch (e) { msg.textContent = "!! " + e.message; }
+  };
+}
+
+// Format an ISO instant as a datetime-local value in the viewer's LOCAL wall
+// clock. Using toISOString() here would show UTC (e.g. 9am scheduled → "1am"
+// in Manila); datetime-local inputs are read back as local, so display local.
+function toLocalInput(iso) {
+  const d = new Date(iso);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 function escapeHTML(s) { return (s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
