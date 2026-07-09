@@ -41,3 +41,10 @@ test("concurrent setEntry calls do not lose writes", async () => {
   assert.equal(q.b.status, "rejected");
   assert.equal(q.c.status, "pending");
 });
+
+test("readQueue throws on corrupt JSON instead of silently returning {}", async () => {
+  const { readQueue, QUEUE_PATH } = await import("../lib/techsplains-queue.mjs");
+  await fs.writeFile(QUEUE_PATH, "{ this is not json");
+  await assert.rejects(() => readQueue());
+  await fs.rm(QUEUE_PATH, { force: true }); // reset so later ordering is clean
+});

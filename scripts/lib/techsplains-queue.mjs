@@ -15,25 +15,34 @@ export const keyFor = (stamp, file) => `${stamp}/${file}`;
 export async function readQueue() {
   try {
     return JSON.parse(await fs.readFile(QUEUE_PATH, "utf-8"));
-  } catch {
-    return {};
+  } catch (err) {
+    if (err.code === "ENOENT") return {}; // no queue yet — first run
+    throw err; // corrupt JSON / EACCES / etc: fail loud, never pave over state
   }
 }
 
 async function writeQueue(obj) {
   await fs.mkdir(path.dirname(QUEUE_PATH), { recursive: true });
-  await fs.writeFile(QUEUE_PATH, JSON.stringify(obj, null, 2));
+  const tmp = `${QUEUE_PATH}.${process.pid}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(obj, null, 2));
+  await fs.rename(tmp, QUEUE_PATH); // atomic on the same filesystem
 }
 
 let chain = Promise.resolve();
 export function setEntry(key, patch) {
-  chain = chain.then(async () => {
+  const run = async () => {
     const q = await readQueue();
     q[key] = { ...(q[key] || {}), ...patch };
     await writeQueue(q);
     return q[key];
-  });
-  return chain;
+  };
+  // Serialize after the previous op settles (run whether it resolved OR
+  // rejected), but never let a prior failure poison later calls: the chain
+  // continues from a swallowed copy while the caller still sees the real
+  // outcome of THEIR write.
+  const result = chain.then(run, run);
+  chain = result.catch(() => {});
+  return result;
 }
 
 export async function getEntry(key) {
