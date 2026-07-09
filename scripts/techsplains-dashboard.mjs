@@ -59,7 +59,13 @@ app.post("/api/generate", (req, res) => {
     res.write(`\n!! spawn error: ${err.message}\n__EXIT__ 1\n`);
     res.end();
   });
-  req.on("close", () => child.killed || child.kill());
+  // Kill the pipeline only if the CLIENT actually disconnects mid-run. Use
+  // res 'close' (not req 'close' — Express fires that the instant the request
+  // body is read, which would SIGTERM the pipeline immediately) and guard on
+  // writableFinished so a normal completion never triggers a kill.
+  res.on("close", () => {
+    if (!res.writableFinished && !child.killed) child.kill();
+  });
 });
 
 // --- Batches: list stamps with per-video approval status -------------------
