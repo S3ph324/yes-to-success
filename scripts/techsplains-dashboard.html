@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Techsplains Studio</title>
+<style>
+  :root { --bg:#111; --panel:#1c1c1c; --line:#2a2a2a; --ink:#eee; --sub:#9a9a9a; --yellow:#FFDD00; --green:#34d399; --red:#f87171; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,sans-serif; }
+  header { display:flex; align-items:center; gap:16px; padding:14px 22px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:5; }
+  header h1 { font-size:16px; margin:0; letter-spacing:.5px; }
+  header .v { font-size:11px; color:var(--sub); }
+  nav { display:flex; gap:6px; margin-left:auto; }
+  nav button { background:var(--panel); color:var(--ink); border:1px solid var(--line); padding:7px 14px; border-radius:8px; cursor:pointer; font-size:13px; }
+  nav button.on { background:var(--yellow); color:#111; font-weight:700; border-color:var(--yellow); }
+  main { padding:22px; max-width:1100px; margin:0 auto; }
+  .row { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; }
+  label { display:block; font-size:12px; color:var(--sub); margin-bottom:4px; }
+  input, textarea { background:#0d0d0d; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:9px 11px; font-size:14px; font-family:inherit; }
+  textarea { width:100%; min-height:64px; resize:vertical; }
+  .btn { background:var(--yellow); color:#111; font-weight:700; border:none; padding:11px 20px; border-radius:9px; cursor:pointer; font-size:14px; }
+  .btn:disabled { opacity:.5; cursor:not-allowed; }
+  .btn.ghost { background:var(--panel); color:var(--ink); border:1px solid var(--line); font-weight:500; }
+  pre#log { background:#0a0a0a; border:1px solid var(--line); border-radius:10px; padding:14px; height:340px; overflow:auto; font-size:12px; line-height:1.5; white-space:pre-wrap; margin-top:16px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:18px; margin-top:18px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .card video { width:100%; display:block; aspect-ratio:9/16; background:#000; }
+  .card .body { padding:11px 13px; }
+  .card h3 { font-size:14px; margin:0 0 8px; }
+  .card .acts { display:flex; gap:8px; margin-top:9px; }
+  .card .acts button { flex:1; padding:8px; border-radius:7px; border:1px solid var(--line); cursor:pointer; font-size:13px; background:#0d0d0d; color:var(--ink); }
+  .badge { font-size:11px; padding:2px 8px; border-radius:20px; display:inline-block; }
+  .badge.approved { background:rgba(52,211,153,.15); color:var(--green); }
+  .badge.rejected { background:rgba(248,113,113,.15); color:var(--red); }
+  .badge.pending { background:#2a2a2a; color:var(--sub); }
+  .badge.scheduled,.badge.ready { background:rgba(255,221,0,.15); color:var(--yellow); }
+  .muted { color:var(--sub); font-size:13px; }
+  .batchsel { margin:10px 0 0; }
+  select { background:#0d0d0d; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:9px 11px; font-size:14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>TECHSPLAINS <span style="color:var(--yellow)">STUDIO</span></h1>
+  <span class="v" id="ver"></span>
+  <nav>
+    <button data-view="generate" class="on">Generate</button>
+    <button data-view="review">Review</button>
+    <button data-view="queue">Queue</button>
+  </nav>
+</header>
+<main id="app"></main>
+
+<script>
+const app = document.getElementById("app");
+let VIEW = "generate";
+
+const api = async (p, opts) => {
+  const r = await fetch(p, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+  return r.json();
+};
+
+document.querySelectorAll("nav button").forEach((b) =>
+  b.onclick = () => { setView(b.dataset.view); });
+function setView(v) {
+  VIEW = v;
+  document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
+  render();
+}
+
+fetch("/api/health").then((r) => r.json()).then((h) => (document.getElementById("ver").textContent = "v" + h.version));
+
+function render() {
+  if (VIEW === "generate") return renderGenerate();
+  if (VIEW === "review") return renderReview();
+  if (VIEW === "queue") return renderQueue();
+}
+
+// ---- Generate --------------------------------------------------------------
+function renderGenerate() {
+  app.innerHTML = `
+    <div class="row">
+      <div><label>How many videos</label><input id="g-count" type="number" value="3" min="1" style="width:110px"></div>
+      <div><label>Did-you-know videos</label><input id="g-dyk" type="number" value="1" min="0" style="width:150px"></div>
+      <div style="flex:1;min-width:220px"><label>Topic (optional — blank = auto variety)</label><input id="g-topic" style="width:100%" placeholder="e.g. camera gear"></div>
+      <button class="btn" id="g-run">Generate batch</button>
+    </div>
+    <pre id="log">Ready. Set a count and hit Generate — the pipeline log streams here.</pre>`;
+  const log = document.getElementById("log");
+  document.getElementById("g-run").onclick = async () => {
+    const btn = document.getElementById("g-run");
+    btn.disabled = true;
+    log.textContent = "";
+    const body = JSON.stringify({
+      count: +document.getElementById("g-count").value,
+      dyk: +document.getElementById("g-dyk").value,
+      topic: document.getElementById("g-topic").value,
+    });
+    try {
+      const resp = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        log.textContent += dec.decode(value, { stream: true });
+        log.scrollTop = log.scrollHeight;
+      }
+      if (log.textContent.includes("__EXIT__ 0")) {
+        log.textContent += "\n✓ Done — switching to Review…";
+        setTimeout(() => setView("review"), 900);
+      }
+    } catch (e) {
+      log.textContent += "\n!! " + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  };
+}
+
+// ---- Review ----------------------------------------------------------------
+let REVIEW_STAMP = null;
+async function renderReview() {
+  app.innerHTML = `<p class="muted">Loading batches…</p>`;
+  let batches;
+  try { batches = await api("/api/batches"); } catch (e) { app.innerHTML = `<p class="muted">Error: ${e.message}</p>`; return; }
+  if (!batches.length) { app.innerHTML = `<p class="muted">No batches yet. Generate one first.</p>`; return; }
+  if (!REVIEW_STAMP || !batches.find((b) => b.stamp === REVIEW_STAMP)) REVIEW_STAMP = batches[0].stamp;
+  const opts = batches.map((b) => `<option value="${b.stamp}" ${b.stamp === REVIEW_STAMP ? "selected" : ""}>${b.stamp} (${b.videos.length})</option>`).join("");
+  const batch = batches.find((b) => b.stamp === REVIEW_STAMP);
+  app.innerHTML = `
+    <div class="batchsel"><label>Batch</label><select id="r-sel">${opts}</select></div>
+    <div class="grid" id="r-grid"></div>`;
+  document.getElementById("r-sel").onchange = (e) => { REVIEW_STAMP = e.target.value; renderReview(); };
+  const grid = document.getElementById("r-grid");
+  grid.innerHTML = batch.videos.map((v) => cardHTML(batch.stamp, v)).join("");
+  batch.videos.forEach((v) => wireCard(batch.stamp, v));
+}
+
+function cardHTML(stamp, v) {
+  const id = btoa(unescape(encodeURIComponent(stamp + "|" + v.file))).replace(/=/g, "");
+  return `
+    <div class="card" data-id="${id}">
+      <video src="/api/video/${stamp}/${encodeURIComponent(v.file)}" controls preload="metadata"></video>
+      <div class="body">
+        <h3>${escapeHTML(v.title)} <span class="badge ${v.status}" id="b-${id}">${v.status}</span></h3>
+        <textarea id="t-${id}">${escapeHTML(v.caption || "")}</textarea>
+        <div class="acts">
+          <button id="a-${id}" style="color:var(--green)">Approve</button>
+          <button id="x-${id}" style="color:var(--red)">Reject</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function wireCard(stamp, v) {
+  const id = btoa(unescape(encodeURIComponent(stamp + "|" + v.file))).replace(/=/g, "");
+  const set = async (status) => {
+    const caption = document.getElementById("t-" + id).value;
+    await api("/api/approve", { method: "POST", body: JSON.stringify({ stamp, file: v.file, status, caption }) });
+    const badge = document.getElementById("b-" + id);
+    badge.className = "badge " + status;
+    badge.textContent = status;
+  };
+  document.getElementById("a-" + id).onclick = () => set("approved");
+  document.getElementById("x-" + id).onclick = () => set("rejected");
+}
+
+// ---- Queue (filled in Task 6) ----------------------------------------------
+function renderQueue() {
+  app.innerHTML = `<p class="muted">Queue — coming next.</p>`;
+}
+
+function escapeHTML(s) { return (s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+render();
+</script>
+</body>
+</html>

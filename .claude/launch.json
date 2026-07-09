@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "techsplains-dash",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/techsplains-dashboard.mjs"],
+      "port": 4318
+    }
+  ]
+}
