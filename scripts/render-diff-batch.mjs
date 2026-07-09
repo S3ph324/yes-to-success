@@ -14,6 +14,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { projectRoot, resolveClient } from "./lib/client.mjs";
 import { TS_HANDLE, slugify } from "./lib/techsplains.mjs";
+import { buildManifest } from "./lib/techsplains-manifest.mjs";
 
 const client = await resolveClient("techsplains");
 
@@ -125,6 +126,10 @@ await fs.writeFile(
   results
     .map(({ v }, i) => `#${i + 1} — ${v.title}\n${v.caption || ""}\n${"-".repeat(40)}\n`)
     .join("\n"),
+);
+await fs.writeFile(
+  path.join(exportDir, "manifest.json"),
+  JSON.stringify(buildManifest(results), null, 2),
 );
 
 console.log(
