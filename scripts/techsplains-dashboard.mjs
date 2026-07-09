@@ -16,6 +16,8 @@ import { resolveClient, projectRoot } from "./lib/client.mjs";
 import { listStamps, loadBatch, safeExportPath } from "./lib/techsplains-batches.mjs";
 import { readQueue, setEntry, keyFor } from "./lib/techsplains-queue.mjs";
 import { computeSlots } from "./lib/techsplains-schedule.mjs";
+import { bufferConfigured, schedulePost } from "./lib/techsplains-buffer.mjs";
+import { storageConfigured, uploadPublic } from "./lib/techsplains-storage.mjs";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -212,26 +214,54 @@ app.post("/api/queue/schedule", async (req, res) => {
   }
 });
 
-// Send approved videos to the posting queue. Task 8 will add direct Buffer
-// upload here; until Buffer is connected this is the manual-handoff fallback —
-// mark approved → ready so the operator queues the files into Buffer's
-// composer themselves. Autoposting only ever happens on THIS explicit action.
+// Send approved videos to the posting queue. Autoposting happens ONLY on this
+// explicit action. With B2 storage + Buffer configured, each approved MP4 is
+// uploaded to the public bucket and scheduled to Buffer for its due time. If
+// either is unconfigured, it degrades to the manual handoff — mark approved →
+// ready so the operator queues the files into Buffer's composer themselves.
 app.post("/api/queue/send", async (_req, res) => {
   try {
     const queue = await readQueue();
     const stamps = await listStamps(EXPORT_DIR);
-    let count = 0;
+    const targets = [];
     for (const stamp of stamps) {
       const { videos } = await loadBatch(EXPORT_DIR, stamp);
       for (const v of videos) {
         const entry = queue[keyFor(stamp, v.file)];
         if (entry?.status === "approved") {
-          await setEntry(keyFor(stamp, v.file), { status: "ready" });
-          count += 1;
+          targets.push({ stamp, file: v.file, caption: entry.caption ?? v.caption, scheduledAt: entry.scheduledAt });
         }
       }
     }
-    res.json({ mode: "manual", sent: count, failed: 0, exportHint: EXPORT_DIR });
+
+    if (!bufferConfigured() || !storageConfigured()) {
+      for (const t of targets) await setEntry(keyFor(t.stamp, t.file), { status: "ready" });
+      return res.json({ mode: "manual", sent: targets.length, failed: 0, exportHint: EXPORT_DIR });
+    }
+
+    let sent = 0;
+    let failed = 0;
+    const errors = [];
+    for (const t of targets) {
+      try {
+        const abs = safeExportPath(EXPORT_DIR, t.stamp, t.file);
+        const videoUrl = await uploadPublic(abs, `${t.stamp}/${t.file}`);
+        const dueAt = t.scheduledAt || new Date(Date.now() + 3600e3).toISOString();
+        const { postId, url } = await schedulePost({ videoUrl, caption: t.caption, dueAt });
+        await setEntry(keyFor(t.stamp, t.file), {
+          status: "scheduled",
+          bufferPostId: postId,
+          bufferUrl: url,
+          videoUrl,
+        });
+        sent += 1;
+      } catch (err) {
+        failed += 1;
+        errors.push(`${t.file}: ${err.message}`);
+        console.warn(`Buffer send failed ${t.file}: ${err.message}`);
+      }
+    }
+    res.json({ mode: "buffer", sent, failed, errors });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
