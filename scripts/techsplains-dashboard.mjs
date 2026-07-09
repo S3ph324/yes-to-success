@@ -9,7 +9,6 @@
 import express from "express";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import fsp from "node:fs/promises";
 import path from "node:path";
 import url from "node:url";
 import { createRequire } from "node:module";
@@ -34,7 +33,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true, version: VERSION }));
 
 // --- Generate: spawn the pipeline, stream its stdout/stderr to the browser ---
 app.post("/api/generate", (req, res) => {
-  const count = Math.max(1, parseInt(req.body?.count, 10) || 1);
+  const count = Math.min(20, Math.max(1, parseInt(req.body?.count, 10) || 1));
   const dyk = Math.max(0, parseInt(req.body?.dyk, 10) || 0);
   const topic = (req.body?.topic || "").trim();
 
@@ -114,9 +113,22 @@ app.get("/api/video/:stamp/:file", (req, res) => {
   }
   const range = req.headers.range;
   if (range) {
-    const [s, e] = range.replace(/bytes=/, "").split("-");
-    const start = parseInt(s, 10);
-    const end = e ? parseInt(e, 10) : stat.size - 1;
+    const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+    let start = m ? parseInt(m[1], 10) : NaN;
+    let end = m && m[2] !== "" ? parseInt(m[2], 10) : stat.size - 1;
+    // Suffix form "bytes=-N" → the last N bytes.
+    if (m && m[1] === "" && m[2] !== "") {
+      start = Math.max(0, stat.size - parseInt(m[2], 10));
+      end = stat.size - 1;
+    }
+    if (
+      !Number.isFinite(start) || !Number.isFinite(end) ||
+      start < 0 || end < start || start >= stat.size
+    ) {
+      res.writeHead(416, { "Content-Range": `bytes */${stat.size}` });
+      return res.end();
+    }
+    end = Math.min(end, stat.size - 1);
     res.writeHead(206, {
       "Content-Range": `bytes ${start}-${end}/${stat.size}`,
       "Accept-Ranges": "bytes",
@@ -146,7 +158,7 @@ app.post("/api/approve", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, "127.0.0.1", () => {
   console.log(`Techsplains dashboard v${VERSION} → http://localhost:${PORT}`);
   console.log(`  export dir: ${EXPORT_DIR}`);
 });
