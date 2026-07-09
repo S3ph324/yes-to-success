@@ -58,6 +58,11 @@ import {
   calcMetaQuotePortraitCard,
 } from "./QuoteCard/QuotePortraitCard";
 import { AppIcon, appIconSchema } from "./AppIcon/AppIcon";
+import {
+  DifferenceCard,
+  differenceCardSchema,
+  calcMetaDifferenceCard,
+} from "./DifferenceCard/DifferenceCard";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -346,6 +351,74 @@ export const RemotionRoot: React.FC = () => {
           logoSrc: "",
           brandGold: "#F5C13B",
           aspectRatio: "4:5" as const,
+        }}
+      />
+
+      <Composition
+        id="DifferenceCard"
+        component={DifferenceCard}
+        durationInFrames={900}
+        fps={30}
+        width={1080}
+        height={1920}
+        schema={differenceCardSchema}
+        calculateMetadata={calcMetaDifferenceCard}
+        defaultProps={{
+          segments: [
+            {
+              aLabel: "Codec",
+              bLabel: "Container",
+              aImg: "",
+              bImg: "",
+            },
+          ],
+          phases: [
+            {
+              key: "s0-introA",
+              seg: 0,
+              kind: "introA" as const,
+              text: "This is a codec.",
+              start: 0,
+              end: 1.4,
+              words: [
+                { w: "This", s: 0.1, e: 0.35 },
+                { w: "is", s: 0.35, e: 0.5 },
+                { w: "a", s: 0.5, e: 0.6 },
+                { w: "codec.", s: 0.6, e: 1.2 },
+              ],
+            },
+            {
+              key: "s0-introB",
+              seg: 0,
+              kind: "introB" as const,
+              text: "This is a container.",
+              start: 1.7,
+              end: 3.1,
+              words: [
+                { w: "This", s: 1.8, e: 2.0 },
+                { w: "is", s: 2.0, e: 2.15 },
+                { w: "a", s: 2.15, e: 2.25 },
+                { w: "container.", s: 2.25, e: 3.0 },
+              ],
+            },
+            {
+              key: "s0-question",
+              seg: 0,
+              kind: "question" as const,
+              text: "What's the difference?",
+              start: 3.4,
+              end: 4.8,
+              words: [
+                { w: "What's", s: 3.5, e: 3.8 },
+                { w: "the", s: 3.8, e: 4.0 },
+                { w: "difference?", s: 4.0, e: 4.7 },
+              ],
+            },
+          ],
+          audioSrc: "",
+          durationSec: 5.5,
+          handle: "@techsplains",
+          accent: "#FFDD00",
         }}
       />
 

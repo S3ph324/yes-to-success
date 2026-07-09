@@ -16,5 +16,16 @@
     "brandPresetId": "preset_tranzzie",
     "characterId": "char_tranzzie_enhanced",
     "exportDir": "/Users/macbookpro/Downloads/Work/02_Clients/Tranzzie/05_Exports/Quote Posters"
+  },
+  {
+    "id": "techsplains",
+    "label": "Techsplains",
+    "voiceProfile": "voice-profile-techsplains.md",
+    "briefId": "brief_techsplains",
+    "exportDir": "/Users/macbookpro/Downloads/Work/02_Clients/Techsplains/05_Exports/Difference Videos",
+    "gcpProject": "techsplains",
+    "gcpAdc": "~/.config/gcloud/adc-techsplains.json",
+    "ttsVoice": "en-US-Chirp3-HD-Orus",
+    "handle": "@techsplains"
   }
 ]
