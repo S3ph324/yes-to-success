@@ -24,16 +24,22 @@ export async function listStamps(exportDir) {
 }
 
 export async function loadBatch(exportDir, stamp) {
+  if (!STAMP_RE.test(stamp)) throw new Error(`bad stamp: ${stamp}`);
   const dir = path.join(exportDir, stamp);
-  const files = (await fs.readdir(dir))
-    .filter((f) => f.endsWith(".mp4"))
-    .sort();
+  let files;
+  try {
+    files = (await fs.readdir(dir)).filter((f) => FILE_RE.test(f)).sort();
+  } catch (err) {
+    if (err.code === "ENOENT") throw new Error(`batch not found: ${stamp}`);
+    throw err;
+  }
 
   let manifest = null;
   try {
-    manifest = JSON.parse(await fs.readFile(path.join(dir, "manifest.json"), "utf-8"));
+    const parsed = JSON.parse(await fs.readFile(path.join(dir, "manifest.json"), "utf-8"));
+    if (Array.isArray(parsed)) manifest = parsed; // ignore malformed/hand-edited manifests
   } catch {
-    /* older batch */
+    /* older batch — no manifest */
   }
 
   let videos;

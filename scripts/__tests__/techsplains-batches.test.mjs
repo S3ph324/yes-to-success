@@ -49,3 +49,18 @@ test("safeExportPath rejects traversal and bad names", () => {
   const ok = safeExportPath(root, "2026-07-09T10-00", "techsplains-01-x.mp4");
   assert.ok(ok.endsWith("2026-07-09T10-00/techsplains-01-x.mp4"));
 });
+
+test("loadBatch rejects an invalid stamp (traversal guard)", async () => {
+  await assert.rejects(() => loadBatch(root, "../../etc"));
+});
+
+test("loadBatch ignores a malformed (non-array) manifest and falls back to captions.txt", async () => {
+  const c = path.join(root, "2026-07-07T08-00");
+  await fs.mkdir(c, { recursive: true });
+  await fs.writeFile(path.join(c, "techsplains-01-z.mp4"), "fake");
+  await fs.writeFile(path.join(c, "manifest.json"), "{}"); // object, not array
+  await fs.writeFile(path.join(c, "captions.txt"),
+    "#1 — Fallback Title\nfb cap\n----------------------------------------\n");
+  const batch = await loadBatch(root, "2026-07-07T08-00");
+  assert.equal(batch.videos[0].title, "Fallback Title");
+});
