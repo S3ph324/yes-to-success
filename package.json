@@ -1,7 +1,7 @@
 {
-  "name": "remotion-app",
-  "version": "0.34.1",
-  "description": "My Remotion video",
+  "name": "content-studio",
+  "version": "0.40.0",
+  "description": "Content Studio — multi-client content pipeline (Remotion render layer)",
   "repository": {},
   "license": "UNLICENSED",
   "private": true,
@@ -55,6 +55,7 @@
     "techsplains:audio": "node scripts/generate-diff-audio.mjs",
     "techsplains:render": "node scripts/render-diff-batch.mjs",
     "techsplains:batch": "node scripts/batch-techsplains.mjs",
+    "techsplains:dashboard": "node scripts/techsplains-dashboard.mjs",
     "broll:analyze": "node scripts/broll-analyze.mjs",
     "broll:frames": "node scripts/broll-frames.mjs",
     "broll:deliver": "node scripts/broll-deliverable.mjs",

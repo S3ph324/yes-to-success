@@ -50,3 +50,6 @@ public/_shop-input
 public/_advice-avatar
 .session-secret
 research-data/
+
+# Techsplains dashboard local-only queue/approval state
+config/techsplains-queue.json
