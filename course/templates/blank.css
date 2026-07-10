@@ -23,6 +23,8 @@ strong:first-child { color: #3A5A78; }
   padding: 14px 18px;
   margin: 1.2em 0;
   border-radius: 4px;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 .sidebar-eyebrow {
   text-transform: uppercase;

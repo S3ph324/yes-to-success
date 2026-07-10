@@ -46,7 +46,14 @@ async function main() {
       for (const doc of docs) {
         const srcDir = doc.kind === "main" ? modulesDir : bonusDir;
         const sections = [];
-        let title = "Editing Explained: The Techsplains Beginner-to-Creator Course";
+        // The PDF's <title> lands in the file's document-properties metadata,
+        // not just the visible page — so the Blank theme needs its own
+        // brand-free string, or "Blank" leaks Techsplains in Finder/Reader
+        // file info even though the page content itself never mentions it.
+        let title =
+          theme === "branded"
+            ? "Editing Explained: The Techsplains Beginner-to-Creator Course"
+            : "Editing Explained: The Beginner-to-Creator Course";
         for (const f of doc.files) {
           const rendered = await renderModuleMarkdown(path.join(srcDir, f), topicIndex);
           sections.push(rendered);
