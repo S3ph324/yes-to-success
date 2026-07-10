@@ -1,6 +1,6 @@
 {
   "name": "content-studio",
-  "version": "0.43.2",
+  "version": "0.44.1",
   "description": "Content Studio — multi-client content pipeline (Remotion render layer)",
   "repository": {},
   "license": "UNLICENSED",
@@ -59,6 +59,7 @@
     "techsplains:render": "node scripts/render-diff-batch.mjs",
     "techsplains:batch": "node scripts/batch-techsplains.mjs",
     "techsplains:dashboard": "node scripts/techsplains-dashboard.mjs",
+    "course:assemble": "node scripts/course-assemble.mjs",
     "broll:analyze": "node scripts/broll-analyze.mjs",
     "broll:frames": "node scripts/broll-frames.mjs",
     "broll:deliver": "node scripts/broll-deliverable.mjs",
