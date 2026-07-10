@@ -1,0 +1,53 @@
+@page { size: Letter; margin: 0; }
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  color: #111;
+  background: linear-gradient(180deg,#F7F6F4 0%,#E9E7E3 100%);
+}
+.course-page {
+  page-break-after: always;
+  padding: 0.4in 0.2in;
+}
+.course-page:last-child { page-break-after: auto; }
+h1, h2, h3 { font-family: Helvetica, Arial, sans-serif; color: #111; }
+h1 { font-size: 28pt; border-bottom: 4px solid #FFDD00; padding-bottom: 8px; }
+h2 { font-size: 18pt; margin-top: 1.4em; }
+p { font-size: 11.5pt; line-height: 1.55; }
+a { color: #9B4F00; }
+strong:first-child { color: #9B4F00; }
+.sidebar {
+  border-left: 6px solid #FFDD00;
+  background: #FFFDF5;
+  padding: 14px 18px;
+  margin: 1.2em 0;
+  border-radius: 4px;
+}
+.sidebar-eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 9pt;
+  color: #9B968F;
+  font-family: Helvetica, Arial, sans-serif;
+  margin: 0 0 4px;
+}
+.sidebar h4 { margin: 0 0 10px; font-size: 13pt; }
+.sidebar-pair { display: flex; gap: 12px; margin-bottom: 10px; }
+.sidebar-pair figure { margin: 0; flex: 1; text-align: center; }
+.sidebar-pair img { width: 100%; height: 120px; object-fit: cover; border-radius: 4px; border: 1px solid #DDD9D4; }
+.sidebar-pair figcaption { font-size: 9pt; color: #9B968F; margin-top: 4px; font-family: Helvetica, Arial, sans-serif; }
+.brand-footer {
+  margin-top: 2em;
+  padding-top: 10px;
+  border-top: 2px solid #DDD9D4;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 9.5pt;
+  color: #9B968F;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.brand-logo { width: 22px; height: 22px; border-radius: 50%; }

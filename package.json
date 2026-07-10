@@ -1,6 +1,6 @@
 {
   "name": "content-studio",
-  "version": "0.43.1",
+  "version": "0.43.2",
   "description": "Content Studio — multi-client content pipeline (Remotion render layer)",
   "repository": {},
   "license": "UNLICENSED",
@@ -19,6 +19,7 @@
     "marked": "^18.0.6",
     "multer": "^2.1.1",
     "pngjs": "^6.0.0",
+    "puppeteer": "^25.3.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "remotion": "4.0.459",
