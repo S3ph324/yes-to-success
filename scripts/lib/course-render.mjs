@@ -54,11 +54,12 @@ ${body}
 // is unreliable for loading local images from a non-file:// origin;
 // navigating directly to a file:// URL is the standard, reliable pattern.
 export async function renderPdf(browser, html, outPath) {
-  const page = await browser.newPage();
-  const tmpDir = path.join(projectRoot, "course", "out", ".tmp");
-  await fs.mkdir(tmpDir, { recursive: true });
-  const tmpHtmlPath = path.join(tmpDir, `${path.basename(outPath, ".pdf")}-${Date.now()}.html`);
+  let page;
   try {
+    page = await browser.newPage();
+    const tmpDir = path.join(projectRoot, "course", "out", ".tmp");
+    await fs.mkdir(tmpDir, { recursive: true });
+    const tmpHtmlPath = path.join(tmpDir, `${path.basename(outPath, ".pdf")}-${Date.now()}.html`);
     await fs.writeFile(tmpHtmlPath, html, "utf-8");
     await page.goto(`file://${tmpHtmlPath}`, { waitUntil: "load" });
     await fs.mkdir(path.dirname(outPath), { recursive: true });
@@ -68,9 +69,9 @@ export async function renderPdf(browser, html, outPath) {
       printBackground: true,
       margin: { top: "0.6in", bottom: "0.6in", left: "0.6in", right: "0.6in" },
     });
-  } finally {
-    await page.close();
     await fs.rm(tmpHtmlPath, { force: true });
+  } finally {
+    if (page) await page.close();
   }
 }
 
