@@ -15,7 +15,41 @@
     "briefId": "brief_tranzzie",
     "brandPresetId": "preset_tranzzie",
     "characterId": "char_tranzzie_enhanced",
-    "exportDir": "/Users/macbookpro/Downloads/Work/02_Clients/Tranzzie/05_Exports/Quote Posters"
+    "exportDir": "/Users/macbookpro/Downloads/Work/02_Clients/Tranzzie/05_Exports/Quote Posters",
+    "video": {
+      "brandName": "Tranzzie",
+      "handle": "@tranzzie",
+      "template": "photo",
+      "accent": "#F5C13B",
+      "outro": "Follow Tranzzie for more!",
+      "dykOpener": "Alam mo ba",
+      "language": "taglish",
+      "whisperLang": "auto",
+      "gcp": "shared",
+      "tts": {
+        "model": "gemini-2.5-flash-tts",
+        "voice": "Leda",
+        "stylePrompt": "Basahin ito na parang mabait at maalalahanin na ate optometrist na nagpapaliwanag sa isang kaibigan — mainit, may malasakit, malinaw, at hindi nagmamadali. Panatilihing steady at natural ang tono, Taglish, tulad ng kwentuhan. Maikling hinto lang bawat pangungusap:",
+        "targetSec": 34,
+        "maxTempo": 1.22
+      },
+      "presenter": {
+        "characterId": "char_tranzzie_enhanced",
+        "poseDir": "characters/tranzzie",
+        "poses": {
+          "hook": "jurie-point.png", "introA": "jurie-point.png",
+          "introB": "jurie-present.png", "question": "jurie-think.png",
+          "defA": "jurie-explain.png", "defB": "jurie-point.png",
+          "outro": "jurie-base.png"
+        }
+      },
+      "voiceProfile": "voice-profile-tranzzie-video.md",
+      "briefId": "brief_tranzzie",
+      "contentMix": { "dykDefault": 0.34, "generalDefault": 0, "allowGeneral": false },
+      "ledger": "config/tranzzie-video-ledger.json",
+      "queue": "config/tranzzie-video-queue.json",
+      "exportDir": "/Users/macbookpro/Downloads/Work/02_Clients/Tranzzie/05_Exports/Difference Videos"
+    }
   },
   {
     "id": "techsplains",
@@ -26,6 +60,40 @@
     "gcpProject": "techsplains",
     "gcpAdc": "~/.config/gcloud/adc-techsplains.json",
     "ttsVoice": "en-US-Chirp3-HD-Orus",
-    "handle": "@techsplains"
+    "handle": "@techsplains",
+    "video": {
+      "brandName": "Techsplains",
+      "handle": "@techsplains",
+      "template": "mascot",
+      "accent": "#FFDD00",
+      "outro": "Follow Techsplains for more!",
+      "dykOpener": "Did you know",
+      "language": "en",
+      "whisperLang": "en",
+      "gcp": "techsplains",
+      "tts": {
+        "model": "gemini-2.5-flash-tts",
+        "voice": "Orus",
+        "stylePrompt": "Read this narration in a natural, friendly, QUICK voice — energetic and up-tempo like a viral shorts narrator excited to share a fact, but still human and clearly enunciated, never rushed into mumbling. Keep the tone steady and consistent start to finish, no dramatic swings or over-acting. Only the briefest beat between sentences:",
+        "targetSec": 31,
+        "maxTempo": 1.28
+      },
+      "presenter": {
+        "characterId": null,
+        "poseDir": "characters/techsplains",
+        "poses": {
+          "hook": "pose-point.png", "introA": "pose-point.png",
+          "introB": "pose-point.png", "question": "pose-confused.png",
+          "defA": "pose-think.png", "defB": "pose-point.png",
+          "outro": "pose-base.png"
+        }
+      },
+      "voiceProfile": "voice-profile-techsplains.md",
+      "briefId": "brief_techsplains",
+      "contentMix": { "dykDefault": 0.25, "generalDefault": 0.20, "allowGeneral": true },
+      "ledger": "config/techsplains-topic-ledger.json",
+      "queue": "config/techsplains-queue.json",
+      "exportDir": "/Users/macbookpro/Downloads/Work/02_Clients/Techsplains/05_Exports/Difference Videos"
+    }
   }
 ]
