@@ -7,6 +7,10 @@ test("image-sourcing exports the vision-gated sourcing functions", () => {
   assert.equal(typeof imageSourcing.fetchBuf, "function");
   assert.equal(typeof imageSourcing.stockImage, "function");
   assert.equal(imageSourcing.stockImage.length, 5);
+  assert.equal(typeof imageSourcing.openverseImage, "function");
+  assert.equal(imageSourcing.openverseImage.length, 5);
+  assert.equal(typeof imageSourcing.stockVideo, "function");
+  assert.equal(imageSourcing.stockVideo.length, 4);
   assert.equal(typeof imageSourcing.genImage, "function");
   assert.equal(imageSourcing.genImage.length, 3);
   assert.equal(typeof imageSourcing.STYLE_TAIL, "string");

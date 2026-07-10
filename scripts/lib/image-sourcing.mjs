@@ -1,13 +1,18 @@
 // scripts/lib/image-sourcing.mjs
-// Shared vision-gated image sourcing (Pexels → Gemini AI fallback),
-// extracted from generate-diff-images.mjs so any Techsplains pipeline
-// (videos, the PDF course) can source images at the same quality bar
-// without duplicating this logic.
+// Shared vision-gated media sourcing, extracted from generate-diff-images.mjs
+// so any Techsplains pipeline (videos, the PDF course) can source at the same
+// quality bar without duplicating this logic. Sources:
+//   stockVideo     — Pexels Videos (moving clips for "did you know" slots)
+//   openverseImage — Openverse CC photos (real photos: Flickr/Wikimedia; no
+//                    key, 200 req/day; CC BY credits returned to the caller)
+//   stockImage     — Pexels stock photos
+//   genImage       — Vertex image gen (gemini-2.5-flash-image), last resort
 //
 // (Google Images via Custom Search was removed 2026-07: Google closed the
 // Custom Search JSON API to new customers — every call 403s with "This
 // project does not have the access", regardless of key/billing/API-enable.
-// Existing customers must migrate off it by 2027-01-01 anyway.)
+// Existing customers must migrate off it by 2027-01-01 anyway. Openverse
+// fills the "actual photo of the actual thing" role CSE used to.)
 
 import fs from "node:fs/promises";
 import { GoogleGenAI } from "@google/genai";
@@ -145,6 +150,117 @@ export async function stockImage(query, label, otherLabel, usedIds, outAbs) {
   await fs.writeFile(outAbs, Buffer.from(await imgRes.arrayBuffer()));
   usedIds.add(photo.id);
   return true;
+}
+
+const OPENVERSE_UA = "techsplains-content-studio (villardejurie@gmail.com)";
+
+// Openverse — free CC-licensed REAL photos (Flickr, Wikimedia Commons,
+// museums) with no API key. The vision gate still decides whether any hit
+// truly shows the subject. Returns { credit } on success (credit is "" for
+// CC0/public-domain images, otherwise the attribution string the caption
+// must carry), or null to fall through to the next source.
+export async function openverseImage(query, label, otherLabel, usedIds, outAbs) {
+  let json;
+  try {
+    const url =
+      "https://api.openverse.org/v1/images/?q=" + encodeURIComponent(query) +
+      "&categories=photograph&license=cc0,pdm,by,by-sa&filter_dead=true&page_size=8";
+    const res = await fetch(url, {
+      headers: { "User-Agent": OPENVERSE_UA },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    json = await res.json();
+  } catch (err) {
+    console.warn(`    openverse search failed (${String(err.message || err).slice(0, 60)})`);
+    return null;
+  }
+  const candidates = (json.results || [])
+    .filter((p) => p.width >= 700 && p.height >= 500 && !usedIds.has(p.id))
+    .slice(0, 8);
+  if (!candidates.length) return null;
+  const thumbs = [];
+  const valid = [];
+  for (const p of candidates) {
+    try {
+      thumbs.push(await fetchBuf(p.thumbnail));
+      valid.push(p);
+    } catch { /* skip unfetchable */ }
+  }
+  let pick;
+  try {
+    pick = await pickBest(thumbs, label, query, otherLabel);
+  } catch (err) {
+    // Unlike Pexels there is no curation to fall back on — Openverse rank is
+    // noisy (random Flickr uploads), so without the gate we skip the source.
+    console.warn(`    vision gate failed (${String(err.message || err).slice(0, 50)}) — skipping openverse`);
+    return null;
+  }
+  if (pick === -1) {
+    console.log(`    vision gate: no Openverse hit clearly shows "${label}" — trying Pexels`);
+    return null;
+  }
+  const photo = valid[pick];
+  try {
+    await fs.writeFile(outAbs, await fetchBuf(photo.url, 10000));
+  } catch (err) {
+    console.warn(`    openverse download failed (${String(err.message || err).slice(0, 60)})`);
+    return null;
+  }
+  usedIds.add(photo.id);
+  return /^(cc0|pdm)$/.test(photo.license)
+    ? { credit: "" }
+    : { credit: `${photo.creator || photo.source} (CC ${photo.license.toUpperCase()})` };
+}
+
+// Stock VIDEO for "did you know" slots — a moving clip beats a still card.
+// Pexels Videos shares the photo API key; the vision gate runs on the poster
+// frames. Returns { durationSec } on success, false to fall through to photos.
+export async function stockVideo(query, label, usedIds, outAbs) {
+  if (!PEXELS_KEY) return false;
+  const url = `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=8`;
+  const res = await fetch(url, { headers: { Authorization: PEXELS_KEY } });
+  if (res.status === 429) throw new Error("Pexels rate limit (429)");
+  if (!res.ok) throw new Error(`Pexels videos HTTP ${res.status}`);
+  const json = await res.json();
+  const candidates = (json.videos || [])
+    .filter(
+      (v) =>
+        v.duration >= 4 && v.duration <= 60 &&
+        Math.min(v.width, v.height) >= 700 && !usedIds.has(v.id),
+    )
+    .slice(0, 8);
+  if (!candidates.length) return false;
+  const thumbs = [];
+  const valid = [];
+  for (const v of candidates) {
+    try {
+      thumbs.push(await fetchBuf(v.image));
+      valid.push(v);
+    } catch { /* skip unfetchable */ }
+  }
+  let pick;
+  try {
+    pick = await pickBest(thumbs, label, query, "");
+  } catch {
+    pick = -1;
+  }
+  if (pick === -1) {
+    console.log(`    vision gate: no stock CLIP clearly shows "${label}" — trying photos`);
+    return false;
+  }
+  const video = valid[pick];
+  // The render crops to the frame anyway — an ~1080p file is plenty; bigger
+  // just slows the download and the render.
+  const files = (video.video_files || []).filter((f) => (f.file_type || "").includes("mp4"));
+  files.sort((a, b) => Math.abs((a.height || 0) - 1080) - Math.abs((b.height || 0) - 1080));
+  const file = files[0];
+  if (!file) return false;
+  const vres = await fetch(file.link, { signal: AbortSignal.timeout(120000) });
+  if (!vres.ok) throw new Error(`Pexels video download HTTP ${vres.status}`);
+  await fs.writeFile(outAbs, Buffer.from(await vres.arrayBuffer()));
+  usedIds.add(video.id);
+  return { durationSec: video.duration };
 }
 
 export async function genImage(prompt, outAbs, fallbackPrompt) {

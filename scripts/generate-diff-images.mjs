@@ -1,19 +1,22 @@
 #!/usr/bin/env node
-// Techsplains step 2/4 — source the two comparison images per segment
-// (4 per video). REAL STOCK PHOTOS first (Pexels search on the script's
-// searchQuery — the user rejected AI-rendered examples); Vertex image gen
-// (gemini-2.5-flash-image) only as the fallback when the stock search misses.
+// Techsplains step 2 — source the visuals per segment. "Did you know" slots
+// try a stock VIDEO clip first (Pexels Videos — moving visuals beat a static
+// card). Photo slots go REAL PHOTOS first: Openverse (CC photos from
+// Flickr/Wikimedia — the "actual photo of the actual thing" look) → Pexels
+// stock → Vertex image gen as the last resort. All source logic lives in
+// lib/image-sourcing.mjs (shared with the PDF course pipeline).
 //
 // Usage:
 //   PEXELS_API_KEY=... node scripts/generate-diff-images.mjs <scripts.json>
 //
-// Writes images to public/generated-diff/<stamp>/ and adds aImg/bImg (paths
-// relative to public/) to each segment in the JSON, in place.
+// Writes media to public/generated-diff/<stamp>/ and adds aImg/bImg (or
+// aVideo for clips) to each segment in the JSON, in place. CC BY photo
+// credits are appended to the video's Facebook caption automatically.
 
 import fs from "node:fs/promises";
 import path from "node:path";
 import { projectRoot } from "./lib/client.mjs";
-import { stockImage, genImage } from "./lib/image-sourcing.mjs";
+import { stockImage, genImage, openverseImage, stockVideo } from "./lib/image-sourcing.mjs";
 
 const scriptsArg = process.argv[2];
 if (!scriptsArg) {
@@ -47,7 +50,7 @@ videos.forEach((v, vi) => {
 });
 
 console.log(
-  `Sourcing ${jobs.length} comparison image(s) — Pexels stock${PEXELS_KEY ? "" : " (NO KEY)"} → image-gen fallback…`,
+  `Sourcing ${jobs.length} visual(s) — stock video (DYK) → Openverse real photos → Pexels${PEXELS_KEY ? "" : " (NO PEXELS KEY)"} → image-gen fallback…`,
 );
 let done = 0;
 let failed = 0;
@@ -74,7 +77,8 @@ async function worker() {
       `Single centered subject, friendly and clear.`;
     // Resume support: a slot that already generated (path in JSON + file on
     // disk) is skipped, so quota-starved reruns only pay for the gaps.
-    const existingRel = job.s[job.side === "a" ? "aImg" : "bImg"];
+    const existingRel =
+      job.side === "a" ? job.s.aVideo || job.s.aImg : job.s.bImg;
     if (existingRel) {
       try {
         await fs.access(path.join(projectRoot, "public", existingRel));
@@ -84,24 +88,55 @@ async function worker() {
       } catch { /* file gone — regenerate */ }
     }
     try {
-      // Source order: Pexels stock → AI generation.
+      // Source order: stock video (DYK slots) → Openverse → Pexels → AI.
       let rel;
       let source = "";
-      const stockOut = path.join(absDir, `${base}.jpg`);
-      try {
-        if (await stockImage(job.query || label, label, otherLabel, usedIds, stockOut))
-          source = "pexels";
-      } catch (err) {
-        console.warn(`    pexels search failed (${String(err.message || err).slice(0, 60)})`);
+
+      // "Did you know" videos get a MOVING visual when one exists.
+      if (job.v.variant === "didyouknow") {
+        try {
+          const clip = await stockVideo(
+            job.query || label, label, usedIds, path.join(absDir, `${base}.mp4`),
+          );
+          if (clip) {
+            rel = path.posix.join(relDir, `${base}.mp4`);
+            job.s.aVideo = rel;
+            job.s.aVideoDurationSec = clip.durationSec;
+            source = "pexels-video";
+          }
+        } catch (err) {
+          console.warn(`    stock video failed (${String(err.message || err).slice(0, 60)})`);
+        }
       }
-      if (source) {
-        rel = path.posix.join(relDir, `${base}.jpg`);
-      } else {
-        await genImage(job.prompt, path.join(absDir, `${base}.png`), fallback);
-        rel = path.posix.join(relDir, `${base}.png`);
-        source = "AI";
+
+      if (!source) {
+        const stockOut = path.join(absDir, `${base}.jpg`);
+        try {
+          const ov = await openverseImage(job.query || label, label, otherLabel, usedIds, stockOut);
+          if (ov) {
+            source = "openverse";
+            if (ov.credit) job.s[job.side === "a" ? "aCredit" : "bCredit"] = ov.credit;
+          }
+        } catch (err) {
+          console.warn(`    openverse failed (${String(err.message || err).slice(0, 60)})`);
+        }
+        if (!source) {
+          try {
+            if (await stockImage(job.query || label, label, otherLabel, usedIds, stockOut))
+              source = "pexels";
+          } catch (err) {
+            console.warn(`    pexels search failed (${String(err.message || err).slice(0, 60)})`);
+          }
+        }
+        if (source) {
+          rel = path.posix.join(relDir, `${base}.jpg`);
+        } else {
+          await genImage(job.prompt, path.join(absDir, `${base}.png`), fallback);
+          rel = path.posix.join(relDir, `${base}.png`);
+          source = "AI";
+        }
+        job.s[job.side === "a" ? "aImg" : "bImg"] = rel;
       }
-      job.s[job.side === "a" ? "aImg" : "bImg"] = rel;
       done++;
       console.log(`  [${done + failed}/${jobs.length}] ${path.posix.basename(rel)} [${source}]  (${job.v.title} — ${label})`);
     } catch (err) {
@@ -111,6 +146,18 @@ async function worker() {
   }
 }
 await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+
+// Photo attribution: CC BY / BY-SA images legally require credit, so it rides
+// in the Facebook caption. Credits live on the segments (aCredit/bCredit) so
+// quota-starved reruns don't lose or duplicate them — the caption's credit
+// line is rebuilt from scratch every run.
+for (const v of videos) {
+  const credits = [
+    ...new Set(v.segments.flatMap((s) => [s.aCredit, s.bCredit]).filter(Boolean)),
+  ];
+  v.caption = (v.caption || "").replace(/\n*📷[^\n]*$/u, "").trimEnd();
+  if (credits.length) v.caption += `\n\n📷 ${credits.join(" · ")}`;
+}
 
 await fs.writeFile(scriptsPath, JSON.stringify(videos, null, 2));
 console.log(`\n✓ ${done}/${jobs.length} image(s) → public/${relDir}`);
