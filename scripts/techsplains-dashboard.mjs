@@ -15,7 +15,8 @@ import { createRequire } from "node:module";
 import { resolveClient, projectRoot } from "./lib/client.mjs";
 import { listStamps, loadBatch, safeExportPath } from "./lib/techsplains-batches.mjs";
 import { readQueue, setEntry, keyFor } from "./lib/techsplains-queue.mjs";
-import { computeSlots } from "./lib/techsplains-schedule.mjs";
+import { nextSlots } from "./lib/techsplains-schedule.mjs";
+import { readSettings, writeSettings } from "./lib/techsplains-settings.mjs";
 import { bufferConfigured, schedulePost } from "./lib/techsplains-buffer.mjs";
 import { storageConfigured, uploadPublic } from "./lib/techsplains-storage.mjs";
 
@@ -38,6 +39,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true, version: VERSION }));
 app.post("/api/generate", (req, res) => {
   const count = Math.min(20, Math.max(1, parseInt(req.body?.count, 10) || 1));
   const dyk = Math.max(0, parseInt(req.body?.dyk, 10) || 0);
+  const general = Math.min(count, Math.max(0, parseInt(req.body?.general, 10) || 0));
   const topic = (req.body?.topic || "").trim();
 
   res.set({ "Content-Type": "text/plain; charset=utf-8", "Transfer-Encoding": "chunked" });
@@ -47,7 +49,12 @@ app.post("/api/generate", (req, res) => {
 
   const child = spawn(process.execPath, args, {
     cwd: projectRoot,
-    env: { ...process.env, TECHSPLAINS_DYK: String(dyk), TECHSPLAINS_EXPORT_DIR: EXPORT_DIR },
+    env: {
+      ...process.env,
+      TECHSPLAINS_DYK: String(dyk),
+      TECHSPLAINS_GENERAL: String(general),
+      TECHSPLAINS_EXPORT_DIR: EXPORT_DIR,
+    },
   });
   child.stdout.on("data", (c) => res.write(c));
   child.stderr.on("data", (c) => res.write(c));
@@ -195,15 +202,91 @@ app.get("/api/queue", async (_req, res) => {
   }
 });
 
-// Compute posting slots. The techsplains-schedule lib is the single source of
-// truth for the date math — the browser asks the server rather than mirroring
-// it (perDay is clamped 1-4; the lib's spacing degrades above that).
-app.post("/api/queue/plan", (req, res) => {
-  const perDay = Math.min(4, Math.max(1, parseInt(req.body?.perDay, 10) || 1));
-  const timeOfDay = /^\d{2}:\d{2}$/.test(req.body?.timeOfDay) ? req.body.timeOfDay : "09:00";
-  const startDate = /^\d{4}-\d{2}-\d{2}$/.test(req.body?.startDate) ? req.body.startDate : undefined;
-  const count = Math.max(0, parseInt(req.body?.count, 10) || 0);
-  res.json({ slots: computeSlots({ perDay, timeOfDay, startDate, count }) });
+// Snapshot the posting queue: approved videos (posting candidates) plus every
+// slot locked by a video already handed off (ready/scheduled/posted) — those
+// posts exist outside this dashboard, so their slots can never be reassigned.
+async function queueSnapshot() {
+  const queue = await readQueue();
+  const stamps = await listStamps(EXPORT_DIR);
+  const approved = [];
+  const sentSlots = [];
+  for (const stamp of stamps) {
+    const { videos } = await loadBatch(EXPORT_DIR, stamp);
+    for (const v of videos) {
+      const entry = queue[keyFor(stamp, v.file)];
+      if (!entry) continue;
+      if (entry.scheduledAt && ["ready", "scheduled", "posted"].includes(entry.status)) {
+        sentSlots.push(entry.scheduledAt);
+      }
+      if (entry.status === "approved") {
+        approved.push({
+          stamp,
+          file: v.file,
+          caption: entry.caption ?? v.caption,
+          scheduledAt: entry.scheduledAt || null,
+          pinned: Boolean(entry.pinned),
+        });
+      }
+    }
+  }
+  return { approved, sentSlots };
+}
+
+// Lay every approved video out on the posting calendar (per the saved daily
+// posting times) and PERSIST each assignment. Re-running re-flows to the
+// CURRENT settings — changing the times and clicking again takes effect.
+// Two kinds of slots survive a re-flow: videos already sent to Buffer, and
+// times the operator set by hand (pinned). Returns the fresh list.
+async function autoschedule(startDate) {
+  const { postTimes } = await readSettings();
+  const { approved, sentSlots } = await queueSnapshot();
+  const now = Date.now();
+  const isFuture = (t) => t && new Date(t).getTime() > now;
+  // Never schedule inside the next 20 min: Buffer rejects past dueAt, and the
+  // operator needs room to hit "Send to Buffer" before the first slot passes.
+  let after = new Date(now + 20 * 60e3);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(startDate || "")) {
+    const sd = new Date(`${startDate}T00:00:00`);
+    if (sd.getTime() > after.getTime()) after = sd;
+  }
+  const keptPins = approved.filter((t) => t.pinned && isFuture(t.scheduledAt));
+  const needs = approved
+    .filter((t) => !(t.pinned && isFuture(t.scheduledAt)))
+    // Oldest batch first — approved content posts in the order it was made.
+    .sort((a, b) => (a.stamp + a.file < b.stamp + b.file ? -1 : 1));
+  const taken = [...sentSlots.filter(isFuture), ...keptPins.map((t) => t.scheduledAt)];
+  const slots = nextSlots({ postTimes, count: needs.length, after, taken });
+  for (let i = 0; i < needs.length; i++) {
+    needs[i].scheduledAt = slots[i];
+    await setEntry(keyFor(needs[i].stamp, needs[i].file), { scheduledAt: slots[i], pinned: false });
+  }
+  return { approved, scheduled: needs.length, kept: keptPins.length, postTimes };
+}
+
+// Posting-time settings (persisted in config/techsplains-settings.json).
+app.get("/api/settings", async (_req, res) => {
+  try {
+    res.json(await readSettings());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post("/api/settings", async (req, res) => {
+  try {
+    res.json(await writeSettings({ postTimes: req.body?.postTimes }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Auto-schedule (persists immediately — reloading the page keeps the plan).
+app.post("/api/queue/autoschedule", async (req, res) => {
+  try {
+    const r = await autoschedule(req.body?.startDate);
+    res.json({ ok: true, scheduled: r.scheduled, kept: r.kept, postTimes: r.postTimes });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Persist per-item scheduled times (from the plan the client just computed).
@@ -211,8 +294,13 @@ app.post("/api/queue/schedule", async (req, res) => {
   const items = Array.isArray(req.body?.items) ? req.body.items : [];
   try {
     for (const it of items) {
-      if (!it.stamp || !it.file || !it.scheduledAt) continue;
-      await setEntry(keyFor(it.stamp, it.file), { scheduledAt: it.scheduledAt });
+      if (!it.stamp || !it.file) continue;
+      // A hand-set time is PINNED — auto-schedule re-flows around it instead
+      // of overwriting it. null clears the slot (and the pin) again.
+      await setEntry(keyFor(it.stamp, it.file), {
+        scheduledAt: it.scheduledAt || null,
+        pinned: Boolean(it.scheduledAt),
+      });
     }
     res.json({ ok: true, count: items.length });
   } catch (err) {
@@ -227,18 +315,9 @@ app.post("/api/queue/schedule", async (req, res) => {
 // ready so the operator queues the files into Buffer's composer themselves.
 app.post("/api/queue/send", async (_req, res) => {
   try {
-    const queue = await readQueue();
-    const stamps = await listStamps(EXPORT_DIR);
-    const targets = [];
-    for (const stamp of stamps) {
-      const { videos } = await loadBatch(EXPORT_DIR, stamp);
-      for (const v of videos) {
-        const entry = queue[keyFor(stamp, v.file)];
-        if (entry?.status === "approved") {
-          targets.push({ stamp, file: v.file, caption: entry.caption ?? v.caption, scheduledAt: entry.scheduledAt });
-        }
-      }
-    }
+    // Any approved video still missing a future slot gets the next free one
+    // first — sending never silently posts "an hour from now".
+    const { approved: targets } = await autoschedule();
 
     if (!bufferConfigured() || !storageConfigured()) {
       for (const t of targets) await setEntry(keyFor(t.stamp, t.file), { status: "ready" });
@@ -252,8 +331,7 @@ app.post("/api/queue/send", async (_req, res) => {
       try {
         const abs = safeExportPath(EXPORT_DIR, t.stamp, t.file);
         const videoUrl = await uploadPublic(abs, `${t.stamp}/${t.file}`);
-        const dueAt = t.scheduledAt || new Date(Date.now() + 3600e3).toISOString();
-        const { postId, url } = await schedulePost({ videoUrl, caption: t.caption, dueAt });
+        const { postId, url } = await schedulePost({ videoUrl, caption: t.caption, dueAt: t.scheduledAt });
         await setEntry(keyFor(t.stamp, t.file), {
           status: "scheduled",
           bufferPostId: postId,

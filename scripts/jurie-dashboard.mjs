@@ -4922,7 +4922,7 @@ async function viewBroll(mode){
       +'     ffmpeg -y -i "<path>" -vf scale=-2:360 -c:v libx264 -crf 36 -preset veryfast \\\\\\n'
       +'       -c:a aac -b:a 32k -ac 1 -ar 16000 -movflags +faststart /tmp/broll-source.mp4\\n'
       +'3. Run the pipeline against the compressed copy:\\n'
-      +'     cd /Users/macbookpro/claude_code/research/remotion-app\\n'
+      +'     cd /Users/macbookpro/claude_code/research/content-studio\\n'
       +'     node scripts/broll-batch.mjs --aspect '+aspect+' --count '+count+' '+(charId==='none'||!charId?'':'--character '+charId+' ')+'--video /tmp/broll-source.mp4\\n'
       +'4. After step 2 of the pipeline finishes, retry any shots that hit Vertex 429 quota with 8s throttling between calls (it usually drops 5–15 of them on bigger batches).\\n'
       +'5. Patch the JSON\\\'s framePath fields for the retried shots, then run scripts/broll-deliverable.mjs to rebuild the HTML so it shows all of them.\\n'

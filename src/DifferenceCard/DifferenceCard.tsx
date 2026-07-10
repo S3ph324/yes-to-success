@@ -3,6 +3,8 @@ import {
   AbsoluteFill,
   Audio,
   Img,
+  Loop,
+  OffthreadVideo,
   continueRender,
   delayRender,
   spring,
@@ -35,6 +37,9 @@ const segmentSchema = z.object({
   bLabel: z.string(),
   aImg: z.string().optional(),
   bImg: z.string().optional(),
+  // "Did you know" slots can carry a stock video CLIP instead of a still.
+  aVideo: z.string().optional(),
+  aVideoDurationSec: z.number().optional(),
 });
 
 export const differenceCardSchema = z.object({
@@ -67,8 +72,33 @@ const POSE: Record<Phase["kind"], string> = {
   outro: "characters/techsplains/pose-base.png",
 };
 
+// Brand wordmark — same lockup as the Facebook cover (Luckiest Guy, yellow
+// fill, black stroke). Shared by DifferenceCard and DidYouKnowCard.
+export const TechsplainsWordmark: React.FC<{ y?: number; size?: number }> = ({
+  y = 44,
+  size = 58,
+}) => (
+  <div
+    style={{
+      position: "absolute",
+      top: y,
+      width: "100%",
+      textAlign: "center",
+      fontFamily: "'Luckiest Guy','Montserrat',sans-serif",
+      fontSize: size,
+      letterSpacing: 3,
+      color: "#FFDD00",
+      WebkitTextStroke: "7px #111",
+      paintOrder: "stroke fill",
+      filter: "drop-shadow(0 4px 0 rgba(0,0,0,0.18))",
+    }}
+  >
+    TECHSPLAINS
+  </div>
+);
+
 // Reference-style caption case: lowercase everything except acronyms (USB-C).
-const displayWord = (w: string) =>
+export const displayWord = (w: string) =>
   /[A-Z]{2}/.test(w) ? w : w.toLowerCase();
 
 // Group a phase's words into caption chunks. Intros/question read as one
@@ -76,7 +106,7 @@ const displayWord = (w: string) =>
 // hook/outro wrap at four so longer lines stay readable. A chunk never
 // crosses a sentence boundary — "videos more? follow techsplains" reads
 // broken; ending the chunk at ?/!/. keeps every caption a coherent phrase.
-const chunkPhase = (p: Phase) => {
+export const chunkPhase = (p: Phase) => {
   const max =
     p.kind === "defA" || p.kind === "defB" ? 3
     : p.kind === "hook" || p.kind === "outro" ? 4
@@ -214,17 +244,56 @@ export const DifferenceCard: React.FC<Props> = ({
         >
           <div>{label}</div>
         </div>
-        {src ? (
-          <Img
-            src={staticFile(src)}
+        {side === "a" && seg.aVideo ? (
+          // Moving visual (DYK): loop the stock clip for as long as the slot
+          // is on screen, cropped to the same rounded square as a still.
+          <div
             style={{
               width: imgSize,
               height: imgSize,
-              objectFit: "cover",
               borderRadius: 28,
+              overflow: "hidden",
               boxShadow: "0 10px 34px rgba(0,0,0,0.16)",
             }}
-          />
+          >
+            <Loop
+              durationInFrames={Math.max(
+                fps,
+                Math.round((seg.aVideoDurationSec || 8) * fps),
+              )}
+              layout="none"
+            >
+              <OffthreadVideo
+                muted
+                src={staticFile(seg.aVideo)}
+                style={{ width: imgSize, height: imgSize, objectFit: "cover" }}
+              />
+            </Loop>
+          </div>
+        ) : src ? (
+          <div
+            style={{
+              width: imgSize,
+              height: imgSize,
+              borderRadius: 28,
+              overflow: "hidden",
+              boxShadow: "0 10px 34px rgba(0,0,0,0.16)",
+            }}
+          >
+            <Img
+              src={staticFile(src)}
+              style={{
+                width: imgSize,
+                height: imgSize,
+                objectFit: "cover",
+                // Single-image (DYK) stills get a slow Ken Burns push-in so
+                // the frame never sits fully static; pairs stay locked.
+                transform: single
+                  ? `scale(${1 + Math.min(0.14, Math.max(0, t - aStart) * 0.01)})`
+                  : undefined,
+              }}
+            />
+          </div>
         ) : (
           <div
             style={{
@@ -244,6 +313,8 @@ export const DifferenceCard: React.FC<Props> = ({
       style={{ background: "linear-gradient(180deg,#F7F6F4 0%,#E9E7E3 100%)" }}
     >
       {audioSrc ? <Audio src={staticFile(audioSrc)} /> : null}
+
+      <TechsplainsWordmark />
 
       {slot("a")}
       {slot("b")}

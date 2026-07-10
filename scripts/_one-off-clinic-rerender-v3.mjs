@@ -10,7 +10,7 @@ import path from "node:path";
 import { applyGcpEnv } from "./lib/client.mjs";
 applyGcpEnv();
 
-const ROOT = "/Users/macbookpro/claude_code/research/remotion-app";
+const ROOT = "/Users/macbookpro/claude_code/research/content-studio";
 const JSON_PATH = ROOT + "/out/broll-2026-05-30T13-59.json";
 const outDir = ROOT + "/public/broll-frames/broll-2026-05-30T13-59";
 const data = JSON.parse(await fs.readFile(JSON_PATH, "utf-8"));

@@ -58,8 +58,9 @@ for (let vi = 0; vi < videos.length; vi++) {
     v.audio &&
     Array.isArray(v.phases) &&
     v.phases.length > 0 &&
-    // Single-image ("did you know") segments have no B side by design.
-    v.segments.every((s) => s.aImg && (s.bImg || !s.bLabel));
+    // Single-image ("did you know") segments have no B side by design, and
+    // may carry a stock video CLIP (aVideo) instead of a still.
+    v.segments.every((s) => (s.aImg || s.aVideo) && (s.bImg || !s.bLabel));
   if (!assetsOk) {
     skipped++;
     console.warn(`  [${vi + 1}/${videos.length}] SKIP ${v.title}: missing audio/images`);
@@ -72,6 +73,9 @@ for (let vi = 0; vi < videos.length; vi++) {
       bLabel: s.bLabel,
       aImg: s.aImg || "",
       bImg: s.bImg || "",
+      ...(s.aVideo
+        ? { aVideo: s.aVideo, aVideoDurationSec: s.aVideoDurationSec || 8 }
+        : {}),
     })),
     phases: v.phases,
     audioSrc: v.audio,
@@ -82,9 +86,10 @@ for (let vi = 0; vi < videos.length; vi++) {
 
   try {
     const tStart = Date.now();
+    // "Did you know" videos render on their own dark full-bleed template.
     const composition = await selectComposition({
       serveUrl: bundleLocation,
-      id: "DifferenceCard",
+      id: v.variant === "didyouknow" ? "DidYouKnowCard" : "DifferenceCard",
       inputProps,
     });
     await renderMedia({

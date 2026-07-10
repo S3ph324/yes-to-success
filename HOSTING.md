@@ -28,7 +28,7 @@ service-account key.
 
 ## 2. Push the repo to GitHub
 
-Railway deploys from a Git repo. From `research/remotion-app`:
+Railway deploys from a Git repo. From `research/content-studio`:
 ```
 git add -A && git commit -m "studio hosting" && git push
 ```

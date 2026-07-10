@@ -27,7 +27,7 @@ const step = (label, script, stepArgs) =>
     );
   });
 
-await step("1/4 Scripts (Gemini)", "generate-diff-scripts.mjs", args);
+await step("1/5 Scripts (Gemini)", "generate-diff-scripts.mjs", args);
 
 // Newest scripts JSON is the one we just wrote.
 const outDir = path.join(projectRoot, "out");
@@ -41,8 +41,9 @@ if (!scriptsFile) {
 }
 const scriptsPath = path.join(outDir, scriptsFile);
 
-await step("2/4 Comparison images (Vertex)", "generate-diff-images.mjs", [scriptsPath]);
-await step("3/4 Voiceover + word timings (TTS + whisper)", "generate-diff-audio.mjs", [scriptsPath]);
-await step("4/4 Render + export (Remotion)", "render-diff-batch.mjs", [scriptsPath]);
+await step("2/5 Visuals (stock video / real photos / AI)", "generate-diff-images.mjs", [scriptsPath]);
+await step("3/5 Director QC (scripts + visuals)", "generate-diff-director.mjs", [scriptsPath]);
+await step("4/5 Voiceover + word timings (TTS + whisper)", "generate-diff-audio.mjs", [scriptsPath]);
+await step("5/5 Render + export (Remotion)", "render-diff-batch.mjs", [scriptsPath]);
 
 console.log("\n✓ Techsplains batch complete.");

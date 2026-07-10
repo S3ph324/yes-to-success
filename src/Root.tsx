@@ -63,6 +63,11 @@ import {
   differenceCardSchema,
   calcMetaDifferenceCard,
 } from "./DifferenceCard/DifferenceCard";
+import {
+  DidYouKnowCard,
+  didYouKnowCardSchema,
+  calcMetaDidYouKnowCard,
+} from "./DidYouKnowCard/DidYouKnowCard";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -417,6 +422,41 @@ export const RemotionRoot: React.FC = () => {
           ],
           audioSrc: "",
           durationSec: 5.5,
+          handle: "@techsplains",
+          accent: "#FFDD00",
+        }}
+      />
+
+      <Composition
+        id="DidYouKnowCard"
+        component={DidYouKnowCard}
+        durationInFrames={900}
+        fps={30}
+        width={1080}
+        height={1920}
+        schema={didYouKnowCardSchema}
+        calculateMetadata={calcMetaDidYouKnowCard}
+        defaultProps={{
+          segments: [{ aLabel: "Octopus", bLabel: "", aImg: "", bImg: "" }],
+          phases: [
+            {
+              key: "fact",
+              seg: 0,
+              kind: "introA" as const,
+              text: "An octopus has three hearts.",
+              start: 0,
+              end: 2.2,
+              words: [
+                { w: "An", s: 0.1, e: 0.3 },
+                { w: "octopus", s: 0.3, e: 0.9 },
+                { w: "has", s: 0.9, e: 1.2 },
+                { w: "three", s: 1.2, e: 1.6 },
+                { w: "hearts.", s: 1.6, e: 2.1 },
+              ],
+            },
+          ],
+          audioSrc: "",
+          durationSec: 3,
           handle: "@techsplains",
           accent: "#FFDD00",
         }}

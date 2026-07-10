@@ -40,14 +40,16 @@ export const TS_TTS = {
   voice: process.env.TECHSPLAINS_TTS_VOICE || "Orus",
   stylePrompt:
     process.env.TECHSPLAINS_TTS_STYLE ||
-    "Read this narration in a natural, friendly voice with a steady, consistent " +
-    "tone from start to finish — brisk pace, clear enunciation, no dramatic " +
-    "swings or over-acting. Like a short-form tech explainer narrator. Take a " +
-    "brief beat between sentences:",
+    "Read this narration in a natural, friendly, QUICK voice — energetic and " +
+    "up-tempo like a viral shorts narrator excited to share a fact, but still " +
+    "human and clearly enunciated, never rushed into mumbling. Keep the tone " +
+    "steady and consistent start to finish, no dramatic swings or over-acting. " +
+    "Only the briefest beat between sentences:",
   // Post-speed the track toward this length if the model reads long (user
-  // feedback: 45-49s reads felt "soo slow"; the reference format is ~30s).
-  targetSec: Number(process.env.TECHSPLAINS_TARGET_SEC || "36"),
-  maxTempo: 1.18,
+  // feedback: 45-49s reads felt "soo slow", then 36s reads still too slow —
+  // the reference format is ~30s and the user asked for a faster read).
+  targetSec: Number(process.env.TECHSPLAINS_TARGET_SEC || "31"),
+  maxTempo: 1.28,
 };
 
 export const TS_HANDLE = "@techsplains";

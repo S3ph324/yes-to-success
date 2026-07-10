@@ -71,7 +71,7 @@ isolated — see section 7.
 Start it:
 
 ```
-cd research/remotion-app
+cd research/content-studio
 npm run jurie:dashboard
 ```
 
@@ -123,7 +123,7 @@ The font is **Montserrat** (heavy), bundled in `public/fonts/`.
 
 ## 6. The settings files (what holds what)
 
-All in `research/remotion-app/config/`. Plain JSON you can also edit by hand,
+All in `research/content-studio/config/`. Plain JSON you can also edit by hand,
 but the dashboard does it for you.
 
 - **clients.json** — the master list: each client's voice profile, default
@@ -204,7 +204,7 @@ you ask for it.
 ## 11. Quick fixes
 
 - **Dashboard won't load** → terminal closed. Re-run
-  `cd research/remotion-app && npm run jurie:dashboard`.
+  `cd research/content-studio && npm run jurie:dashboard`.
 - **A poster came out with no photo** → the image model hiccuped; it
   auto-retries 3×. Just regenerate that batch if one slips through.
 - **Wrong person / want a different model** → Characters tab: upload new

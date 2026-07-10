@@ -1,116 +1,145 @@
 [
-  {
-    "id": "brief_default",
-    "name": "Default — 3 Pillars",
-    "topics": [
-      "trading",
-      "yes-to-success",
-      "biohacking"
-    ],
-    "voiceNotes": "Empathetic tone. Validate the audience's effort before reframing. Mix Taglish naturally.",
-    "bannedPhrases": [
-      "walang kwentang trabaho",
-      "tamad ka",
-      "guaranteed income",
-      "this supplement cures"
-    ],
-    "activeCampaigns": ""
-  },
-  {
-    "id": "brief_jurie",
-    "name": "Jurie — AI for Business Owners",
-    "client": "jurie",
-    "topics": [
-      "how AI can help business owners",
-      "AI tools that save time and money",
-      "working smart vs working hard with AI",
-      "future-proofing a small business with AI",
-      "common AI mistakes business owners make"
-    ],
-    "voiceNotes": "Jurie's voice: empathetic Filipino AI/business mentor. Taglish, punchy, conversational. Validate the audience's effort first — never shame them. Aspirational, practical, never hypey. NEW DIRECTION (authentic + transparent): write in Jurie's own first-person voice from her real experience and observations ('ito ang natutunan ko, ito ang nakita ko'). Direct — no paligoy-ligoy. NO free-bait or fake 'secret hack' framing. Knowledge has value: free content gives real awareness/insight/direction, while deeper implementation/guidance is paid, and she is transparent about it (occasionally explicit, never salesy — 'ang libre ay simula, may lalim pa na may halaga'). Rotate BOTH modes across a batch: (A) classic pain→AI reframe, and (B) first-person realization posts.",
-    "bannedPhrases": [
-      "tanga ka",
-      "tamad ka",
-      "walang kwenta ang ginagawa mo",
-      "you are poor because",
-      "guaranteed income",
-      "get rich quick",
-      "mawawalan ka ng trabaho kung hindi",
-      "FREE TIPS",
-      "FREE VALUE",
-      "FREE SECRET",
-      "secret hack",
-      "ibibigay ko lahat nang libre"
-    ],
-    "activeCampaigns": ""
-  },
-  {
-    "id": "brief_jurie_money",
-    "name": "Jurie — Money & Mindset",
-    "client": "jurie",
-    "topics": [
-      "building income streams with AI",
-      "money mindset for Filipino entrepreneurs",
-      "escaping the 9-to-5 trap",
-      "investing time vs trading time for money",
-      "scaling a side hustle into a real business"
-    ],
-    "voiceNotes": "Same Jurie voice — empathetic Taglish, validate effort, never shame. Lean slightly more aspirational about freedom and income, still practical and grounded in AI/working smart. Same NEW DIRECTION as brief_jurie: authentic first-person from real experience, direct (no paligoy-ligoy), NO free-bait/'secret hack' framing, transparent that deeper guidance has value/is paid (occasionally explicit, never salesy). Rotate both modes: classic pain→reframe AND first-person realization.",
-    "bannedPhrases": [
-      "tanga ka",
-      "tamad ka",
-      "guaranteed income",
-      "get rich quick",
-      "FREE TIPS",
-      "FREE VALUE",
-      "secret hack",
-      "ibibigay ko lahat nang libre"
-    ],
-    "activeCampaigns": ""
-  },
-  {
-    "id": "brief_tranzzie",
-    "name": "Tranzzie — Eyewear & Eye Care",
-    "client": "tranzzie",
-    "topics": [
-      "why regular eye check-ups matter",
-      "blue-light / anti-radiation lenses for screen users",
-      "choosing the right frame for your face",
-      "UV protection and eye health",
-      "kids' eyewear and screen time",
-      "signs you need new eyeglasses"
-    ],
-    "voiceNotes": "Tranzzie Eyeglasses voice: warm, trustworthy, educational optical clinic in the Philippines (since 2019). Taglish, friendly, caring — like a tito/ate optometrist who explains simply. Two-zone HOOK→PAYOFF: hook names a relatable eye/vision pain (headaches, blurry, eye strain, sun glare), payoff points to the right eyewear / an eye check at Tranzzie. Never fear-monger, never make medical cure claims. Encouraging and practical.",
-    "bannedPhrases": [
-      "cure",
-      "gagaling ang mata mo",
-      "permanenteng solusyon",
-      "100% guaranteed",
-      "no need for doctor",
-      "instant na malinaw"
-    ],
-    "activeCampaigns": ""
-  },
-  {
-    "id": "brief_tranzzie_photochromic",
-    "name": "Tranzzie — Photochromic Lenses",
-    "client": "tranzzie",
-    "topics": [
-      "photochromic (transitions) lenses explained",
-      "one pair for indoors and outdoors",
-      "photochromic lenses for drivers and commuters",
-      "UV protection that adjusts to sunlight",
-      "photochromic vs separate sunglasses",
-      "are photochromic lenses worth it"
-    ],
-    "voiceNotes": "Same Tranzzie voice — warm, educational, Taglish. Focus every poster on PHOTOCHROMIC / transitions lenses: lenses that darken under sunlight and clear up indoors. Hook = a relatable sun-glare / two-glasses hassle; payoff = photochromic lenses from Tranzzie solve it. Explain the benefit simply, no medical cure claims, no over-promising.",
-    "bannedPhrases": [
-      "cure",
-      "100% guaranteed",
-      "permanenteng solusyon",
-      "instant na malinaw",
-      "no need for doctor"
-    ],
-    "activeCampaigns": ""
-  }
+ {
+  "id": "brief_default",
+  "name": "Default — 3 Pillars",
+  "topics": [
+   "trading",
+   "yes-to-success",
+   "biohacking"
+  ],
+  "voiceNotes": "Empathetic tone. Validate the audience's effort before reframing. Mix Taglish naturally.",
+  "bannedPhrases": [
+   "walang kwentang trabaho",
+   "tamad ka",
+   "guaranteed income",
+   "this supplement cures"
+  ],
+  "activeCampaigns": ""
+ },
+ {
+  "id": "brief_jurie",
+  "name": "Jurie — AI for Business Owners",
+  "client": "jurie",
+  "topics": [
+   "how AI can help business owners",
+   "AI tools that save time and money",
+   "working smart vs working hard with AI",
+   "future-proofing a small business with AI",
+   "common AI mistakes business owners make"
+  ],
+  "voiceNotes": "Jurie's voice: empathetic Filipino AI/business mentor. Taglish, punchy, conversational. Validate the audience's effort first — never shame them. Aspirational, practical, never hypey. NEW DIRECTION (authentic + transparent): write in Jurie's own first-person voice from her real experience and observations ('ito ang natutunan ko, ito ang nakita ko'). Direct — no paligoy-ligoy. NO free-bait or fake 'secret hack' framing. Knowledge has value: free content gives real awareness/insight/direction, while deeper implementation/guidance is paid, and she is transparent about it (occasionally explicit, never salesy — 'ang libre ay simula, may lalim pa na may halaga'). Rotate BOTH modes across a batch: (A) classic pain→AI reframe, and (B) first-person realization posts.",
+  "bannedPhrases": [
+   "tanga ka",
+   "tamad ka",
+   "walang kwenta ang ginagawa mo",
+   "you are poor because",
+   "guaranteed income",
+   "get rich quick",
+   "mawawalan ka ng trabaho kung hindi",
+   "FREE TIPS",
+   "FREE VALUE",
+   "FREE SECRET",
+   "secret hack",
+   "ibibigay ko lahat nang libre"
+  ],
+  "activeCampaigns": ""
+ },
+ {
+  "id": "brief_jurie_money",
+  "name": "Jurie — Money & Mindset",
+  "client": "jurie",
+  "topics": [
+   "building income streams with AI",
+   "money mindset for Filipino entrepreneurs",
+   "escaping the 9-to-5 trap",
+   "investing time vs trading time for money",
+   "scaling a side hustle into a real business"
+  ],
+  "voiceNotes": "Same Jurie voice — empathetic Taglish, validate effort, never shame. Lean slightly more aspirational about freedom and income, still practical and grounded in AI/working smart. Same NEW DIRECTION as brief_jurie: authentic first-person from real experience, direct (no paligoy-ligoy), NO free-bait/'secret hack' framing, transparent that deeper guidance has value/is paid (occasionally explicit, never salesy). Rotate both modes: classic pain→reframe AND first-person realization.",
+  "bannedPhrases": [
+   "tanga ka",
+   "tamad ka",
+   "guaranteed income",
+   "get rich quick",
+   "FREE TIPS",
+   "FREE VALUE",
+   "secret hack",
+   "ibibigay ko lahat nang libre"
+  ],
+  "activeCampaigns": ""
+ },
+ {
+  "id": "brief_tranzzie",
+  "name": "Tranzzie — Eyewear & Eye Care",
+  "client": "tranzzie",
+  "topics": [
+   "why regular eye check-ups matter",
+   "blue-light / anti-radiation lenses for screen users",
+   "choosing the right frame for your face",
+   "UV protection and eye health",
+   "kids' eyewear and screen time",
+   "signs you need new eyeglasses"
+  ],
+  "voiceNotes": "Tranzzie Eyeglasses voice: warm, trustworthy, educational optical clinic in the Philippines (since 2019). Taglish, friendly, caring — like a tito/ate optometrist who explains simply. Two-zone HOOK→PAYOFF: hook names a relatable eye/vision pain (headaches, blurry, eye strain, sun glare), payoff points to the right eyewear / an eye check at Tranzzie. Never fear-monger, never make medical cure claims. Encouraging and practical.",
+  "bannedPhrases": [
+   "cure",
+   "gagaling ang mata mo",
+   "permanenteng solusyon",
+   "100% guaranteed",
+   "no need for doctor",
+   "instant na malinaw"
+  ],
+  "activeCampaigns": ""
+ },
+ {
+  "id": "brief_tranzzie_photochromic",
+  "name": "Tranzzie — Photochromic Lenses",
+  "client": "tranzzie",
+  "topics": [
+   "photochromic (transitions) lenses explained",
+   "one pair for indoors and outdoors",
+   "photochromic lenses for drivers and commuters",
+   "UV protection that adjusts to sunlight",
+   "photochromic vs separate sunglasses",
+   "are photochromic lenses worth it"
+  ],
+  "voiceNotes": "Same Tranzzie voice — warm, educational, Taglish. Focus every poster on PHOTOCHROMIC / transitions lenses: lenses that darken under sunlight and clear up indoors. Hook = a relatable sun-glare / two-glasses hassle; payoff = photochromic lenses from Tranzzie solve it. Explain the benefit simply, no medical cure claims, no over-promising.",
+  "bannedPhrases": [
+   "cure",
+   "100% guaranteed",
+   "permanenteng solusyon",
+   "instant na malinaw",
+   "no need for doctor"
+  ],
+  "activeCampaigns": ""
+ },
+ {
+  "id": "brief_techsplains",
+  "name": "Techsplains — Difference Videos",
+  "client": "techsplains",
+  "topics": [
+   "video editing basics (cut vs transition, J-cut vs L-cut, color correction vs color grading, render vs export, codec vs container, bitrate vs resolution, proxy vs original, timeline vs sequence)",
+   "content creation gear (ring light vs softbox, lav mic vs shotgun mic, dynamic vs condenser mic, gimbal vs tripod, green screen vs virtual background)",
+   "camera & photo (RAW vs JPEG, optical vs digital zoom, frame rate vs shutter speed, full frame vs crop sensor, megapixels vs sensor size)",
+   "general tech (RAM vs storage, CPU vs GPU, WiFi vs bluetooth, HDD vs SSD, USB-C vs Thunderbolt, OLED vs LCD, 4G vs 5G, cache vs cookies)",
+   "software & internet (app vs website, download vs stream, cloud vs local storage, update vs upgrade, freeware vs open source)",
+   "AI & modern tools (AI vs automation, chatbot vs AI agent, machine learning vs AI, deepfake vs filter)"
+  ],
+  "generalTopics": [
+   "food & drink (herb vs spice, jam vs jelly vs preserve, stock vs broth, baking soda vs baking powder, ale vs lager, whiskey vs bourbon, cocoa vs chocolate, yam vs sweet potato)",
+   "animals & nature (alligator vs crocodile, frog vs toad, butterfly vs moth, turtle vs tortoise, dolphin vs porpoise, hurricane vs typhoon vs cyclone)",
+   "the human body & health (vitamin vs mineral, virus vs bacteria, muscle vs tendon vs ligament, allergy vs intolerance, calorie vs kilocalorie)",
+   "everyday life & language (affect vs effect, jog vs run, brunch vs breakfast, motel vs hotel, myth vs legend, decade vs generation, weather vs climate)",
+   "feelings & the mind — pairs people live inside and still mix up (true love vs infatuation, jealousy vs envy, empathy vs sympathy, being alone vs being lonely, confidence vs arrogance, shy vs introvert, guilt vs shame, stress vs anxiety)",
+   "stories & ideas people argue about (protagonist vs hero, villain vs antagonist, sarcasm vs irony, myth vs fable, ethics vs morals, talent vs skill, knowledge vs wisdom, remake vs reboot)",
+   "history & units (leap year explained, why time zones exist, mile vs kilometer origins, why a week is 7 days)"
+  ],
+  "voiceNotes": "Plain everyday English, short sentences a 12-year-old understands. Factual and neutral — never brand-bashing. Definitions must be genuinely accurate.",
+  "bannedPhrases": [
+   "subscribe now",
+   "smash that like button",
+   "in this video"
+  ],
+  "activeCampaigns": ""
+ }
 ]
