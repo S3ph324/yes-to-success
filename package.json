@@ -54,7 +54,6 @@
     "jurie:dashboard": "node scripts/jurie-dashboard.mjs",
     "techsplains:gen": "node scripts/generate-diff-scripts.mjs",
     "techsplains:images": "node scripts/generate-diff-images.mjs",
-    "techsplains:director": "node scripts/generate-diff-director.mjs",
     "techsplains:audio": "node scripts/generate-diff-audio.mjs",
     "techsplains:render": "node scripts/render-diff-batch.mjs",
     "techsplains:batch": "node scripts/batch-techsplains.mjs",

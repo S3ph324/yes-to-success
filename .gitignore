@@ -7,6 +7,8 @@ dist
 
 # Ignore the output video from Git but not videos you import into src/.
 out
+!scripts/__tests__/fixtures/course/out
+!scripts/__tests__/fixtures/course/out/**
 
 # AI-generated backgrounds / b-roll frames (regenerated per batch — don't commit)
 public/generated-bg

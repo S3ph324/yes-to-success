@@ -1,0 +1,17 @@
+[
+  {
+    "title": "Cut vs Transition & J-cut vs L-cut",
+    "category": "editing",
+    "variant": "difference",
+    "segments": [
+      {
+        "aLabel": "Cut",
+        "bLabel": "Transition",
+        "defA": "A cut instantly changes from one shot to the next.",
+        "defB": "A transition is a visual effect that smoothly connects two shots.",
+        "aImg": "generated-diff/fixture/01-1a.jpg",
+        "bImg": "generated-diff/fixture/01-1b.jpg"
+      }
+    ]
+  }
+]
