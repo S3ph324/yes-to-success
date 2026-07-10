@@ -82,14 +82,25 @@ Free-Lead-Magnet/
 
 Content is identical word-for-word between Branded and Blank versions of every file — only the visual theme (logo, color palette, mascot doodle, CTA footers) toggles off for Blank.
 
+## Visual Content Strategy
+
+The course must not read as walls of text — every module page pairs prose with imagery, sourced from two places depending on content type:
+
+- **Reused difference-pair sidebars** (Modules 2, 3, 4, 7, 8 + the free cheat sheet): carry their **real sourced photos**, not just text. The existing Techsplains video pipeline already vision-gates and saves these per topic — `public/generated-diff/<stamp>/NN-1a.jpg` / `NN-1b.jpg` style files, referenced by `aImg`/`bImg` fields in `out/techsplains-scripts-*.json`. The course pipeline looks up the same topic ID used for the sidebar text and pulls its matching image pair — text and image travel together, nothing is re-sourced.
+- **Fresh-content modules with no matching video** (Module 1 – Welcome/timelines, Module 5 – Short-Form editing, Module 6 – Audio, Module 8's non-reused portions): visuals are a **mix**:
+  - **How-to steps** (e.g. "here's a timeline," "here's the export panel") get **illustrated UI mockups** — clean, drawn-not-photographed representations of a generic timeline/export panel/audio meter, in the Techsplains visual style (flat, minimal, mascot-adjacent). Fully automatable, no dependency on capturing real software screenshots.
+  - **Concepts** (pacing, hooks, niche-finding, etc.) get the same **Pexels-first / AI-gen-fallback** sourcing already built for videos (`scripts/generate-diff-images.mjs`'s vision-gated `pickBest` approach), reusing that exact function rather than rebuilding it.
+- Bonus PDFs (Glossary, Checklist, Hooks List, Tips, Niche) get lighter visual treatment — pull-quote-style callout boxes and small supporting icons/graphics rather than full photos, since they're reference/quick-scan documents rather than teaching modules.
+
 ## Production Pipeline
 
 Follows the config-driven, one-source-many-outputs pattern already used by the content-studio `client:batch` pipeline.
 
 - **Location:** `research/content-studio/course/` — new subdirectory alongside the existing Techsplains pipeline (`scripts/lib/techsplains*.mjs`), reusing `scripts/voice-profile-techsplains.md` for tone and the brand assets in `~/Downloads/Work/02_Clients/Techsplains/06_Branding/` (logo, cover art, colors).
 - **Content source:** each module and bonus PDF is authored as a Markdown file with frontmatter (title, and sidebar difference-pairs referenced by topic ID). One set of Markdown files feeds both Branded and Blank outputs — content is never duplicated.
-- **Difference-pair sidebars:** pulled programmatically from the existing `techsplains-manifest`/batch JSON files (under `~/Downloads/Work/02_Clients/Techsplains/05_Exports/Difference Videos/*/manifest.json`) by topic ID, so "Did You Know?" boxes are sourced from already-produced content, not retyped.
-- **Rendering:** an HTML/CSS template with two stylesheet themes (`branded.css` / `blank.css`) renders each Markdown file to styled HTML; a headless print-to-PDF step produces the final PDF. One render script, run with a `--theme=branded|blank` flag, produces the full Branded/ and Blank/ folder sets from the same Markdown source.
+- **Difference-pair sidebars:** text pulled programmatically from the existing `techsplains-manifest`/batch JSON files (under `~/Downloads/Work/02_Clients/Techsplains/05_Exports/Difference Videos/*/manifest.json`) by topic ID; matching images pulled from `public/generated-diff/<stamp>/` via the `aImg`/`bImg` fields on the same topic's entry in `out/techsplains-scripts-*.json`. Both are sourced from already-produced content, not retyped or re-generated.
+- **New imagery for fresh-content modules:** illustrated UI mockups (new, course-specific assets) plus concept imagery sourced via the same Pexels/AI-gen function used by `generate-diff-images.mjs`, called against new search queries/prompts for the fresh-module topics.
+- **Rendering:** an HTML/CSS template with two stylesheet themes (`branded.css` / `blank.css`) renders each Markdown file — including its sidebar/concept images — to styled HTML; a headless print-to-PDF step produces the final PDF. One render script, run with a `--theme=branded|blank` flag, produces the full Branded/ and Blank/ folder sets from the same Markdown + image source.
 - Exact PDF-rendering tool (e.g. Puppeteer/Playwright print-to-PDF vs. the PDF-authoring skill) is an implementation-time decision, not fixed here.
 
 ## Out of Scope
