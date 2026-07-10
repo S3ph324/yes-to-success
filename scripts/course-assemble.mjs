@@ -29,6 +29,13 @@ async function listMd(dir) {
   }
 }
 
+// Bonus-doc titles come from author-controlled frontmatter prose (e.g. a
+// future "The Techsplains Hook Vault") and aren't guaranteed brand-neutral
+// the way the hardcoded main-course title is — strip the brand name for the
+// Blank theme so a future bonus doc can't silently reopen the PDF-metadata
+// leak Task 7 closed for the main course.
+const stripBrand = (s) => s.replace(/\bTechsplains\s*/gi, "").replace(/\s{2,}/g, " ").trim();
+
 async function main() {
   const topicIndex = await buildTopicIndex();
   const moduleFiles = await listMd(modulesDir);
@@ -57,7 +64,7 @@ async function main() {
         for (const f of doc.files) {
           const rendered = await renderModuleMarkdown(path.join(srcDir, f), topicIndex);
           sections.push(rendered);
-          if (doc.kind === "bonus") title = rendered.title;
+          if (doc.kind === "bonus") title = theme === "blank" ? stripBrand(rendered.title) : rendered.title;
         }
         const html = await buildPage({ theme, title, sections });
         const outPath = path.join(destDir, doc.outName);
