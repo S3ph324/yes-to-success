@@ -54,3 +54,13 @@ test("ledger lines are appended when present", () => {
   const r = buildInstructions(techsplains, "VOICE", { used: ["codec vs container"] }, { count: 1, dyk: 0, general: 0 });
   assert.match(r.diffInstruction, /codec vs container/);
 });
+
+test("videoDykTopics are surfaced in the shared blocks", () => {
+  const cfg = {
+    brandName: "Tranzzie", outro: "Follow Tranzzie for more!", dykOpener: "Alam mo ba",
+    contentMix: { dykDefault: 0.34, generalDefault: 0, allowGeneral: false },
+    brief: { topics: ["blue-light vs regular"], videoDykTopics: ["how to pick frames for your face shape"] },
+  };
+  const r = buildInstructions(cfg, "VOICE", { used: [] }, { count: 2, dyk: 1, general: 0 });
+  assert.match(r.dykInstruction, /face shape/);
+});

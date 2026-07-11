@@ -55,3 +55,4 @@ research-data/
 
 # Techsplains dashboard local-only queue/approval state
 config/techsplains-queue.json
+config/tranzzie-video-queue.json

@@ -26,6 +26,14 @@ export function buildInstructions(cfg, voiceProfile, ledger, { count, topic = ""
       brief.generalTopics.map((t) => `- ${t}`).join("\n")
     : "";
 
+  // Extra angle hints for the "didyouknow" variant — only present for briefs
+  // that declare videoDykTopics (tranzzie). techsplains has no such field, so
+  // this collapses to "" and its prompt stays byte-identical.
+  const dykTopicBlock = brief?.videoDykTopics?.length
+    ? `\n\n## DID-YOU-KNOW / GUIDE ANGLES (use for variant "didyouknow"):\n` +
+      brief.videoDykTopics.map((t) => `- ${t}`).join("\n")
+    : "";
+
   const ledgerBlock = ledger.used?.length
     ? `\n\n## ALREADY PUBLISHED — never generate any of these again, and avoid near-duplicates:\n` +
       ledger.used.map((t) => `- ${t}`).join("\n")
@@ -37,7 +45,7 @@ export function buildInstructions(cfg, voiceProfile, ledger, { count, topic = ""
   const GENERAL_DIFF = Math.min(GENERAL_COUNT, DIFF_COUNT);
   const GENERAL_DYK = Math.min(DYK_COUNT, GENERAL_COUNT - GENERAL_DIFF);
 
-  const sharedBlocks = `${voiceProfile}${briefBlock}${generalBlock}${ledgerBlock}
+  const sharedBlocks = `${voiceProfile}${briefBlock}${generalBlock}${dykTopicBlock}${ledgerBlock}
 
 CLARITY & ENGAGEMENT (applies to EVERY sentence, all categories):
 - Write like you're telling a friend a fun fact at lunch, never like a manual
