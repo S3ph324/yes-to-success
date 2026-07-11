@@ -68,6 +68,10 @@ import {
   didYouKnowCardSchema,
   calcMetaDidYouKnowCard,
 } from "./DidYouKnowCard/DidYouKnowCard";
+import {
+  TranzzieDiffCard, tranzzieDiffCardSchema, calcMetaTranzzieDiffCard,
+  TranzzieDidYouKnowCard, tranzzieDidYouKnowCardSchema, calcMetaTranzzieDidYouKnowCard,
+} from "./TranzzieDiffCard/TranzzieDiffCard";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -459,6 +463,68 @@ export const RemotionRoot: React.FC = () => {
           durationSec: 3,
           handle: "@techsplains",
           accent: "#FFDD00",
+        }}
+      />
+
+      <Composition
+        id="TranzzieDiffCard"
+        component={TranzzieDiffCard}
+        durationInFrames={900}
+        fps={30}
+        width={1080}
+        height={1920}
+        schema={tranzzieDiffCardSchema}
+        calculateMetadata={calcMetaTranzzieDiffCard}
+        defaultProps={{
+          segments: [
+            { aLabel: "Blue-light", bLabel: "Regular", aImg: "", bImg: "" },
+          ],
+          phases: [
+            {
+              key: "hook",
+              seg: 0,
+              kind: "hook" as const,
+              text: "Alam mo ba?",
+              start: 0,
+              end: 2,
+              words: [{ w: "Alam", s: 0, e: 1 }],
+            },
+          ],
+          audioSrc: "",
+          durationSec: 30,
+          handle: "@tranzzie",
+          accent: "#F5C13B",
+          poses: {},
+        }}
+      />
+
+      <Composition
+        id="TranzzieDidYouKnowCard"
+        component={TranzzieDidYouKnowCard}
+        durationInFrames={900}
+        fps={30}
+        width={1080}
+        height={1920}
+        schema={tranzzieDidYouKnowCardSchema}
+        calculateMetadata={calcMetaTranzzieDidYouKnowCard}
+        defaultProps={{
+          segments: [{ aLabel: "Fact", bLabel: "", aImg: "", bImg: "" }],
+          phases: [
+            {
+              key: "hook",
+              seg: 0,
+              kind: "hook" as const,
+              text: "Alam mo ba?",
+              start: 0,
+              end: 2,
+              words: [{ w: "Alam", s: 0, e: 1 }],
+            },
+          ],
+          audioSrc: "",
+          durationSec: 30,
+          handle: "@tranzzie",
+          accent: "#F5C13B",
+          poses: {},
         }}
       />
 

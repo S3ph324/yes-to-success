@@ -49,6 +49,7 @@ export const differenceCardSchema = z.object({
   durationSec: z.number(),
   handle: z.string(),
   accent: z.string(),
+  poses: z.record(z.string(), z.string()).optional(),
 });
 
 type Props = z.infer<typeof differenceCardSchema>;
