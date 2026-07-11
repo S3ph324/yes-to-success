@@ -13,12 +13,27 @@ const tranzzie = {
   brief: { topics: ["blue-light vs regular lenses"], generalTopics: [] },
 };
 
-test("brand strings are interpolated, not hardcoded", () => {
-  const r = buildInstructions(tranzzie, "VOICE", { used: [] }, { count: 3, dyk: 1, general: 0 });
-  assert.match(r.diffInstruction, /Tranzzie/);
-  assert.doesNotMatch(r.diffInstruction, /Techsplains/);
+test("brand tokens are parametrized where they belong (DYK opener + outro), and the voice profile carries brand identity", () => {
+  const r = buildInstructions(tranzzie, "Tranzzie video voice profile", { used: [] }, { count: 3, dyk: 1, general: 0 });
+  // The DYK opener + outro are the genuinely parametrized brand tokens.
   assert.match(r.dykInstruction, /Alam mo ba/);
   assert.match(r.dykInstruction, /Follow Tranzzie for more!/);
+  // No Techsplains brand tokens leak into a Tranzzie run.
+  assert.doesNotMatch(r.dykInstruction, /Follow Techsplains for more!/);
+  assert.doesNotMatch(r.dykInstruction, /Did you know/);
+  // Brand identity reaches the instruction via the voice profile (which leads
+  // sharedBlocks) — the diffInstruction body itself is brand-neutral by design.
+  assert.match(r.diffInstruction, /Tranzzie video voice profile/);
+});
+
+test("techsplains prompt is reproduced verbatim (byte-identical guard against condensing)", () => {
+  const r = buildInstructions(techsplains, "VOICE", { used: [] }, { count: 3, dyk: 1, general: 0 });
+  // Hallmark phrases from the original prompt that must never be dropped.
+  assert.match(r.diffInstruction, /huh, I didn't know that/);
+  // \s+ tolerates the source line-wrap in "wait out a\n  drought…".
+  assert.match(r.diffInstruction, /A toad can wait out a\s+drought buried in mud for months/);
+  assert.match(r.dykInstruction, /Did you know/);
+  assert.match(r.dykInstruction, /Follow Techsplains for more!/);
 });
 
 test("allowGeneral:false forbids the general category", () => {
