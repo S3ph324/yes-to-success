@@ -18,9 +18,10 @@
     "exportDir": "/Users/macbookpro/Downloads/Work/02_Clients/Tranzzie/05_Exports/Quote Posters",
     "video": {
       "brandName": "Tranzzie",
-      "handle": "@tranzzie",
+      "handle": "@tranzzieyeglasses",
       "template": "photo",
       "accent": "#F5C13B",
+      "logo": "brand/tranzzie-logo.png",
       "outro": "Follow Tranzzie for more!",
       "dykOpener": "Alam mo ba",
       "language": "taglish",
@@ -34,7 +35,7 @@
         "maxTempo": 1.22
       },
       "presenter": {
-        "characterId": "char_tranzzie_enhanced",
+        "characterId": "char_jurie_enhanced",
         "poseDir": "characters/tranzzie",
         "poses": {
           "hook": "jurie-point.png", "introA": "jurie-point.png",

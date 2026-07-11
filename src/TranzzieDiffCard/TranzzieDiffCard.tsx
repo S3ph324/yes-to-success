@@ -33,7 +33,15 @@ const Presenter: React.FC<{ src?: string; pop: number; bob: number }> = ({ src, 
     </div>
   ) : null;
 
-export const TranzzieDiffCard: React.FC<Props> = ({ segments, phases, audioSrc, handle, poses }) => {
+// Brand logo, top-centered. Optional — only brands that set a logo path show it.
+const Logo: React.FC<{ src?: string; top?: number; height?: number }> = ({ src, top = 56, height = 72 }) =>
+  src ? (
+    <div style={{ position: "absolute", top, width: "100%", display: "flex", justifyContent: "center", zIndex: 6 }}>
+      <Img src={staticFile(src)} style={{ height, objectFit: "contain" }} />
+    </div>
+  ) : null;
+
+export const TranzzieDiffCard: React.FC<Props> = ({ segments, phases, audioSrc, handle, poses, logo }) => {
   const frame = useCurrentFrame();
   const { fps, width } = useVideoConfig();
   const t = frame / fps;
@@ -99,6 +107,8 @@ export const TranzzieDiffCard: React.FC<Props> = ({ segments, phases, audioSrc, 
     <AbsoluteFill style={{ background: "radial-gradient(ellipse at 50% 30%, #17140C 0%, #0A0A0A 60%, #080810 100%)" }}>
       {audioSrc ? <Audio src={staticFile(audioSrc)} /> : null}
 
+      <Logo src={logo} top={52} height={64} />
+
       {slot("a")}
       {slot("b")}
 
@@ -122,7 +132,7 @@ export const TranzzieDiffCard: React.FC<Props> = ({ segments, phases, audioSrc, 
 export const tranzzieDidYouKnowCardSchema = differenceCardSchema;
 export const calcMetaTranzzieDidYouKnowCard = calcMetaTranzzieDiffCard;
 
-export const TranzzieDidYouKnowCard: React.FC<Props> = ({ segments, phases, audioSrc, handle, poses }) => {
+export const TranzzieDidYouKnowCard: React.FC<Props> = ({ segments, phases, audioSrc, handle, poses, logo }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
   const t = frame / fps;
@@ -160,7 +170,9 @@ export const TranzzieDidYouKnowCard: React.FC<Props> = ({ segments, phases, audi
       ) : null}
       <AbsoluteFill style={{ background: "linear-gradient(180deg, rgba(8,8,16,0.35) 0%, rgba(8,8,16,0.15) 45%, rgba(8,8,16,0.85) 100%)" }} />
 
-      <div style={{ position: "absolute", top: 120, width: "100%", textAlign: "center", fontFamily: "'Montserrat',sans-serif", fontWeight: 900, fontSize: 66, letterSpacing: 2, color: GOLD, WebkitTextStroke: "6px #111", paintOrder: "stroke fill" }}>
+      <Logo src={logo} top={52} height={64} />
+
+      <div style={{ position: "absolute", top: 156, width: "100%", textAlign: "center", fontFamily: "'Montserrat',sans-serif", fontWeight: 900, fontSize: 66, letterSpacing: 2, color: GOLD, WebkitTextStroke: "6px #111", paintOrder: "stroke fill" }}>
         ALAM MO BA?
       </div>
 

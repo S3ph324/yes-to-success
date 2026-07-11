@@ -28,8 +28,15 @@ test("resolveDiffClient(tranzzie) uses shared GCP + Tranzzie brand", async () =>
   assert.equal(c.contentMix.allowGeneral, false);
   assert.equal(c.gcp.project, "jurie-quote-posters"); // shared Jurie project
   assert.match(c.gcp.adc, /adc-jurie\.json$/);
-  assert.equal(c.presenter.characterId, "char_tranzzie_enhanced");
+  assert.equal(c.handle, "@tranzzieyeglasses");
+  assert.equal(c.logo, "brand/tranzzie-logo.png");
+  assert.equal(c.presenter.characterId, "char_jurie_enhanced"); // 3-photo Jurie ref set
   assert.match(c.voiceProfilePath, /voice-profile-tranzzie-video\.md$/);
+});
+
+test("resolveDiffClient(techsplains) has no logo (opt-in, keeps mascot cards unchanged)", async () => {
+  const c = await resolveDiffClient("techsplains");
+  assert.equal(c.logo, null);
 });
 
 test("resolveDiffClient attaches the resolved brief object", async () => {

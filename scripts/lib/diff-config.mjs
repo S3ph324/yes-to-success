@@ -90,6 +90,7 @@ export async function resolveDiffClient(id) {
     handle: v.handle,
     template: v.template,
     accent: v.accent,
+    logo: v.logo || null,
     outro: v.outro,
     dykOpener: v.dykOpener,
     language: v.language,

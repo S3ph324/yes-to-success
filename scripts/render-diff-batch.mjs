@@ -85,6 +85,7 @@ for (let vi = 0; vi < videos.length; vi++) {
     handle: cfg.handle,
     accent: cfg.accent,
     poses,
+    ...(cfg.logo ? { logo: cfg.logo } : {}),
   };
 
   try {
