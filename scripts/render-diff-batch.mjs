@@ -12,13 +12,16 @@ import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { projectRoot, resolveClient } from "./lib/client.mjs";
-import { TS_HANDLE, slugify } from "./lib/techsplains.mjs";
+import { projectRoot, takeClientArg } from "./lib/client.mjs";
+import { resolveDiffClient, slugify } from "./lib/diff-config.mjs";
+import { stampFromScriptsPath } from "./lib/diff-stamp.mjs";
+import { compositionFor, posePropsFor } from "./lib/render-diff-helpers.mjs";
 import { buildManifest } from "./lib/techsplains-manifest.mjs";
 
-const client = await resolveClient("techsplains");
+const { client: CLIENT_ID, rest: renderArgs } = takeClientArg(process.argv.slice(2));
+const cfg = await resolveDiffClient(CLIENT_ID || "techsplains");
+const scriptsArg = renderArgs[0];
 
-const scriptsArg = process.argv[2];
 if (!scriptsArg) {
   console.error("Usage: node scripts/render-diff-batch.mjs <scripts.json>");
   process.exit(1);
@@ -28,10 +31,8 @@ const scriptsPath = path.isAbsolute(scriptsArg)
   : path.join(process.cwd(), scriptsArg);
 const videos = JSON.parse(await fs.readFile(scriptsPath, "utf-8"));
 
-const stamp =
-  scriptsPath.match(/techsplains-scripts-(.+)\.json$/)?.[1] ||
-  new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
-const EXPORT_DIR = process.env.TECHSPLAINS_EXPORT_DIR || client.exportDir;
+const stamp = stampFromScriptsPath(scriptsPath);
+const EXPORT_DIR = process.env.DIFF_EXPORT_DIR || process.env.TECHSPLAINS_EXPORT_DIR || cfg.exportDir;
 const exportDir = path.join(EXPORT_DIR, stamp);
 await fs.mkdir(exportDir, { recursive: true });
 
@@ -49,6 +50,7 @@ console.log(`  bundled in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 const results = [];
 let failed = 0;
 let skipped = 0;
+const poses = posePropsFor(cfg);
 
 for (let vi = 0; vi < videos.length; vi++) {
   const v = videos[vi];
@@ -80,8 +82,9 @@ for (let vi = 0; vi < videos.length; vi++) {
     phases: v.phases,
     audioSrc: v.audio,
     durationSec: v.durationSec,
-    handle: TS_HANDLE,
-    accent: "#FFDD00",
+    handle: cfg.handle,
+    accent: cfg.accent,
+    poses,
   };
 
   try {
@@ -89,7 +92,7 @@ for (let vi = 0; vi < videos.length; vi++) {
     // "Did you know" videos render on their own dark full-bleed template.
     const composition = await selectComposition({
       serveUrl: bundleLocation,
-      id: v.variant === "didyouknow" ? "DidYouKnowCard" : "DifferenceCard",
+      id: compositionFor(cfg.template, v.variant),
       inputProps,
     });
     await renderMedia({
@@ -117,12 +120,12 @@ const rows = results
       `<figcaption><b>#${i + 1} — ${v.title}</b><br>${(v.caption || "").replace(/</g, "&lt;").replace(/\n/g, "<br>")}</figcaption></figure>`,
   )
   .join("\n");
-const html = `<!doctype html><meta charset="utf-8"><title>Techsplains videos ${stamp}</title>
+const html = `<!doctype html><meta charset="utf-8"><title>${cfg.brandName} videos ${stamp}</title>
 <style>body{background:#111;color:#eee;font-family:system-ui;margin:24px}
 h1{font-size:18px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px}
 figure{margin:0;background:#1c1c1c;border-radius:8px;overflow:hidden}
 video{width:100%;display:block;aspect-ratio:9/16}figcaption{padding:10px 12px;font-size:13px;line-height:1.4;color:#bbb}</style>
-<h1>Techsplains — ${results.length} video(s) — ${stamp}</h1>
+<h1>${cfg.brandName} — ${results.length} video(s) — ${stamp}</h1>
 <p>Review, then queue in Buffer. Files in: ${exportDir}</p>
 <div class="grid">${rows}</div>`;
 await fs.writeFile(path.join(exportDir, "gallery.html"), html);
@@ -146,7 +149,7 @@ if (failed) console.log(`  (${failed} failed — see warnings)`);
 if (skipped) console.log(`  (${skipped} skipped — incomplete assets)`);
 
 // Cleanup: generated audio/images are baked into the MP4s now.
-if (process.env.TECHSPLAINS_KEEP_TEMP !== "1") {
+if (process.env.DIFF_KEEP_TEMP !== "1" && process.env.TECHSPLAINS_KEEP_TEMP !== "1") {
   await fs.rm(path.join(projectRoot, "public", "generated-diff", stamp), { recursive: true, force: true }).catch(() => {});
   await fs.rm(scriptsPath, { force: true }).catch(() => {});
   console.log("Cleanup done.");
