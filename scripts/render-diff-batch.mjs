@@ -54,7 +54,7 @@ const poses = posePropsFor(cfg);
 
 for (let vi = 0; vi < videos.length; vi++) {
   const v = videos[vi];
-  const fname = `techsplains-${String(vi + 1).padStart(2, "0")}-${slugify(v.title)}.mp4`;
+  const fname = `${cfg.id}-${String(vi + 1).padStart(2, "0")}-${slugify(v.title)}.mp4`;
 
   const assetsOk =
     v.audio &&
