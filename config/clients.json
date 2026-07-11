@@ -29,13 +29,14 @@
       "gcp": "shared",
       "tts": {
         "model": "gemini-2.5-flash-tts",
-        "voice": "Leda",
+        "voice": "Aoede",
         "stylePrompt": "Basahin ito na parang mabait at maalalahanin na ate optometrist na nagpapaliwanag sa isang kaibigan — mainit, may malasakit, malinaw, at hindi nagmamadali. Panatilihing steady at natural ang tono, Taglish, tulad ng kwentuhan. Maikling hinto lang bawat pangungusap:",
         "targetSec": 34,
         "maxTempo": 1.22
       },
       "presenter": {
         "characterId": "char_jurie_enhanced",
+        "style": "flat-vector",
         "poseDir": "characters/tranzzie",
         "poses": {
           "hook": "jurie-point.png", "introA": "jurie-point.png",

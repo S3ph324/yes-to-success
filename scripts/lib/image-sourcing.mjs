@@ -295,10 +295,14 @@ export async function genImage(prompt, outAbs, fallbackPrompt) {
     // contradictory (e.g. "binary code … no letters") — after two of those,
     // stop re-asking the impossible and switch to the simple label fallback.
     const usePrompt = textOnlyCount >= 2 && fallbackPrompt ? fallbackPrompt : prompt;
+    // A caller can override the global look per run (e.g. a flat-vector or a
+    // photoreal-product style for a specific brand batch). Defaults to
+    // STYLE_TAIL so existing callers (Techsplains, the course) are unchanged.
+    const styleTail = process.env.DIFF_IMAGE_STYLE_TAIL || STYLE_TAIL;
     try {
       const resp = await getAi().models.generateContent({
         model: MODEL,
-        contents: usePrompt + STYLE_TAIL,
+        contents: usePrompt + styleTail,
         config: { responseModalities: ["TEXT", "IMAGE"] },
       });
       const parts = resp.candidates?.[0]?.content?.parts || [];

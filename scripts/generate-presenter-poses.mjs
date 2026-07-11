@@ -71,7 +71,7 @@ const MODEL = process.env.REF_MODEL || "gemini-2.5-flash-image";
 console.log(`Generating ${jobs.length} presenter pose(s) for ${cfg.brandName} from ${refParts.length} ref photo(s)…`);
 let ok = 0;
 for (const job of jobs) {
-  const prompt = job.prompt || posePrompt(job.file, cfg.brandName);
+  const prompt = job.prompt || posePrompt(job.file, cfg.brandName, cfg.presenter.style);
   const parts = [...refParts, { text: prompt }];
   let buf = null;
   for (let attempt = 1; attempt <= 3 && !buf; attempt++) {

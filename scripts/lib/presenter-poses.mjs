@@ -12,9 +12,24 @@ const ATTITUDE = {
   "jurie-base": "friendly neutral standing pose, gentle smile, hands relaxed",
 };
 
-export function posePrompt(file, brandName) {
+// style: "photoreal" (default) or "flat-vector" (cartoon brand mascot). Both
+// keep the SAME person from the reference photos recognizable and sit on a pure
+// black background for the card's feathered-top composite.
+export function posePrompt(file, brandName, style = "photoreal") {
   const stem = file.replace(/\.png$/i, "");
   const attitude = ATTITUDE[stem] || "friendly neutral pose, gentle smile";
+  if (style === "flat-vector") {
+    return (
+      `A FLAT VECTOR CARTOON MASCOT version of the SAME person from the reference photos — ` +
+      `keep her clearly recognizable: same eyeglasses, same cap, same long dark hair, same friendly face — ` +
+      `she is the ${brandName} brand mascot, ${attitude}. ` +
+      `Modern flat vector illustration: bold clean outlines, smooth flat colors, minimal cel shading, ` +
+      `simple friendly facial features, rounded shapes — a Duolingo / Headspace style brand mascot. ` +
+      `She wears the SAME simple cream crew-neck top in every shot (consistent outfit). ` +
+      `Centered, upper body / waist-up, facing the camera, on a PURE SOLID BLACK background (#000000). ` +
+      `Vertical 9:16, crisp and readable at small size. No text, no words, no logos, no watermark.`
+    );
+  }
   return (
     `Photorealistic upper-body portrait of the SAME person from the reference photos ` +
     `(same face, same glasses, same hair, same apparent age and gender) — the ${brandName} presenter, ${attitude}. ` +
@@ -33,7 +48,7 @@ export function posesToGenerate(presenter, existsFn) {
     seen.add(file);
     const rel = path.posix.join(presenter.poseDir, file);
     if (existsFn(rel) || existsFn(file)) continue;
-    jobs.push({ kind, file, prompt: posePrompt(file, presenter._brandName || "the") });
+    jobs.push({ kind, file, prompt: posePrompt(file, presenter._brandName || "the", presenter.style) });
   }
   return jobs;
 }

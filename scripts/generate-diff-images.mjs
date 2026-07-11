@@ -44,6 +44,11 @@ await fs.mkdir(absDir, { recursive: true });
 
 const PEXELS_KEY = process.env.PEXELS_API_KEY || "";
 const CONCURRENCY = parseInt(process.env.TECHSPLAINS_IMG_CONCURRENCY || "1", 10);
+// "auto" (default) = stock-first with AI fallback (unchanged for Techsplains).
+// "ai" = skip stock entirely and generate every slot (lets a brand pick a
+// consistent look — e.g. flat-vector or photoreal product renders — via
+// DIFF_IMAGE_STYLE_TAIL).
+const IMAGE_SOURCE = (process.env.DIFF_IMAGE_SOURCE || "auto").toLowerCase();
 
 // Flatten all slots, run with bounded concurrency (same idea as poster-batch).
 const jobs = [];
@@ -99,7 +104,7 @@ async function worker() {
       let source = "";
 
       // "Did you know" videos get a MOVING visual when one exists.
-      if (job.v.variant === "didyouknow") {
+      if (IMAGE_SOURCE !== "ai" && job.v.variant === "didyouknow") {
         try {
           const clip = await stockVideo(
             job.query || label, label, usedIds, path.join(absDir, `${base}.mp4`),
@@ -117,21 +122,24 @@ async function worker() {
 
       if (!source) {
         const stockOut = path.join(absDir, `${base}.jpg`);
-        try {
-          const ov = await openverseImage(job.query || label, label, otherLabel, usedIds, stockOut);
-          if (ov) {
-            source = "openverse";
-            if (ov.credit) job.s[job.side === "a" ? "aCredit" : "bCredit"] = ov.credit;
-          }
-        } catch (err) {
-          console.warn(`    openverse failed (${String(err.message || err).slice(0, 60)})`);
-        }
-        if (!source) {
+        // Stock sourcing (real photos) is skipped in "ai" mode.
+        if (IMAGE_SOURCE !== "ai") {
           try {
-            if (await stockImage(job.query || label, label, otherLabel, usedIds, stockOut))
-              source = "pexels";
+            const ov = await openverseImage(job.query || label, label, otherLabel, usedIds, stockOut);
+            if (ov) {
+              source = "openverse";
+              if (ov.credit) job.s[job.side === "a" ? "aCredit" : "bCredit"] = ov.credit;
+            }
           } catch (err) {
-            console.warn(`    pexels search failed (${String(err.message || err).slice(0, 60)})`);
+            console.warn(`    openverse failed (${String(err.message || err).slice(0, 60)})`);
+          }
+          if (!source) {
+            try {
+              if (await stockImage(job.query || label, label, otherLabel, usedIds, stockOut))
+                source = "pexels";
+            } catch (err) {
+              console.warn(`    pexels search failed (${String(err.message || err).slice(0, 60)})`);
+            }
           }
         }
         if (source) {
