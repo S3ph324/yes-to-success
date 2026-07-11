@@ -17,24 +17,25 @@ export const calcMetaTranzzieDiffCard = ({ props }: { props: Props }) => ({
 
 const GOLD = "#F5C13B", GOLD_LIGHT = "#FFE27A", GOLD_DEEP = "#C7902A";
 
+// Poses are transparent cutouts (green-keyed) — no background box, so no mask.
+// A soft drop shadow grounds the mascot on the dark card.
 const Presenter: React.FC<{ src?: string; pop: number; bob: number }> = ({ src, pop, bob }) =>
   src ? (
     <div style={{ position: "absolute", bottom: 0, width: "100%", display: "flex", justifyContent: "center" }}>
       <Img
         src={staticFile(src)}
         style={{
-          height: 760,
+          height: 780,
           transform: `scale(${0.92 + 0.08 * pop}) translateY(${bob}px)`,
           transformOrigin: "center bottom",
-          WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 22%)",
-          maskImage: "linear-gradient(to bottom, transparent 0%, black 22%)",
+          filter: "drop-shadow(0 10px 26px rgba(0,0,0,0.55))",
         }}
       />
     </div>
   ) : null;
 
 // Brand logo, top-centered. Optional — only brands that set a logo path show it.
-const Logo: React.FC<{ src?: string; top?: number; height?: number }> = ({ src, top = 56, height = 72 }) =>
+const Logo: React.FC<{ src?: string; top?: number; height?: number }> = ({ src, top = 48, height = 96 }) =>
   src ? (
     <div style={{ position: "absolute", top, width: "100%", display: "flex", justifyContent: "center", zIndex: 6 }}>
       <Img src={staticFile(src)} style={{ height, objectFit: "contain" }} />
@@ -107,7 +108,7 @@ export const TranzzieDiffCard: React.FC<Props> = ({ segments, phases, audioSrc, 
     <AbsoluteFill style={{ background: "radial-gradient(ellipse at 50% 30%, #17140C 0%, #0A0A0A 60%, #080810 100%)" }}>
       {audioSrc ? <Audio src={staticFile(audioSrc)} /> : null}
 
-      <Logo src={logo} top={52} height={64} />
+      <Logo src={logo} top={44} height={104} />
 
       {slot("a")}
       {slot("b")}
@@ -170,9 +171,9 @@ export const TranzzieDidYouKnowCard: React.FC<Props> = ({ segments, phases, audi
       ) : null}
       <AbsoluteFill style={{ background: "linear-gradient(180deg, rgba(8,8,16,0.35) 0%, rgba(8,8,16,0.15) 45%, rgba(8,8,16,0.85) 100%)" }} />
 
-      <Logo src={logo} top={52} height={64} />
+      <Logo src={logo} top={40} height={92} />
 
-      <div style={{ position: "absolute", top: 156, width: "100%", textAlign: "center", fontFamily: "'Montserrat',sans-serif", fontWeight: 900, fontSize: 66, letterSpacing: 2, color: GOLD, WebkitTextStroke: "6px #111", paintOrder: "stroke fill" }}>
+      <div style={{ position: "absolute", top: 168, width: "100%", textAlign: "center", fontFamily: "'Montserrat',sans-serif", fontWeight: 900, fontSize: 66, letterSpacing: 2, color: GOLD, WebkitTextStroke: "6px #111", paintOrder: "stroke fill" }}>
         ALAM MO BA?
       </div>
 
@@ -186,7 +187,7 @@ export const TranzzieDidYouKnowCard: React.FC<Props> = ({ segments, phases, audi
 
       {poseSrc ? (
         <div style={{ position: "absolute", bottom: 0, right: 20, display: "flex", justifyContent: "flex-end" }}>
-          <Img src={staticFile(poseSrc)} style={{ height: 560, transform: `scale(${0.94 + 0.06 * posePop})`, transformOrigin: "right bottom", WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 24%)", maskImage: "linear-gradient(to bottom, transparent 0%, black 24%)" }} />
+          <Img src={staticFile(poseSrc)} style={{ height: 600, transform: `scale(${0.94 + 0.06 * posePop})`, transformOrigin: "right bottom", filter: "drop-shadow(0 10px 26px rgba(0,0,0,0.55))" }} />
         </div>
       ) : null}
 

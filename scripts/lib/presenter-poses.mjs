@@ -26,7 +26,8 @@ export function posePrompt(file, brandName, style = "photoreal") {
       `Modern flat vector illustration: bold clean outlines, smooth flat colors, minimal cel shading, ` +
       `simple friendly facial features, rounded shapes — a Duolingo / Headspace style brand mascot. ` +
       `She wears the SAME simple cream crew-neck top in every shot (consistent outfit). ` +
-      `Centered, upper body / waist-up, facing the camera, on a PURE SOLID BLACK background (#000000). ` +
+      `Centered, upper body / waist-up, facing the camera, on a PURE FLAT CHROMA-KEY GREEN background ` +
+      `(#00FF00, solid uniform green, no gradient, no shadows cast on the background) so it can be cut out cleanly. ` +
       `Vertical 9:16, crisp and readable at small size. No text, no words, no logos, no watermark.`
     );
   }

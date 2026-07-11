@@ -8,6 +8,7 @@
 
 import fs from "node:fs/promises";
 import { accessSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { GoogleGenAI } from "@google/genai";
 import { projectRoot, takeClientArg } from "./lib/client.mjs";
@@ -68,6 +69,26 @@ if (!jobs.length) { console.log("All presenter poses already exist. Use --force 
 const ai = new GoogleGenAI({ vertexai: true, project: cfg.gcp.project, location: cfg.gcp.imageLocation });
 const MODEL = process.env.REF_MODEL || "gemini-2.5-flash-image";
 
+// Cartoon (flat-vector) poses are generated on a chroma-green screen and keyed
+// to a TRANSPARENT PNG here, so the mascot composites onto the dark card with
+// NO visible rectangle. Photoreal poses keep their black-bg + card feather.
+const CUTOUT = cfg.presenter.style === "flat-vector";
+const hasFfmpeg = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
+if (CUTOUT && !hasFfmpeg) {
+  console.warn("  ⚠ ffmpeg not found — cartoon poses will keep their green background (install ffmpeg to key it out).");
+}
+// Key #00FF00 → alpha, soften the edge a touch, drop residual green spill.
+// Reads the green tmp file next to `absPath`, writes the transparent result.
+const keyGreen = (absPath) => {
+  const tmp = `${absPath}.green.png`;
+  const r = spawnSync("ffmpeg", [
+    "-y", "-i", tmp,
+    "-vf", "chromakey=0x00FF00:0.30:0.12,despill=type=green,format=rgba",
+    absPath,
+  ], { stdio: "ignore" });
+  return r.status === 0;
+};
+
 console.log(`Generating ${jobs.length} presenter pose(s) for ${cfg.brandName} from ${refParts.length} ref photo(s)…`);
 let ok = 0;
 for (const job of jobs) {
@@ -86,9 +107,19 @@ for (const job of jobs) {
     }
   }
   if (!buf) { console.error(`  ✗ FAILED ${job.file}`); continue; }
-  await fs.writeFile(path.join(outDir, job.file), buf);
+  const absOut = path.join(outDir, job.file);
+  if (CUTOUT && hasFfmpeg) {
+    // Write the raw green frame to a tmp, key it to a transparent PNG, clean up.
+    const tmp = `${absOut}.green.png`;
+    await fs.writeFile(tmp, buf);
+    const keyed = keyGreen(absOut);
+    await fs.rm(tmp, { force: true }).catch(() => {});
+    if (!keyed) { await fs.writeFile(absOut, buf); console.warn(`  ⚠ ${job.file}: green-key failed, kept raw`); }
+  } else {
+    await fs.writeFile(absOut, buf);
+  }
   ok++;
-  console.log(`  ✓ ${presenter.poseDir}/${job.file}`);
+  console.log(`  ✓ ${presenter.poseDir}/${job.file}${CUTOUT && hasFfmpeg ? " (transparent)" : ""}`);
 }
 console.log(`\n✓ ${ok}/${jobs.length} presenter pose(s) written to public/${presenter.poseDir}/`);
 console.log(`Review them, then regenerate any that drift with --force after deleting the file.`);
