@@ -15,10 +15,12 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { projectRoot } from "./lib/client.mjs";
+import { projectRoot, takeClientArg } from "./lib/client.mjs";
 import { stockImage, genImage, openverseImage, stockVideo } from "./lib/image-sourcing.mjs";
+import { stampFromScriptsPath } from "./lib/diff-stamp.mjs";
 
-const scriptsArg = process.argv[2];
+const { rest: imgArgs } = takeClientArg(process.argv.slice(2));
+const scriptsArg = imgArgs[0];
 if (!scriptsArg) {
   console.error("Usage: node scripts/generate-diff-images.mjs <scripts.json>");
   process.exit(1);
@@ -29,9 +31,7 @@ const scriptsPath = path.isAbsolute(scriptsArg)
 const videos = JSON.parse(await fs.readFile(scriptsPath, "utf-8"));
 
 // Batch stamp from the scripts filename so all steps share one folder name.
-const stamp =
-  scriptsPath.match(/techsplains-scripts-(.+)\.json$/)?.[1] ||
-  new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+const stamp = stampFromScriptsPath(scriptsPath);
 const relDir = path.posix.join("generated-diff", stamp);
 const absDir = path.join(projectRoot, "public", relDir);
 await fs.mkdir(absDir, { recursive: true });

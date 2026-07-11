@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Techsplains step 3 — the DIRECTOR. A QC agent that double-checks every
+// Difference-video step 3 — the DIRECTOR. A QC agent that double-checks every
 // script and every sourced visual before money is spent on TTS + render.
 //
 //   Script pass  — fact-checks each video, verifies the formula, and punches
@@ -14,7 +14,7 @@
 //                  render step skips that video, as designed.
 //
 // Runs BEFORE the audio step so text fixes land before narration is
-// synthesized. Skip entirely with TECHSPLAINS_DIRECTOR=0.
+// synthesized. Skip entirely with DIFF_DIRECTOR=0 (TECHSPLAINS_DIRECTOR=0 also honored).
 //
 // Usage:
 //   node scripts/generate-diff-director.mjs <scripts.json>
@@ -24,21 +24,24 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { GoogleGenAI, Type } from "@google/genai";
-import { projectRoot } from "./lib/client.mjs";
-import { applyTechsplainsGcpEnv, TS_GCP } from "./lib/techsplains.mjs";
+import { projectRoot, takeClientArg } from "./lib/client.mjs";
+import { resolveDiffClient } from "./lib/diff-config.mjs";
+import { stampFromScriptsPath } from "./lib/diff-stamp.mjs";
 import { stockImage, genImage, openverseImage, stockVideo } from "./lib/image-sourcing.mjs";
 
-applyTechsplainsGcpEnv();
+const { client: CLIENT_ID, rest: dirArgs } = takeClientArg(process.argv.slice(2));
+const cfg = await resolveDiffClient(CLIENT_ID || "techsplains");
+cfg.applyGcpEnv();
 const run = promisify(execFile);
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
-if (process.env.TECHSPLAINS_DIRECTOR === "0") {
-  console.log("Director QC disabled (TECHSPLAINS_DIRECTOR=0) — passing batch through.");
+if (process.env.DIFF_DIRECTOR === "0" || process.env.TECHSPLAINS_DIRECTOR === "0") {
+  console.log("Director QC disabled (DIFF_DIRECTOR=0) — passing batch through.");
   process.exit(0);
 }
 
-const scriptsArg = process.argv[2];
+const scriptsArg = dirArgs[0];
 if (!scriptsArg) {
   console.error("Usage: node scripts/generate-diff-director.mjs <scripts.json>");
   process.exit(1);
@@ -48,15 +51,14 @@ const scriptsPath = path.isAbsolute(scriptsArg)
   : path.join(process.cwd(), scriptsArg);
 const videos = JSON.parse(await fs.readFile(scriptsPath, "utf-8"));
 
-const stamp =
-  scriptsPath.match(/techsplains-scripts-(.+)\.json$/)?.[1] || "unknown";
+const stamp = stampFromScriptsPath(scriptsPath);
 const absDir = path.join(projectRoot, "public", "generated-diff", stamp);
 const relDir = path.posix.join("generated-diff", stamp);
 
 const ai = new GoogleGenAI({
   vertexai: true,
-  project: TS_GCP.project,
-  location: TS_GCP.location,
+  project: cfg.gcp.project,
+  location: cfg.gcp.location,
 });
 
 const words = (t) => String(t || "").split(/\s+/).filter(Boolean).length;
@@ -92,8 +94,16 @@ const reviewSchema = {
   },
 };
 
+// Brand-safety guardrail: only clients that DECLARE videoBannedPhrases (e.g.
+// Tranzzie's medical-claim list) get the extra rule; techsplains has none, so
+// its review prompt is unchanged.
+const banned = cfg.brief?.videoBannedPhrases || [];
+const bannedBlock = banned.length
+  ? `\nHARD BRAND RULE: This brand makes NO medical-cure claims. Reject or repair any script containing or implying: ${banned.join(", ")}. Rewrite to an encouraging, non-cure phrasing (e.g. suggest an eye check) rather than dropping the video when possible.\n`
+  : "";
+
 const reviewInstruction = `You are the DIRECTOR doing final QC on short-form
-"what's the difference" / "did you know" explainer scripts for the Techsplains
+"what's the difference" / "did you know" explainer scripts for the ${cfg.brandName}
 Facebook brand. For each video, in order:
 
 1. FACT-CHECK every claim. These are educational — no false claim may ship.
@@ -114,13 +124,13 @@ HARD RULES for rewrites:
 - Never change what the video is about or its title/labels.
 - defA/defB: max 16 words each, one sentence, starts with the term.
 - hook: max 9 words (a "did you know" video's hook MUST still literally
-  start with "Did you know" and may be up to 11 words).
-- outro: engagement question + "Follow Techsplains for more!".
+  start with "${cfg.dykOpener}" and may be up to 11 words).
+- outro: engagement question + "${cfg.outro}".
 - caption: keep the structure; if it ends with a 📷 credit line, copy that
   line over EXACTLY unchanged.
 - Do NOT touch introA/introB (renderer depends on their sentence pattern).
 - Accuracy outranks punchiness — never add a "fact" you are not sure of.
-
+${bannedBlock}
 Output ONLY the JSON array, one entry per video, index matching the input.`;
 
 console.log(`Director QC — reviewing ${videos.length} script(s)…`);
@@ -158,6 +168,12 @@ try {
   console.warn(`  script review failed (${String(err.message || err).slice(0, 80)}) — skipping script pass`);
 }
 
+// Config-driven fix-guards: the outro must still name the brand and a DYK hook
+// must still open with the brand's opener. For techsplains these resolve to the
+// same /follow techsplains/i and /^did you know/i behavior as before.
+const outroRe = new RegExp("follow " + cfg.brandName, "i");
+const dykRe = new RegExp("^" + cfg.dykOpener.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+
 const cut = new Set();
 for (const r of reviews) {
   const v = videos[r.index];
@@ -171,8 +187,8 @@ for (const r of reviews) {
     // Apply bounded fixes only; anything over the caps keeps the original.
     const isDyk = v.variant === "didyouknow";
     if (r.hook && words(r.hook) <= (isDyk ? 12 : 10) &&
-        (!isDyk || /^did you know/i.test(r.hook.trim()))) v.hook = r.hook;
-    if (r.outro && words(r.outro) <= 16 && /follow techsplains/i.test(r.outro)) v.outro = r.outro;
+        (!isDyk || dykRe.test(r.hook.trim()))) v.hook = r.hook;
+    if (r.outro && words(r.outro) <= 16 && outroRe.test(r.outro)) v.outro = r.outro;
     if (r.caption) v.caption = r.caption;
     (r.segments || []).forEach((rs, si) => {
       const s = v.segments[si];

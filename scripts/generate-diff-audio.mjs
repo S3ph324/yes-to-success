@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Techsplains step 3/4 — voiceover + word timings.
+// Difference-video step 3/4 — voiceover + word timings.
 //
 // ONE Gemini-TTS request per video (the whole narration in a single read) so
 // the voice stays consistent start-to-finish — per-sentence synthesis made
 // the voice audibly "change" between lines and over-perform each one. If the
-// model reads long, the track is tempo-adjusted toward TS_TTS.targetSec.
+// model reads long, the track is tempo-adjusted toward cfg.tts.targetSec.
 //
 // Captions display the EXACT SCRIPT TEXT. Whisper supplies timing only: its
 // heard words are paired with script words in order, so a transcription
@@ -24,16 +24,19 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { GoogleGenAI } from "@google/genai";
-import { projectRoot } from "./lib/client.mjs";
-import { applyTechsplainsGcpEnv, TS_GCP, TS_TTS } from "./lib/techsplains.mjs";
+import { projectRoot, takeClientArg } from "./lib/client.mjs";
+import { resolveDiffClient } from "./lib/diff-config.mjs";
+import { stampFromScriptsPath } from "./lib/diff-stamp.mjs";
 
-applyTechsplainsGcpEnv();
+const { client: CLIENT_ID, rest: audArgs } = takeClientArg(process.argv.slice(2));
+const cfg = await resolveDiffClient(CLIENT_ID || "techsplains");
+cfg.applyGcpEnv();
 const run = promisify(execFile);
 
 const WHISPER_MODEL =
   process.env.TECHSPLAINS_WHISPER_MODEL || "mlx-community/whisper-large-v3-mlx";
 
-const scriptsArg = process.argv[2];
+const scriptsArg = audArgs[0];
 if (!scriptsArg) {
   console.error("Usage: node scripts/generate-diff-audio.mjs <scripts.json>");
   process.exit(1);
@@ -43,17 +46,15 @@ const scriptsPath = path.isAbsolute(scriptsArg)
   : path.join(process.cwd(), scriptsArg);
 const videos = JSON.parse(await fs.readFile(scriptsPath, "utf-8"));
 
-const stamp =
-  scriptsPath.match(/techsplains-scripts-(.+)\.json$/)?.[1] ||
-  new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+const stamp = stampFromScriptsPath(scriptsPath);
 const relDir = path.posix.join("generated-diff", stamp);
 const absDir = path.join(projectRoot, "public", relDir);
 await fs.mkdir(absDir, { recursive: true });
 
 const ai = new GoogleGenAI({
   vertexai: true,
-  project: TS_GCP.project,
-  location: TS_GCP.location,
+  project: cfg.gcp.project,
+  location: cfg.gcp.location,
 });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -63,12 +64,12 @@ async function ttsFull(text, outRaw) {
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
       const resp = await ai.models.generateContent({
-        model: TS_TTS.model,
-        contents: `${TS_TTS.stylePrompt}\n\n${text}`,
+        model: cfg.tts.model,
+        contents: `${cfg.tts.stylePrompt}\n\n${text}`,
         config: {
           responseModalities: ["AUDIO"],
           speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: TS_TTS.voice } },
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: cfg.tts.voice } },
           },
         },
       });
@@ -166,12 +167,12 @@ for (let vi = 0; vi < videos.length; vi++) {
     "-c:a", "pcm_s16le", wavNatural]);
   await fs.rm(raw, { force: true });
   const naturalDur = await probeDuration(wavNatural);
-  const tempo = Math.min(TS_TTS.maxTempo, Math.max(1, naturalDur / TS_TTS.targetSec));
+  const tempo = Math.min(cfg.tts.maxTempo, Math.max(1, naturalDur / cfg.tts.targetSec));
   const fullWav = path.join(absDir, `${vid}-voice.wav`);
   if (tempo > 1.01) {
     await run("ffmpeg", ["-y", "-loglevel", "error", "-i", wavNatural,
       "-af", `atempo=${tempo.toFixed(3)}`, "-c:a", "pcm_s16le", fullWav]);
-    console.log(`  read ${naturalDur.toFixed(1)}s → sped ×${tempo.toFixed(2)} toward ${TS_TTS.targetSec}s target`);
+    console.log(`  read ${naturalDur.toFixed(1)}s → sped ×${tempo.toFixed(2)} toward ${cfg.tts.targetSec}s target`);
   } else {
     await fs.copyFile(wavNatural, fullWav);
   }
@@ -184,14 +185,10 @@ for (let vi = 0; vi < videos.length; vi++) {
   // 3) Whisper the FINAL (tempo-corrected) track for word timings.
   let whisperWords = [];
   try {
-    await run("mlx_whisper", [fullWav,
-      "--model", WHISPER_MODEL,
-      "--language", "en",
-      "--word-timestamps", "True",
-      "--output-format", "json",
-      "--output-dir", absDir,
-      "--output-name", `${vid}-voice`,
-    ], { maxBuffer: 32 * 1024 * 1024 });
+    const whisperArgs = [fullWav, "--model", WHISPER_MODEL];
+    if (cfg.whisperLang && cfg.whisperLang !== "auto") whisperArgs.push("--language", cfg.whisperLang);
+    whisperArgs.push("--word-timestamps", "True", "--output-format", "json", "--output-dir", absDir, "--output-name", `${vid}-voice`);
+    await run("mlx_whisper", whisperArgs, { maxBuffer: 32 * 1024 * 1024 });
     const wj = JSON.parse(
       await fs.readFile(path.join(absDir, `${vid}-voice.json`), "utf-8"),
     );
