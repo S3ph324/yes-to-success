@@ -47,6 +47,7 @@
 <header>
   <h1>TECHSPLAINS <span style="color:var(--yellow)">STUDIO</span></h1>
   <span class="v" id="ver"></span>
+  <select id="client" title="Brand" style="margin-left:8px"></select>
   <nav>
     <button data-view="generate" class="on">Generate</button>
     <button data-view="review">Review</button>
@@ -58,6 +59,12 @@
 <script>
 const app = document.getElementById("app");
 let VIEW = "generate";
+let CLIENT = localStorage.getItem("diffClient") || "techsplains";
+let CLIENT_INFO = {}; // id -> { allowGeneral }
+// Append the active client to any client-scoped URL. clientCtx() on the server
+// reads it from the query string (and POST bodies), so wrapping the URL is
+// enough — global endpoints (health, clients, settings) stay unwrapped.
+const q = (p) => p + (p.includes("?") ? "&" : "?") + "client=" + encodeURIComponent(CLIENT);
 
 const api = async (p, opts) => {
   const r = await fetch(p, { headers: { "Content-Type": "application/json" }, ...opts });
@@ -74,6 +81,24 @@ function setView(v) {
 }
 
 fetch("/api/health").then((r) => r.json()).then((h) => (document.getElementById("ver").textContent = "v" + h.version));
+
+// Brand switcher — populated from /api/clients. Switching re-renders the
+// current view (so the per-client batches/queue reload) and remembers the pick.
+async function loadClients() {
+  const sel = document.getElementById("client");
+  let list;
+  try { list = await fetch("/api/clients").then((r) => r.json()); }
+  catch { list = [{ id: "techsplains", allowGeneral: true }]; }
+  CLIENT_INFO = Object.fromEntries(list.map((c) => [c.id, c]));
+  if (!CLIENT_INFO[CLIENT]) CLIENT = list[0]?.id || "techsplains";
+  sel.innerHTML = list.map((c) => `<option value="${c.id}">${c.id}</option>`).join("");
+  sel.value = CLIENT;
+  sel.onchange = () => {
+    CLIENT = sel.value;
+    localStorage.setItem("diffClient", CLIENT);
+    render();
+  };
+}
 
 function render() {
   if (VIEW === "generate") return renderGenerate();
@@ -92,19 +117,26 @@ function renderGenerate() {
       <button class="btn" id="g-run">Generate batch</button>
     </div>
     <pre id="log">Ready. Set a count and hit Generate — the pipeline log streams here.</pre>`;
+  // Hide the general-content input for brands that disallow it (e.g. Tranzzie).
+  if (CLIENT_INFO[CLIENT] && CLIENT_INFO[CLIENT].allowGeneral === false) {
+    const gen = document.getElementById("g-general");
+    if (gen) gen.parentElement.hidden = true;
+  }
   const log = document.getElementById("log");
   document.getElementById("g-run").onclick = async () => {
     const btn = document.getElementById("g-run");
     btn.disabled = true;
     log.textContent = "";
+    const genEl = document.getElementById("g-general");
     const body = JSON.stringify({
       count: +document.getElementById("g-count").value,
       dyk: +document.getElementById("g-dyk").value,
-      general: +document.getElementById("g-general").value,
+      general: genEl && !genEl.parentElement.hidden ? +genEl.value : 0,
       topic: document.getElementById("g-topic").value,
+      client: CLIENT,
     });
     try {
-      const resp = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+      const resp = await fetch(q("/api/generate"), { method: "POST", headers: { "Content-Type": "application/json" }, body });
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
       for (;;) {
@@ -134,7 +166,7 @@ let FIRST_REVIEW = true;
 async function renderReview() {
   app.innerHTML = `<p class="muted">Loading batches…</p>`;
   let batches;
-  try { batches = await api("/api/batches"); } catch (e) { app.innerHTML = `<p class="muted">Error: ${escapeHTML(e.message)}</p>`; return; }
+  try { batches = await api(q("/api/batches")); } catch (e) { app.innerHTML = `<p class="muted">Error: ${escapeHTML(e.message)}</p>`; return; }
   if (!batches.length) { app.innerHTML = `<p class="muted">No batches yet. Generate one first.</p>`; return; }
   if (FIRST_REVIEW) { OPEN_STAMPS.add(batches[0].stamp); FIRST_REVIEW = false; }
   app.innerHTML = `<p class="muted" style="margin:8px 0 0">${batches.length} batch(es) — newest first. Click one to review its videos; approvals are saved per video.</p>` +
@@ -178,7 +210,7 @@ function cardHTML(stamp, v) {
   const id = btoa(unescape(encodeURIComponent(stamp + "|" + v.file))).replace(/=/g, "");
   return `
     <div class="card" data-id="${id}">
-      <video src="/api/video/${stamp}/${encodeURIComponent(v.file)}" controls preload="metadata"></video>
+      <video src="/api/video/${stamp}/${encodeURIComponent(v.file)}?client=${encodeURIComponent(CLIENT)}" controls preload="metadata"></video>
       <div class="body">
         <h3>${escapeHTML(v.title)} <span class="badge ${v.status}" id="b-${id}">${v.status}</span></h3>
         <textarea id="t-${id}">${escapeHTML(v.caption || "")}</textarea>
@@ -194,7 +226,7 @@ function wireCard(stamp, v) {
   const id = btoa(unescape(encodeURIComponent(stamp + "|" + v.file))).replace(/=/g, "");
   const set = async (status) => {
     const caption = document.getElementById("t-" + id).value;
-    await api("/api/approve", { method: "POST", body: JSON.stringify({ stamp, file: v.file, status, caption }) });
+    await api(q("/api/approve"), { method: "POST", body: JSON.stringify({ stamp, file: v.file, status, caption, client: CLIENT }) });
     const badge = document.getElementById("b-" + id);
     badge.className = "badge " + status;
     badge.textContent = status;
@@ -212,7 +244,7 @@ async function renderQueue() {
   app.innerHTML = `<p class="muted">Loading queue…</p>`;
   let items, settings;
   try {
-    [items, settings] = await Promise.all([api("/api/queue"), api("/api/settings")]);
+    [items, settings] = await Promise.all([api(q("/api/queue")), api("/api/settings")]);
   } catch (e) { app.innerHTML = `<p class="muted">Error: ${escapeHTML(e.message)}</p>`; return; }
 
   const now = new Date();
@@ -263,7 +295,7 @@ async function renderQueue() {
     items.sort((a, b) => (a.scheduledAt || "9999") < (b.scheduledAt || "9999") ? -1 : 1);
     document.getElementById("q-grid").innerHTML = items.map((it, i) => `
       <div class="card">
-        <video src="/api/video/${it.stamp}/${encodeURIComponent(it.file)}" controls preload="metadata"></video>
+        <video src="/api/video/${it.stamp}/${encodeURIComponent(it.file)}?client=${encodeURIComponent(CLIENT)}" controls preload="metadata"></video>
         <div class="body">
           <h3>${escapeHTML(it.title)} <span class="badge ${it.status}">${it.status}</span></h3>
           <label>Posts at (edit to override — saves instantly)</label>
@@ -277,7 +309,7 @@ async function renderQueue() {
         const it = items[+e.target.dataset.i];
         it.scheduledAt = e.target.value ? new Date(e.target.value).toISOString() : null;
         try {
-          await api("/api/queue/schedule", { method: "POST", body: JSON.stringify({ items: [{ stamp: it.stamp, file: it.file, scheduledAt: it.scheduledAt }] }) });
+          await api(q("/api/queue/schedule"), { method: "POST", body: JSON.stringify({ items: [{ stamp: it.stamp, file: it.file, scheduledAt: it.scheduledAt }], client: CLIENT }) });
           say(it.scheduledAt ? `Saved — “${it.title}” posts ${fmtWhen(it.scheduledAt)}.` : `Cleared the slot for “${it.title}”.`);
         } catch (err) { say("!! could not save time: " + err.message); }
       });
@@ -285,13 +317,13 @@ async function renderQueue() {
   draw();
   if (!items.length) say("Nothing approved yet — approve videos in Review and they show up here.");
 
-  const refreshItems = async () => { items = await api("/api/queue"); draw(); };
+  const refreshItems = async () => { items = await api(q("/api/queue")); draw(); };
 
   document.getElementById("q-plan").onclick = async () => {
     const btn = document.getElementById("q-plan");
     btn.disabled = true;
     try {
-      const r = await api("/api/queue/autoschedule", { method: "POST", body: JSON.stringify({ startDate: document.getElementById("q-start").value }) });
+      const r = await api(q("/api/queue/autoschedule"), { method: "POST", body: JSON.stringify({ startDate: document.getElementById("q-start").value, client: CLIENT }) });
       await refreshItems();
       say(`Auto-scheduled ${r.scheduled} video(s) at ${r.postTimes.join(" · ")} daily` +
           (r.kept ? ` — ${r.kept} hand-set time(s) kept` : "") +
@@ -305,7 +337,7 @@ async function renderQueue() {
     btn.disabled = true;
     say("Uploading videos and creating Buffer posts — this can take a minute per video…");
     try {
-      const r = await api("/api/queue/send", { method: "POST", body: JSON.stringify({}) });
+      const r = await api(q("/api/queue/send"), { method: "POST", body: JSON.stringify({ client: CLIENT }) });
       await refreshItems();
       say(r.mode === "manual"
         ? `${r.sent} video(s) marked ready for MANUAL posting (Buffer/B2 not configured). Files: ${r.exportHint}`
@@ -332,7 +364,7 @@ function toLocalInput(iso) {
 
 function escapeHTML(s) { return (s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
-render();
+loadClients().finally(render);
 </script>
 </body>
 </html>

@@ -12,7 +12,8 @@ import fs from "node:fs";
 import path from "node:path";
 import url from "node:url";
 import { createRequire } from "node:module";
-import { resolveClient, projectRoot } from "./lib/client.mjs";
+import { projectRoot } from "./lib/client.mjs";
+import { resolveDiffClient } from "./lib/diff-config.mjs";
 import { listStamps, loadBatch, safeExportPath } from "./lib/techsplains-batches.mjs";
 import { readQueue, setEntry, keyFor } from "./lib/techsplains-queue.mjs";
 import { nextSlots } from "./lib/techsplains-schedule.mjs";
@@ -24,9 +25,26 @@ const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const VERSION = require(path.join(projectRoot, "package.json")).version;
 
-const client = await resolveClient("techsplains");
-const EXPORT_DIR = process.env.TECHSPLAINS_EXPORT_DIR || client.exportDir;
+const CLIENTS = ["techsplains", "tranzzie"];
 const PORT = parseInt(process.env.TECHSPLAINS_DASHBOARD_PORT || "4318", 10);
+
+// Resolve the target client from the request — the dashboard sends `?client=`
+// on GETs and both `?client=` and `client:` on POSTs. Unknown/absent → the
+// default techsplains, so any no-client caller behaves exactly as before.
+// Per-client env overrides (<CLIENT>_EXPORT_DIR / <CLIENT>_QUEUE_PATH) win,
+// which keeps the old TECHSPLAINS_EXPORT_DIR / TECHSPLAINS_QUEUE_PATH knobs.
+async function clientCtx(req) {
+  const q = req.query?.client, b = req.body?.client;
+  const id = CLIENTS.includes(q) ? q : CLIENTS.includes(b) ? b : "techsplains";
+  const cfg = await resolveDiffClient(id);
+  const U = id.toUpperCase();
+  return {
+    id,
+    cfg,
+    exportDir: process.env[`${U}_EXPORT_DIR`] || cfg.exportDir,
+    queuePath: process.env[`${U}_QUEUE_PATH`] || cfg.queuePath,
+  };
+}
 
 const app = express();
 app.use(express.json());
@@ -35,25 +53,47 @@ const HTML_PATH = path.join(__dirname, "techsplains-dashboard.html");
 app.get("/", (_req, res) => res.sendFile(HTML_PATH));
 app.get("/api/health", (_req, res) => res.json({ ok: true, version: VERSION }));
 
+// Clients the switcher can pick, with each one's general-content flag so the
+// UI can hide the "fun facts" input for brands where general is disabled.
+app.get("/api/clients", async (_req, res) => {
+  try {
+    res.json(
+      await Promise.all(
+        CLIENTS.map(async (id) => ({
+          id,
+          allowGeneral: (await resolveDiffClient(id)).contentMix.allowGeneral,
+        })),
+      ),
+    );
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Generate: spawn the pipeline, stream its stdout/stderr to the browser ---
-app.post("/api/generate", (req, res) => {
+app.post("/api/generate", async (req, res) => {
   const count = Math.min(20, Math.max(1, parseInt(req.body?.count, 10) || 1));
   const dyk = Math.max(0, parseInt(req.body?.dyk, 10) || 0);
   const general = Math.min(count, Math.max(0, parseInt(req.body?.general, 10) || 0));
   const topic = (req.body?.topic || "").trim();
+  const { id, exportDir } = await clientCtx(req);
 
   res.set({ "Content-Type": "text/plain; charset=utf-8", "Transfer-Encoding": "chunked" });
 
-  const args = [path.join(__dirname, "batch-techsplains.mjs"), String(count)];
+  // batch-diff.mjs is the multi-brand orchestrator (batch-techsplains.mjs is now
+  // a shim to it). The generic DIFF_* env names are read first by every step
+  // (generate-diff-scripts, render-diff-batch) with TECHSPLAINS_* as fallbacks,
+  // so `--client techsplains` reproduces the old behavior exactly.
+  const args = [path.join(__dirname, "batch-diff.mjs"), "--client", id, String(count)];
   if (topic) args.push(...topic.split(/\s+/));
 
   const child = spawn(process.execPath, args, {
     cwd: projectRoot,
     env: {
       ...process.env,
-      TECHSPLAINS_DYK: String(dyk),
-      TECHSPLAINS_GENERAL: String(general),
-      TECHSPLAINS_EXPORT_DIR: EXPORT_DIR,
+      DIFF_DYK: String(dyk),
+      DIFF_GENERAL: String(general),
+      DIFF_EXPORT_DIR: exportDir,
     },
   });
   child.stdout.on("data", (c) => res.write(c));
@@ -76,13 +116,14 @@ app.post("/api/generate", (req, res) => {
 });
 
 // --- Batches: list stamps with per-video approval status -------------------
-app.get("/api/batches", async (_req, res) => {
+app.get("/api/batches", async (req, res) => {
   try {
-    const queue = await readQueue();
-    const stamps = await listStamps(EXPORT_DIR);
+    const { exportDir, queuePath } = await clientCtx(req);
+    const queue = await readQueue(queuePath);
+    const stamps = await listStamps(exportDir);
     const out = [];
     for (const stamp of stamps) {
-      const { videos } = await loadBatch(EXPORT_DIR, stamp);
+      const { videos } = await loadBatch(exportDir, stamp);
       out.push({
         stamp,
         videos: videos.map((v) => {
@@ -99,8 +140,9 @@ app.get("/api/batches", async (_req, res) => {
 
 app.get("/api/batches/:stamp", async (req, res) => {
   try {
-    const queue = await readQueue();
-    const { videos } = await loadBatch(EXPORT_DIR, req.params.stamp);
+    const { exportDir, queuePath } = await clientCtx(req);
+    const queue = await readQueue(queuePath);
+    const { videos } = await loadBatch(exportDir, req.params.stamp);
     res.json({
       stamp: req.params.stamp,
       videos: videos.map((v) => {
@@ -114,10 +156,11 @@ app.get("/api/batches/:stamp", async (req, res) => {
 });
 
 // --- Video streaming (Range-aware, traversal-guarded) ----------------------
-app.get("/api/video/:stamp/:file", (req, res) => {
+app.get("/api/video/:stamp/:file", async (req, res) => {
   let abs;
   try {
-    abs = safeExportPath(EXPORT_DIR, req.params.stamp, req.params.file);
+    const { exportDir } = await clientCtx(req);
+    abs = safeExportPath(exportDir, req.params.stamp, req.params.file);
   } catch {
     return res.status(400).end("bad path");
   }
@@ -165,9 +208,10 @@ app.post("/api/approve", async (req, res) => {
     return res.status(400).json({ error: "stamp, file, status required" });
   }
   try {
+    const { queuePath } = await clientCtx(req);
     const patch = { status };
     if (typeof caption === "string") patch.caption = caption;
-    const entry = await setEntry(keyFor(stamp, file), patch);
+    const entry = await setEntry(keyFor(stamp, file), patch, queuePath);
     res.json({ ok: true, entry });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -175,13 +219,14 @@ app.post("/api/approve", async (req, res) => {
 });
 
 // --- Queue: approved (or later) videos across all batches ------------------
-app.get("/api/queue", async (_req, res) => {
+app.get("/api/queue", async (req, res) => {
   try {
-    const queue = await readQueue();
-    const stamps = await listStamps(EXPORT_DIR);
+    const { exportDir, queuePath } = await clientCtx(req);
+    const queue = await readQueue(queuePath);
+    const stamps = await listStamps(exportDir);
     const items = [];
     for (const stamp of stamps) {
-      const { videos } = await loadBatch(EXPORT_DIR, stamp);
+      const { videos } = await loadBatch(exportDir, stamp);
       for (const v of videos) {
         const entry = queue[keyFor(stamp, v.file)];
         if (!entry || !["approved", "ready", "scheduled", "posted"].includes(entry.status)) continue;
@@ -205,13 +250,13 @@ app.get("/api/queue", async (_req, res) => {
 // Snapshot the posting queue: approved videos (posting candidates) plus every
 // slot locked by a video already handed off (ready/scheduled/posted) — those
 // posts exist outside this dashboard, so their slots can never be reassigned.
-async function queueSnapshot() {
-  const queue = await readQueue();
-  const stamps = await listStamps(EXPORT_DIR);
+async function queueSnapshot(exportDir, queuePath) {
+  const queue = await readQueue(queuePath);
+  const stamps = await listStamps(exportDir);
   const approved = [];
   const sentSlots = [];
   for (const stamp of stamps) {
-    const { videos } = await loadBatch(EXPORT_DIR, stamp);
+    const { videos } = await loadBatch(exportDir, stamp);
     for (const v of videos) {
       const entry = queue[keyFor(stamp, v.file)];
       if (!entry) continue;
@@ -237,9 +282,9 @@ async function queueSnapshot() {
 // CURRENT settings — changing the times and clicking again takes effect.
 // Two kinds of slots survive a re-flow: videos already sent to Buffer, and
 // times the operator set by hand (pinned). Returns the fresh list.
-async function autoschedule(startDate) {
+async function autoschedule(startDate, exportDir, queuePath) {
   const { postTimes } = await readSettings();
-  const { approved, sentSlots } = await queueSnapshot();
+  const { approved, sentSlots } = await queueSnapshot(exportDir, queuePath);
   const now = Date.now();
   const isFuture = (t) => t && new Date(t).getTime() > now;
   // Never schedule inside the next 20 min: Buffer rejects past dueAt, and the
@@ -258,7 +303,7 @@ async function autoschedule(startDate) {
   const slots = nextSlots({ postTimes, count: needs.length, after, taken });
   for (let i = 0; i < needs.length; i++) {
     needs[i].scheduledAt = slots[i];
-    await setEntry(keyFor(needs[i].stamp, needs[i].file), { scheduledAt: slots[i], pinned: false });
+    await setEntry(keyFor(needs[i].stamp, needs[i].file), { scheduledAt: slots[i], pinned: false }, queuePath);
   }
   return { approved, scheduled: needs.length, kept: keptPins.length, postTimes };
 }
@@ -282,7 +327,8 @@ app.post("/api/settings", async (req, res) => {
 // Auto-schedule (persists immediately — reloading the page keeps the plan).
 app.post("/api/queue/autoschedule", async (req, res) => {
   try {
-    const r = await autoschedule(req.body?.startDate);
+    const { exportDir, queuePath } = await clientCtx(req);
+    const r = await autoschedule(req.body?.startDate, exportDir, queuePath);
     res.json({ ok: true, scheduled: r.scheduled, kept: r.kept, postTimes: r.postTimes });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -293,6 +339,7 @@ app.post("/api/queue/autoschedule", async (req, res) => {
 app.post("/api/queue/schedule", async (req, res) => {
   const items = Array.isArray(req.body?.items) ? req.body.items : [];
   try {
+    const { queuePath } = await clientCtx(req);
     for (const it of items) {
       if (!it.stamp || !it.file) continue;
       // A hand-set time is PINNED — auto-schedule re-flows around it instead
@@ -300,7 +347,7 @@ app.post("/api/queue/schedule", async (req, res) => {
       await setEntry(keyFor(it.stamp, it.file), {
         scheduledAt: it.scheduledAt || null,
         pinned: Boolean(it.scheduledAt),
-      });
+      }, queuePath);
     }
     res.json({ ok: true, count: items.length });
   } catch (err) {
@@ -313,15 +360,16 @@ app.post("/api/queue/schedule", async (req, res) => {
 // uploaded to the public bucket and scheduled to Buffer for its due time. If
 // either is unconfigured, it degrades to the manual handoff — mark approved →
 // ready so the operator queues the files into Buffer's composer themselves.
-app.post("/api/queue/send", async (_req, res) => {
+app.post("/api/queue/send", async (req, res) => {
   try {
+    const { exportDir, queuePath } = await clientCtx(req);
     // Any approved video still missing a future slot gets the next free one
     // first — sending never silently posts "an hour from now".
-    const { approved: targets } = await autoschedule();
+    const { approved: targets } = await autoschedule(undefined, exportDir, queuePath);
 
     if (!bufferConfigured() || !storageConfigured()) {
-      for (const t of targets) await setEntry(keyFor(t.stamp, t.file), { status: "ready" });
-      return res.json({ mode: "manual", sent: targets.length, failed: 0, exportHint: EXPORT_DIR });
+      for (const t of targets) await setEntry(keyFor(t.stamp, t.file), { status: "ready" }, queuePath);
+      return res.json({ mode: "manual", sent: targets.length, failed: 0, exportHint: exportDir });
     }
 
     let sent = 0;
@@ -329,7 +377,7 @@ app.post("/api/queue/send", async (_req, res) => {
     const errors = [];
     for (const t of targets) {
       try {
-        const abs = safeExportPath(EXPORT_DIR, t.stamp, t.file);
+        const abs = safeExportPath(exportDir, t.stamp, t.file);
         const videoUrl = await uploadPublic(abs, `${t.stamp}/${t.file}`);
         const { postId, url } = await schedulePost({ videoUrl, caption: t.caption, dueAt: t.scheduledAt });
         await setEntry(keyFor(t.stamp, t.file), {
@@ -337,7 +385,7 @@ app.post("/api/queue/send", async (_req, res) => {
           bufferPostId: postId,
           bufferUrl: url,
           videoUrl,
-        });
+        }, queuePath);
         sent += 1;
       } catch (err) {
         failed += 1;
@@ -353,5 +401,5 @@ app.post("/api/queue/send", async (_req, res) => {
 
 app.listen(PORT, "127.0.0.1", () => {
   console.log(`Techsplains dashboard v${VERSION} → http://localhost:${PORT}`);
-  console.log(`  export dir: ${EXPORT_DIR}`);
+  console.log(`  clients: ${CLIENTS.join(", ")} (switch via the header dropdown)`);
 });
