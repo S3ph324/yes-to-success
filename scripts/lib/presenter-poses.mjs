@@ -16,8 +16,8 @@ export function posePrompt(file, brandName) {
   const stem = file.replace(/\.png$/i, "");
   const attitude = ATTITUDE[stem] || "friendly neutral pose, gentle smile";
   return (
-    `Photorealistic upper-body portrait of the SAME young man from the reference photos ` +
-    `(same face, same glasses, same hair) — the ${brandName} presenter. He is ${attitude}. ` +
+    `Photorealistic upper-body portrait of the SAME person from the reference photos ` +
+    `(same face, same glasses, same hair, same apparent age and gender) — the ${brandName} presenter, ${attitude}. ` +
     `Shot on a PURE SOLID BLACK studio background (#000000), soft key light, sharp focus, ` +
     `natural skin, casual modern outfit consistent across shots, centered, waist-up, ` +
     `looking toward the camera. Vertical 9:16 friendly explainer-host energy.`
