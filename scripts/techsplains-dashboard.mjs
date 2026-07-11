@@ -362,12 +362,17 @@ app.post("/api/queue/schedule", async (req, res) => {
 // ready so the operator queues the files into Buffer's composer themselves.
 app.post("/api/queue/send", async (req, res) => {
   try {
-    const { exportDir, queuePath } = await clientCtx(req);
+    const { id, exportDir, queuePath } = await clientCtx(req);
     // Any approved video still missing a future slot gets the next free one
     // first — sending never silently posts "an hour from now".
     const { approved: targets } = await autoschedule(undefined, exportDir, queuePath);
 
-    if (!bufferConfigured() || !storageConfigured()) {
+    // Autoposting is wired for Techsplains ONLY — bufferConfigured()/uploadPublic()/
+    // schedulePost() are hardcoded to Techsplains' Buffer channel + B2 bucket. Any
+    // other brand ALWAYS degrades to the manual handoff so a client's videos can
+    // never be pushed to Techsplains' channel (the "autoposting stays inert for
+    // clients" rule). Marks approved → ready in the CLIENT's own queue.
+    if (id !== "techsplains" || !bufferConfigured() || !storageConfigured()) {
       for (const t of targets) await setEntry(keyFor(t.stamp, t.file), { status: "ready" }, queuePath);
       return res.json({ mode: "manual", sent: targets.length, failed: 0, exportHint: exportDir });
     }

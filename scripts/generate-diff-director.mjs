@@ -27,11 +27,15 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { projectRoot, takeClientArg } from "./lib/client.mjs";
 import { resolveDiffClient } from "./lib/diff-config.mjs";
 import { stampFromScriptsPath } from "./lib/diff-stamp.mjs";
-import { stockImage, genImage, openverseImage, stockVideo } from "./lib/image-sourcing.mjs";
+import { stockImage, genImage, openverseImage, stockVideo, configureImageGcp } from "./lib/image-sourcing.mjs";
 
 const { client: CLIENT_ID, rest: dirArgs } = takeClientArg(process.argv.slice(2));
 const cfg = await resolveDiffClient(CLIENT_ID || "techsplains");
 cfg.applyGcpEnv();
+// The re-sourcing helpers (genImage/stockImage/…) run on image-sourcing's own
+// GCP client — bind it to THIS client's project too (else Tranzzie re-sourcing
+// would hit the Techsplains project). Techsplains resolves unchanged.
+configureImageGcp({ project: cfg.gcp.project, imageLocation: cfg.gcp.imageLocation, apply: cfg.applyGcpEnv });
 const run = promisify(execFile);
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";

@@ -16,3 +16,16 @@ test("image-sourcing exports the vision-gated sourcing functions", () => {
   assert.equal(typeof imageSourcing.STYLE_TAIL, "string");
   assert.match(imageSourcing.STYLE_TAIL, /No text, no words/);
 });
+
+test("configureImageGcp is exported and tolerates full/partial/empty config", () => {
+  // The multi-brand video pipeline calls this to repoint the vision-gate +
+  // image-gen at a client's own GCP project (Tranzzie = shared/Jurie) instead
+  // of the Techsplains default. It must never throw at wiring time — the real
+  // GCP client is built lazily on first source call.
+  assert.equal(typeof imageSourcing.configureImageGcp, "function");
+  assert.doesNotThrow(() =>
+    imageSourcing.configureImageGcp({ project: "jurie-quote-posters", imageLocation: "us-central1", apply: () => {} }),
+  );
+  assert.doesNotThrow(() => imageSourcing.configureImageGcp({ project: "x" })); // partial → defaults fill in
+  assert.doesNotThrow(() => imageSourcing.configureImageGcp()); // no arg → back to Techsplains default
+});

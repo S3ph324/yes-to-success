@@ -16,10 +16,16 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { projectRoot, takeClientArg } from "./lib/client.mjs";
-import { stockImage, genImage, openverseImage, stockVideo } from "./lib/image-sourcing.mjs";
+import { resolveDiffClient } from "./lib/diff-config.mjs";
+import { stockImage, genImage, openverseImage, stockVideo, configureImageGcp } from "./lib/image-sourcing.mjs";
 import { stampFromScriptsPath } from "./lib/diff-stamp.mjs";
 
-const { rest: imgArgs } = takeClientArg(process.argv.slice(2));
+const { client: CLIENT_ID, rest: imgArgs } = takeClientArg(process.argv.slice(2));
+// Point the vision-gate + image-gen at THIS client's GCP (Techsplains isolated,
+// Tranzzie = shared/Jurie). Without this a Tranzzie batch would source on the
+// Techsplains project. Techsplains resolves to the same project as before.
+const cfg = await resolveDiffClient(CLIENT_ID || "techsplains");
+configureImageGcp({ project: cfg.gcp.project, imageLocation: cfg.gcp.imageLocation, apply: cfg.applyGcpEnv });
 const scriptsArg = imgArgs[0];
 if (!scriptsArg) {
   console.error("Usage: node scripts/generate-diff-images.mjs <scripts.json>");

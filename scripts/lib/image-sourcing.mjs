@@ -18,21 +18,45 @@ import fs from "node:fs/promises";
 import { GoogleGenAI } from "@google/genai";
 import { applyTechsplainsGcpEnv, TS_GCP } from "./techsplains.mjs";
 
-// Must run before constructing the client below — an importer of this
-// module may not have called this itself yet, and GoogleGenAI reads
-// GOOGLE_APPLICATION_CREDENTIALS at construction time.
-applyTechsplainsGcpEnv();
-
 const MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
 // Fresh GCP projects get a low requests-per-minute quota on the image model —
 // run sequentially and retry 429s with backoff rather than failing the slot.
 const MAX_RETRIES = 5;
 
-const ai = new GoogleGenAI({
-  vertexai: true,
+// GCP binding for the Vertex vision-gate (pickBest) and image-gen (genImage).
+// DEFAULT = Techsplains' isolated project, so existing importers that don't
+// configure (the PDF course pipeline) keep working exactly as before. A
+// multi-brand caller (the video pipeline) calls configureImageGcp(cfg.gcp)
+// FIRST to point these at the client's OWN project + credentials — otherwise a
+// Tranzzie batch would authenticate/bill against Techsplains' project, breaking
+// GCP isolation. The client is built lazily so a late configure() takes effect,
+// and GoogleGenAI reads GOOGLE_APPLICATION_CREDENTIALS at construction time so
+// `apply` must run immediately before it.
+let _gcp = {
   project: TS_GCP.project,
-  location: TS_GCP.imageLocation,
-});
+  imageLocation: TS_GCP.imageLocation,
+  apply: applyTechsplainsGcpEnv,
+};
+let _ai = null;
+function getAi() {
+  if (!_ai) {
+    _gcp.apply?.();
+    _ai = new GoogleGenAI({ vertexai: true, project: _gcp.project, location: _gcp.imageLocation });
+  }
+  return _ai;
+}
+
+// Repoint image gen + the vision-gate at a specific client's GCP. Pass the
+// resolveDiffClient() gcp shape plus its applyGcpEnv: { project, imageLocation,
+// apply }. Rebuilds the client on next use.
+export function configureImageGcp({ project, imageLocation, apply } = {}) {
+  _gcp = {
+    project: project || TS_GCP.project,
+    imageLocation: imageLocation || TS_GCP.imageLocation,
+    apply: apply || applyTechsplainsGcpEnv,
+  };
+  _ai = null;
+}
 
 export const STYLE_TAIL =
   " Vertical-friendly square composition, subject fills the frame, bright and " +
@@ -68,7 +92,7 @@ export async function pickBest(thumbBufs, label, query, otherLabel) {
       `Reject moody, dark, artistic, heavily blurred, or cluttered shots even if the subject is right. ` +
       `Reply with ONLY the number, or NONE if none clearly qualifies.`,
   });
-  const resp = await ai.models.generateContent({
+  const resp = await getAi().models.generateContent({
     model: "gemini-2.5-flash",
     contents: [{ role: "user", parts }],
   });
@@ -272,7 +296,7 @@ export async function genImage(prompt, outAbs, fallbackPrompt) {
     // stop re-asking the impossible and switch to the simple label fallback.
     const usePrompt = textOnlyCount >= 2 && fallbackPrompt ? fallbackPrompt : prompt;
     try {
-      const resp = await ai.models.generateContent({
+      const resp = await getAi().models.generateContent({
         model: MODEL,
         contents: usePrompt + STYLE_TAIL,
         config: { responseModalities: ["TEXT", "IMAGE"] },
