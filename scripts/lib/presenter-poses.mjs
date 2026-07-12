@@ -36,9 +36,10 @@ export function posePrompt(file, brandName, style = "photoreal") {
   return (
     `Photorealistic upper-body portrait of the SAME person from the reference photos ` +
     `(same face, same glasses, same hair, same apparent age and gender) — the ${brandName} presenter, ${attitude}. ` +
-    `Shot on a PURE SOLID BLACK studio background (#000000), soft key light, sharp focus, ` +
-    `natural skin, casual modern outfit consistent across shots, centered, waist-up, ` +
-    `looking toward the camera. Vertical 9:16 friendly explainer-host energy.`
+    `She wears the SAME plain light-grey crew-neck T-shirt in every shot (consistent outfit). ` +
+    `Shot on a PURE FLAT CHROMA-KEY GREEN background (#00FF00, solid uniform green, no gradient, ` +
+    `no shadows cast on the background) so she can be cut out cleanly. Soft key light, sharp focus, ` +
+    `natural skin, centered, waist-up, looking toward the camera. Vertical 9:16 friendly explainer-host energy.`
   );
 }
 

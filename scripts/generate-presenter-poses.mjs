@@ -69,13 +69,14 @@ if (!jobs.length) { console.log("All presenter poses already exist. Use --force 
 const ai = new GoogleGenAI({ vertexai: true, project: cfg.gcp.project, location: cfg.gcp.imageLocation });
 const MODEL = process.env.REF_MODEL || "gemini-2.5-flash-image";
 
-// Cartoon (flat-vector) poses are generated on a chroma-green screen and keyed
-// to a TRANSPARENT PNG here, so the mascot composites onto the dark card with
-// NO visible rectangle. Photoreal poses keep their black-bg + card feather.
-const CUTOUT = cfg.presenter.style === "flat-vector";
+// BOTH styles (flat-vector cartoon AND photoreal) are generated on a chroma-green
+// screen and keyed to a TRANSPARENT PNG here, so the mascot composites onto the
+// card with NO visible rectangle — this is what lets the same (mask-free)
+// composition serve a cartoon-Jurie video and a photoreal-Jurie video.
 const hasFfmpeg = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
-if (CUTOUT && !hasFfmpeg) {
-  console.warn("  ⚠ ffmpeg not found — cartoon poses will keep their green background (install ffmpeg to key it out).");
+const CUTOUT = hasFfmpeg;
+if (!hasFfmpeg) {
+  console.warn("  ⚠ ffmpeg not found — poses will keep their green background (install ffmpeg to key it out).");
 }
 // Key #00FF00 → alpha, soften the edge a touch, drop residual green spill.
 // Reads the green tmp file next to `absPath`, writes the transparent result.

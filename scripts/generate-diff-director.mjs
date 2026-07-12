@@ -39,6 +39,10 @@ configureImageGcp({ project: cfg.gcp.project, imageLocation: cfg.gcp.imageLocati
 const run = promisify(execFile);
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+// Mirror generate-diff-images: in "ai" mode the re-source round must also skip
+// stock and generate on-style (via DIFF_IMAGE_STYLE_TAIL), else it would drop a
+// real photo into a fully-illustrated video.
+const IMAGE_SOURCE = (process.env.DIFF_IMAGE_SOURCE || "auto").toLowerCase();
 
 if (process.env.DIFF_DIRECTOR === "0" || process.env.TECHSPLAINS_DIRECTOR === "0") {
   console.log("Director QC disabled (DIFF_DIRECTOR=0) — passing batch through.");
@@ -326,17 +330,22 @@ if (resourceJobs.length) {
       }
       if (!rel) {
         const out = path.join(absDir, `${base}.jpg`);
-        const ov = await openverseImage(job.query, label, other, usedIds, out).catch(() => null);
-        let got = !!ov;
-        if (ov?.credit) job.slot.s[job.slot.side === "a" ? "aCredit" : "bCredit"] = ov.credit;
-        if (!got) got = await stockImage(job.query, label, other, usedIds, out).catch(() => false);
+        let got = false;
+        if (IMAGE_SOURCE !== "ai") {
+          const ov = await openverseImage(job.query, label, other, usedIds, out).catch(() => null);
+          got = !!ov;
+          if (ov?.credit) job.slot.s[job.slot.side === "a" ? "aCredit" : "bCredit"] = ov.credit;
+          if (!got) got = await stockImage(job.query, label, other, usedIds, out).catch(() => false);
+        }
         if (got) {
           rel = path.posix.join(relDir, `${base}.jpg`);
         } else {
+          // Style-neutral prompt — DIFF_IMAGE_STYLE_TAIL (flat-vector / product)
+          // controls the actual look, keeping the re-source on-style.
           await genImage(
-            `bright clear photo-style image of ${label}, in the context of "${job.v.title}"`,
+            `a clear, simple image that unmistakably shows ${label}, in the context of "${job.v.title}" — single centered subject, obvious at a glance`,
             path.join(absDir, `${base}.png`),
-            `clean minimal flat illustration of ${label}, single centered subject`,
+            `clean simple depiction of ${label}, single centered subject`,
           );
           rel = path.posix.join(relDir, `${base}.png`);
         }

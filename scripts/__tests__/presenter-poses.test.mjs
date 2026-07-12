@@ -23,9 +23,19 @@ test("skips files that already exist on disk", () => {
   assert.equal(jobs.length, 4);
 });
 
-test("posePrompt forces a black studio background and the same person", () => {
+test("posePrompt forces a green-screen (cutout) background and the same person", () => {
   const p = posePrompt("jurie-point.png", "Tranzzie");
-  assert.match(p, /black/i);
-  assert.match(p, /point/i);
-  assert.doesNotMatch(p, /text|watermark|logo/i); // pipeline never asks for text
+  assert.match(p, /green|#00FF00/i); // green screen → keyed to transparent
+  assert.match(p, /same person/i);
+  assert.match(p, /point/i); // gesture is threaded from the file stem
+  assert.doesNotMatch(p, /text|watermark|logo/i); // default (photoreal) prompt asks for none
+});
+
+test("posePrompt flat-vector style yields a cartoon mascot on green, distinct gestures", () => {
+  const point = posePrompt("jurie-point.png", "Tranzzie", "flat-vector");
+  const present = posePrompt("jurie-present.png", "Tranzzie", "flat-vector");
+  assert.match(point, /flat vector|mascot/i);
+  assert.match(point, /green|#00FF00/i);
+  assert.match(point, /index finger/i); // point ≠ present
+  assert.match(present, /open,? upturned palm/i);
 });
