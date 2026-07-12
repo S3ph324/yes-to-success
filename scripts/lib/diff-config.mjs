@@ -39,6 +39,19 @@ export const slugify = (s) =>
 export const poseFileFor = (cfg, kind) =>
   path.posix.join(cfg.presenter.poseDir, cfg.presenter.poses[kind]);
 
+// A presenter can carry multiple "looks" (e.g. cartoon vs photoreal) that share
+// the same pose FILENAMES but live in different dirs / render in a different
+// style. Selecting a look overlays its {style, poseDir} onto the presenter so
+// everything downstream (pose generator, render, staticFile) is unchanged.
+// Default look keeps the legacy flat style/poseDir → byte-identical behavior.
+export function resolvePresenterLook(presenter) {
+  if (!presenter?.looks) return presenter;
+  const wanted = process.env.DIFF_PRESENTER_LOOK || presenter.defaultLook || Object.keys(presenter.looks)[0];
+  const look = presenter.looks[wanted];
+  if (!look) throw new Error(`Unknown presenter look "${wanted}". Known: ${Object.keys(presenter.looks).join(", ")}`);
+  return { ...presenter, ...look, look: wanted };
+}
+
 // GCP resolution per keyword. "techsplains" = its own isolated key/project.
 // "shared" = the Jurie project (lib/client.mjs default) — same as Tranzzie posters.
 function resolveGcp(keyword) {
@@ -96,7 +109,8 @@ export async function resolveDiffClient(id) {
     language: v.language,
     whisperLang: v.whisperLang,
     tts: v.tts,
-    presenter: v.presenter,
+    presenter: resolvePresenterLook(v.presenter),
+    bgStyle: process.env.DIFF_BG_STYLE || v.bgStyle || null,
     voiceProfilePath: path.join(scriptsDir, v.voiceProfile),
     briefId: v.briefId,
     brief,

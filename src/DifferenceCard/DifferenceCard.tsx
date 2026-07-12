@@ -51,6 +51,10 @@ export const differenceCardSchema = z.object({
   accent: z.string(),
   poses: z.record(z.string(), z.string()).optional(),
   logo: z.string().optional(),
+  // Background theme for the Tranzzie card: ember (default dark), aurora
+  // (cool moving color mesh), grid (moving tech grid), light (clean white),
+  // or rotate (cycle the dark family per segment). Ignored by other templates.
+  bgStyle: z.string().optional(),
 });
 
 type Props = z.infer<typeof differenceCardSchema>;

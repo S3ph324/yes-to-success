@@ -86,6 +86,7 @@ for (let vi = 0; vi < videos.length; vi++) {
     accent: cfg.accent,
     poses,
     ...(cfg.logo ? { logo: cfg.logo } : {}),
+    ...(cfg.bgStyle ? { bgStyle: cfg.bgStyle } : {}),
   };
 
   try {

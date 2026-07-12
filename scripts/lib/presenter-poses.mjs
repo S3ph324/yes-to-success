@@ -14,7 +14,9 @@ const ATTITUDE = {
 
 // style: "photoreal" (default) or "flat-vector" (cartoon brand mascot). Both
 // keep the SAME person from the reference photos recognizable and sit on a pure
-// black background for the card's feathered-top composite.
+// chroma-key GREEN background so the generator can cut them out to a transparent
+// PNG — one mask-free composition then serves BOTH a cartoon and a realistic
+// version of the same host.
 export function posePrompt(file, brandName, style = "photoreal") {
   const stem = file.replace(/\.png$/i, "");
   const attitude = ATTITUDE[stem] || "friendly neutral pose, gentle smile";
@@ -33,13 +35,38 @@ export function posePrompt(file, brandName, style = "photoreal") {
       `Vertical 9:16, crisp and readable at small size. No text, no words, no logos, no watermark.`
     );
   }
+  // Photoreal: lock her actual appearance from the reference photos and give her
+  // ONE consistent, clean outfit so every pose looks like the same real person
+  // photographed on the same day — natural, relaxed, not stiff or AI-posed.
   return (
-    `Photorealistic upper-body portrait of the SAME person from the reference photos ` +
-    `(same face, same glasses, same hair, same apparent age and gender) — the ${brandName} presenter, ${attitude}. ` +
-    `She wears the SAME plain light-grey crew-neck T-shirt in every shot (consistent outfit). ` +
-    `Shot on a PURE FLAT CHROMA-KEY GREEN background (#00FF00, solid uniform green, no gradient, ` +
-    `no shadows cast on the background) so she can be cut out cleanly. Soft key light, sharp focus, ` +
-    `natural skin, centered, waist-up, looking toward the camera. Vertical 9:16 friendly explainer-host energy.`
+    `A PHOTOREALISTIC studio photograph of the EXACT SAME real young woman from the reference photos — ` +
+    `same face and features, same warm skin tone, same clear/off-white rectangular eyeglasses, ` +
+    `same charcoal-grey baseball cap worn BACKWARDS, same long dark straight hair — she is the ${brandName} host, ${attitude}. ` +
+    `Her posture and hands look completely NATURAL and relaxed, candid and real — a genuine, un-posed moment, ` +
+    `not stiff, not exaggerated, not an obvious AI pose. ` +
+    `She wears the SAME clean outfit in every shot: a plain white short-sleeve crew-neck T-shirt (no graphics, no logos, no print). ` +
+    `Real DSLR portrait quality: soft even key light, true-to-life skin texture, sharp focus, shallow depth of field. ` +
+    `Centered, upper body / waist-up, facing the camera, on a PURE FLAT CHROMA-KEY GREEN background ` +
+    `(#00FF00, solid uniform green, no gradient, no shadows cast on the background) so she can be cut out cleanly. ` +
+    `Vertical 9:16. No text, no words, no logos, no watermark.`
+  );
+}
+
+// The consistency instruction appended when a base pose is fed back as the
+// appearance anchor — worded for the target style so photoreal locks a real
+// person / real outfit and the cartoon locks the flat-vector art style.
+export function consistencyNote(style = "photoreal") {
+  if (style === "flat-vector") {
+    return (
+      " CRITICAL CONSISTENCY: this is the EXACT SAME cartoon mascot shown in the LAST reference image — " +
+      "keep her face, glasses, cap, hair, skin tone, the grey T-shirt and the exact flat-vector art style " +
+      "100% IDENTICAL to that reference; change ONLY the hand gesture and expression."
+    );
+  }
+  return (
+    " CRITICAL CONSISTENCY: this is the EXACT SAME real woman shown in the LAST reference image — " +
+    "keep her face, glasses, backwards cap, hair, skin tone, the plain white T-shirt, the lighting and the " +
+    "photographic look 100% IDENTICAL to that reference; change ONLY the hand gesture and expression, and keep it natural."
   );
 }
 

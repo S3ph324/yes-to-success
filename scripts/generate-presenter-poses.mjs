@@ -13,10 +13,14 @@ import path from "node:path";
 import { GoogleGenAI } from "@google/genai";
 import { projectRoot, takeClientArg } from "./lib/client.mjs";
 import { resolveDiffClient } from "./lib/diff-config.mjs";
-import { posesToGenerate, posePrompt } from "./lib/presenter-poses.mjs";
+import { posesToGenerate, posePrompt, consistencyNote } from "./lib/presenter-poses.mjs";
 
 const { client: CLIENT_ID, rest } = takeClientArg(process.argv.slice(2));
 const FORCE = rest.includes("--force");
+// --look real|cartoon selects which presenter "look" to generate (see diff-config).
+// It must be set BEFORE resolveDiffClient so the resolver picks the right poseDir/style.
+const lookArgIdx = rest.indexOf("--look");
+if (lookArgIdx !== -1 && rest[lookArgIdx + 1]) process.env.DIFF_PRESENTER_LOOK = rest[lookArgIdx + 1];
 const cfg = await resolveDiffClient(CLIENT_ID || "tranzzie");
 cfg.applyGcpEnv();
 
@@ -101,12 +105,7 @@ let ok = 0;
 let anchor = null; // {inlineData} of the first cartoon pose — the consistency lock
 for (const job of jobs) {
   const basePrompt = job.prompt || posePrompt(job.file, cfg.brandName, cfg.presenter.style);
-  const prompt = anchor
-    ? basePrompt +
-      " CRITICAL CONSISTENCY: this is the EXACT SAME cartoon mascot shown in the LAST reference image — " +
-      "keep her face, glasses, cap, hair, skin tone, the grey T-shirt and the exact flat-vector art style " +
-      "100% IDENTICAL to that reference; change ONLY the hand gesture and expression."
-    : basePrompt;
+  const prompt = anchor ? basePrompt + consistencyNote(cfg.presenter.style) : basePrompt;
   const parts = anchor ? [...refParts, anchor, { text: prompt }] : [...refParts, { text: prompt }];
   let buf = null;
   for (let attempt = 1; attempt <= 3 && !buf; attempt++) {

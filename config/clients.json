@@ -38,6 +38,11 @@
         "characterId": "char_jurie_enhanced",
         "style": "flat-vector",
         "poseDir": "characters/tranzzie",
+        "defaultLook": "cartoon",
+        "looks": {
+          "cartoon": { "style": "flat-vector", "poseDir": "characters/tranzzie" },
+          "real": { "style": "photoreal", "poseDir": "characters/tranzzie-real" }
+        },
         "poses": {
           "hook": "jurie-point.png", "introA": "jurie-point.png",
           "introB": "jurie-present.png", "question": "jurie-think.png",

@@ -26,9 +26,10 @@ test("skips files that already exist on disk", () => {
 test("posePrompt forces a green-screen (cutout) background and the same person", () => {
   const p = posePrompt("jurie-point.png", "Tranzzie");
   assert.match(p, /green|#00FF00/i); // green screen → keyed to transparent
-  assert.match(p, /same person/i);
+  assert.match(p, /same (real )?(young )?woman|same face|same person/i); // identity lock
+  assert.match(p, /natural/i); // photoreal poses must read as natural, not stiff
   assert.match(p, /point/i); // gesture is threaded from the file stem
-  assert.doesNotMatch(p, /text|watermark|logo/i); // default (photoreal) prompt asks for none
+  assert.match(p, /no text|no watermark/i); // the render adds branding; the plate must be clean
 });
 
 test("posePrompt flat-vector style yields a cartoon mascot on green, distinct gestures", () => {

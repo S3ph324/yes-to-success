@@ -5,6 +5,7 @@ import {
 } from "remotion";
 import { z } from "zod";
 import { chunkPhase, differenceCardSchema } from "../DifferenceCard/DifferenceCard";
+import { pickTheme, GOLD } from "./backgrounds";
 
 export const tranzzieDiffCardSchema = differenceCardSchema;
 type Props = z.infer<typeof tranzzieDiffCardSchema>;
@@ -15,25 +16,9 @@ export const calcMetaTranzzieDiffCard = ({ props }: { props: Props }) => ({
   fps: 30, width: 1080, height: 1920,
 });
 
-const GOLD = "#F5C13B", GOLD_LIGHT = "#FFE27A", GOLD_DEEP = "#C7902A";
-
-// Animated background — two big soft glows (brand gold + a cool teal) that drift
-// and breathe over the dark base, so the frame never feels static/empty.
-const DynamicBg: React.FC<{ frame: number }> = ({ frame }) => {
-  const g1x = 50 + Math.sin(frame / 90) * 16, g1y = 24 + Math.cos(frame / 110) * 9;
-  const g2x = 32 + Math.cos(frame / 70) * 18, g2y = 80 + Math.sin(frame / 95) * 7;
-  const pulse = 0.92 + 0.08 * Math.sin(frame / 42);
-  return (
-    <AbsoluteFill style={{ background: "radial-gradient(ellipse at 50% 22%, #1b1710 0%, #0b0b0b 58%, #070710 100%)" }}>
-      <div style={{ position: "absolute", left: `${g1x}%`, top: `${g1y}%`, width: 980, height: 980, transform: `translate(-50%,-50%) scale(${pulse})`, borderRadius: "50%", background: "radial-gradient(circle, rgba(245,193,59,0.17) 0%, rgba(245,193,59,0) 62%)", filter: "blur(34px)" }} />
-      <div style={{ position: "absolute", left: `${g2x}%`, top: `${g2y}%`, width: 820, height: 820, transform: `translate(-50%,-50%) scale(${1.9 - pulse})`, borderRadius: "50%", background: "radial-gradient(circle, rgba(70,150,180,0.14) 0%, rgba(70,150,180,0) 62%)", filter: "blur(38px)" }} />
-    </AbsoluteFill>
-  );
-};
-
 // Poses are transparent cutouts (green-keyed) — no background box, so no mask.
-// A soft drop shadow grounds the mascot on the dark card.
-const Presenter: React.FC<{ src?: string; pop: number; bob: number }> = ({ src, pop, bob }) =>
+// A soft drop shadow (theme-aware) grounds the host on the card.
+const Presenter: React.FC<{ src?: string; pop: number; bob: number; shadow: string }> = ({ src, pop, bob, shadow }) =>
   src ? (
     <div style={{ position: "absolute", bottom: 0, width: "100%", display: "flex", justifyContent: "center" }}>
       <Img
@@ -42,7 +27,7 @@ const Presenter: React.FC<{ src?: string; pop: number; bob: number }> = ({ src, 
           height: 940,
           transform: `scale(${0.93 + 0.07 * pop}) translateY(${bob}px)`,
           transformOrigin: "center bottom",
-          filter: "drop-shadow(0 12px 30px rgba(0,0,0,0.6))",
+          filter: shadow,
         }}
       />
     </div>
@@ -56,7 +41,7 @@ const Logo: React.FC<{ src?: string; top?: number; height?: number }> = ({ src, 
     </div>
   ) : null;
 
-export const TranzzieDiffCard: React.FC<Props> = ({ segments, phases, audioSrc, handle, poses, logo }) => {
+export const TranzzieDiffCard: React.FC<Props> = ({ segments, phases, audioSrc, handle, poses, logo, bgStyle }) => {
   const frame = useCurrentFrame();
   const { fps, width } = useVideoConfig();
   const t = frame / fps;
@@ -72,6 +57,8 @@ export const TranzzieDiffCard: React.FC<Props> = ({ segments, phases, audioSrc, 
   const phase: Phase = phases[phaseIdx];
   const segIdx = phase.seg >= 0 ? phase.seg : segments.length - 1;
   const seg = segments[segIdx];
+  // Background theme (dark/aurora/grid/light/rotate) + matching ink palette.
+  const { Bg, ink } = pickTheme(bgStyle, segIdx);
 
   const startOf = (kind: string, s: number) => phases.find((p) => p.seg === s && p.kind === kind)?.start ?? 0;
   const aStart = startOf("introA", segIdx), bStart = startOf("introB", segIdx);
@@ -98,10 +85,10 @@ export const TranzzieDiffCard: React.FC<Props> = ({ segments, phases, audioSrc, 
     const emph = meActive ? 1.05 : 1;
     return (
       <div style={{ position: "absolute", left: slotX(side), top: imgY, width: imgSize, transform: `scale(${pop * emph})`, transformOrigin: "center top", opacity: dim, zIndex: meActive ? 2 : 1 }}>
-        <div style={{ fontFamily: "'Montserrat',sans-serif", fontWeight: 800, fontSize: label.length > 14 ? 46 : 58, lineHeight: 1.12, color: meActive ? GOLD_LIGHT : "#fff", textAlign: "center", height: 120, marginBottom: 14, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+        <div style={{ fontFamily: "'Montserrat',sans-serif", fontWeight: 800, fontSize: label.length > 14 ? 46 : 58, lineHeight: 1.12, color: meActive ? ink.labelActive : ink.labelIdle, textAlign: "center", height: 120, marginBottom: 14, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
           <div>{label}</div>
         </div>
-        <div style={{ width: imgSize, height: imgSize, borderRadius: 30, overflow: "hidden", boxShadow: meActive ? `0 0 0 5px ${GOLD}, 0 16px 42px rgba(0,0,0,0.55)` : "0 12px 34px rgba(0,0,0,0.5)", border: meActive ? "none" : `2px solid ${GOLD_DEEP}` }}>
+        <div style={{ width: imgSize, height: imgSize, borderRadius: 30, overflow: "hidden", boxShadow: meActive ? ink.cardShadowActive : ink.cardShadowIdle, border: meActive ? "none" : `2px solid ${ink.cardBorder}` }}>
           {side === "a" && seg.aVideo ? (
             <Loop durationInFrames={Math.max(fps, Math.round((seg.aVideoDurationSec || 8) * fps))} layout="none">
               <OffthreadVideo muted src={staticFile(seg.aVideo)} style={{ width: imgSize, height: imgSize, objectFit: "cover" }} />
@@ -125,8 +112,8 @@ export const TranzzieDiffCard: React.FC<Props> = ({ segments, phases, audioSrc, 
   const poseSrc = poses?.[phase.kind];
 
   return (
-    <AbsoluteFill style={{ background: "#0a0a0a" }}>
-      <DynamicBg frame={frame} />
+    <AbsoluteFill style={{ background: ink.base }}>
+      <Bg frame={frame} />
       {audioSrc ? <Audio src={staticFile(audioSrc)} /> : null}
 
       <Logo src={logo} top={40} height={132} />
@@ -136,15 +123,15 @@ export const TranzzieDiffCard: React.FC<Props> = ({ segments, phases, audioSrc, 
 
       <div style={{ position: "absolute", top: 866, left: 50, width: width - 100, height: 200, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3 }}>
         {chunk ? (
-          <div style={{ fontFamily: "'Montserrat',sans-serif", fontWeight: 900, fontSize: 98, lineHeight: 1.04, textAlign: "center", color: GOLD_LIGHT, WebkitTextStroke: "5px rgba(0,0,0,0.65)", paintOrder: "stroke fill", transform: `scale(${0.82 + 0.18 * chunkPop})` }}>
+          <div style={{ fontFamily: "'Montserrat',sans-serif", fontWeight: 900, fontSize: 98, lineHeight: 1.04, textAlign: "center", color: ink.caption, WebkitTextStroke: `5px ${ink.captionStroke}`, paintOrder: "stroke fill", transform: `scale(${0.82 + 0.18 * chunkPop})` }}>
             {chunk.words.map((w) => w.w).join(" ")}
           </div>
         ) : null}
       </div>
 
-      <Presenter src={poseSrc} pop={posePop} bob={bob} />
+      <Presenter src={poseSrc} pop={posePop} bob={bob} shadow={ink.presenterShadow} />
 
-      <div style={{ position: "absolute", bottom: 28, width: "100%", textAlign: "center", fontFamily: "'Montserrat',sans-serif", fontWeight: 700, fontSize: 34, color: GOLD, opacity: 0.85, zIndex: 4 }}>
+      <div style={{ position: "absolute", bottom: 28, width: "100%", textAlign: "center", fontFamily: "'Montserrat',sans-serif", fontWeight: 700, fontSize: 34, color: ink.handle, opacity: 0.9, zIndex: 4 }}>
         {handle}
       </div>
     </AbsoluteFill>

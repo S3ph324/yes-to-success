@@ -39,6 +39,35 @@ test("resolveDiffClient(techsplains) has no logo (opt-in, keeps mascot cards unc
   assert.equal(c.logo, null);
 });
 
+test("tranzzie default presenter look is the cartoon set (byte-identical legacy)", async () => {
+  const saved = process.env.DIFF_PRESENTER_LOOK;
+  delete process.env.DIFF_PRESENTER_LOOK;
+  const c = await resolveDiffClient("tranzzie");
+  assert.equal(c.presenter.style, "flat-vector");
+  assert.equal(c.presenter.poseDir, "characters/tranzzie");
+  if (saved) process.env.DIFF_PRESENTER_LOOK = saved;
+});
+
+test("DIFF_PRESENTER_LOOK=real selects the photoreal pose set, separate dir", async () => {
+  const saved = process.env.DIFF_PRESENTER_LOOK;
+  process.env.DIFF_PRESENTER_LOOK = "real";
+  const c = await resolveDiffClient("tranzzie");
+  assert.equal(c.presenter.style, "photoreal");
+  assert.equal(c.presenter.poseDir, "characters/tranzzie-real"); // coexists w/ cartoon
+  assert.equal(c.presenter.poses.hook, "jurie-point.png"); // shared filenames
+  if (saved) process.env.DIFF_PRESENTER_LOOK = saved;
+  else delete process.env.DIFF_PRESENTER_LOOK;
+});
+
+test("DIFF_BG_STYLE overrides the resolved bgStyle", async () => {
+  const saved = process.env.DIFF_BG_STYLE;
+  process.env.DIFF_BG_STYLE = "aurora";
+  const c = await resolveDiffClient("tranzzie");
+  assert.equal(c.bgStyle, "aurora");
+  if (saved) process.env.DIFF_BG_STYLE = saved;
+  else delete process.env.DIFF_BG_STYLE;
+});
+
 test("resolveDiffClient attaches the resolved brief object", async () => {
   const c = await resolveDiffClient("tranzzie");
   assert.equal(c.brief.id, "brief_tranzzie");
