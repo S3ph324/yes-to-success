@@ -41,6 +41,37 @@ const Logo: React.FC<{ src?: string; top?: number; height?: number }> = ({ src, 
     </div>
   ) : null;
 
+// "Did you know" background: cross-fade through a slideshow of images (with a
+// slow Ken-Burns zoom) so the video isn't one static picture. Falls back to a
+// single image when only one is supplied.
+const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+const DykSlides: React.FC<{ media: string[]; t: number; dur: number; width: number; height: number }> = ({ media, t, dur, width, height }) => {
+  if (!media.length) return null;
+  if (media.length === 1) {
+    const kb = 1 + Math.min(0.14, Math.max(0, t) * 0.008);
+    return <Img src={staticFile(media[0])} style={{ width, height, objectFit: "cover", transform: `scale(${kb})` }} />;
+  }
+  const N = media.length;
+  const slot = dur / N;
+  const fade = 0.6; // seconds each side of a boundary → a proper cross-fade
+  return (
+    <>
+      {media.map((src, i) => {
+        const bIn = i * slot, bOut = (i + 1) * slot;
+        const up = i === 0 ? 1 : clamp01((t - (bIn - fade)) / (2 * fade));
+        const down = i === N - 1 ? 1 : clamp01(((bOut + fade) - t) / (2 * fade));
+        const op = Math.max(0, Math.min(up, down));
+        if (op <= 0) return null;
+        const kb = 1.04 + Math.min(0.12, Math.max(0, t - bIn) * 0.006);
+        return (
+          <Img key={i} src={staticFile(src)}
+            style={{ position: "absolute", inset: 0, width, height, objectFit: "cover", opacity: op, transform: `scale(${kb})` }} />
+        );
+      })}
+    </>
+  );
+};
+
 export const TranzzieDiffCard: React.FC<Props> = ({ segments, phases, audioSrc, handle, poses, logo, bgStyle }) => {
   const frame = useCurrentFrame();
   const { fps, width } = useVideoConfig();
@@ -143,8 +174,9 @@ export const calcMetaTranzzieDidYouKnowCard = calcMetaTranzzieDiffCard;
 
 export const TranzzieDidYouKnowCard: React.FC<Props> = ({ segments, phases, audioSrc, handle, poses, logo }) => {
   const frame = useCurrentFrame();
-  const { fps, width, height } = useVideoConfig();
+  const { fps, width, height, durationInFrames } = useVideoConfig();
   const t = frame / fps;
+  const durSec = durationInFrames / fps;
 
   const [fontHandle] = useState(() => delayRender("load-fonts-tz-dyk"));
   useEffect(() => {
@@ -156,38 +188,42 @@ export const TranzzieDidYouKnowCard: React.FC<Props> = ({ segments, phases, audi
   for (let i = 0; i < phases.length; i++) if (t >= phases[i].start - 0.01) phaseIdx = i;
   const phase: Phase = phases[phaseIdx];
   const seg = segments[0];
-  const bgSrc = seg?.aVideo || seg?.aImg;
+  // Prefer a multi-image slideshow; fall back to the single still. A stock
+  // video (aVideo) still wins only when there is no image slideshow.
+  const media = seg?.media && seg.media.length ? seg.media : seg?.aImg ? [seg.aImg] : [];
+  const useVideo = Boolean(seg?.aVideo) && media.length <= 1;
 
   const chunks = chunkPhase(phase);
   const chunk = chunks.find((c) => t >= c.s - 0.04 && t <= c.e + 0.22);
   const chunkPop = chunk ? spring({ frame: Math.max(0, (t - chunk.s) * fps), fps, config: { damping: 12, mass: 0.5 } }) : 0;
-  const kb = 1 + Math.min(0.14, Math.max(0, t) * 0.008);
   const posePop = spring({ frame: Math.max(0, (t - phase.start) * fps), fps, config: { damping: 13, mass: 0.7 } });
   const poseSrc = poses?.[phase.kind];
 
   return (
     <AbsoluteFill style={{ background: "#0A0A0A" }}>
       {audioSrc ? <Audio src={staticFile(audioSrc)} /> : null}
-      {bgSrc ? (
-        seg.aVideo ? (
-          <Loop durationInFrames={Math.max(fps, Math.round((seg.aVideoDurationSec || 8) * fps))} layout="none">
-            <OffthreadVideo muted src={staticFile(seg.aVideo)} style={{ width, height, objectFit: "cover" }} />
-          </Loop>
-        ) : (
-          <Img src={staticFile(bgSrc)} style={{ width, height, objectFit: "cover", transform: `scale(${kb})` }} />
-        )
-      ) : null}
-      <AbsoluteFill style={{ background: "linear-gradient(180deg, rgba(8,8,16,0.35) 0%, rgba(8,8,16,0.15) 45%, rgba(8,8,16,0.85) 100%)" }} />
+      {useVideo ? (
+        <Loop durationInFrames={Math.max(fps, Math.round((seg!.aVideoDurationSec || 8) * fps))} layout="none">
+          <OffthreadVideo muted src={staticFile(seg!.aVideo!)} style={{ width, height, objectFit: "cover" }} />
+        </Loop>
+      ) : (
+        <DykSlides media={media} t={t} dur={durSec} width={width} height={height} />
+      )}
+      {/* Darker scrim than before + a stronger bottom fade so white captions read
+          over busy illustrations. */}
+      <AbsoluteFill style={{ background: "linear-gradient(180deg, rgba(6,6,12,0.55) 0%, rgba(6,6,12,0.34) 40%, rgba(6,6,12,0.78) 74%, rgba(6,6,12,0.94) 100%)" }} />
 
       <Logo src={logo} top={36} height={116} />
 
-      <div style={{ position: "absolute", top: 176, width: "100%", textAlign: "center", fontFamily: "'Montserrat',sans-serif", fontWeight: 900, fontSize: 72, letterSpacing: 2, color: GOLD, WebkitTextStroke: "6px #111", paintOrder: "stroke fill" }}>
+      <div style={{ position: "absolute", top: 176, width: "100%", textAlign: "center", fontFamily: "'Montserrat',sans-serif", fontWeight: 900, fontSize: 72, letterSpacing: 2, color: GOLD, WebkitTextStroke: "6px #111", paintOrder: "stroke fill", textShadow: "0 4px 18px rgba(0,0,0,0.7)" }}>
         ALAM MO BA?
       </div>
 
-      <div style={{ position: "absolute", top: 760, left: 60, width: width - 120, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {/* Caption sits on a dark, blurred plate — guarantees contrast no matter
+          how light the image behind it is. */}
+      <div style={{ position: "absolute", top: 720, left: 50, width: width - 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
         {chunk ? (
-          <div style={{ fontFamily: "'Montserrat',sans-serif", fontWeight: 900, fontSize: 96, lineHeight: 1.06, textAlign: "center", color: "#fff", WebkitTextStroke: "4px rgba(0,0,0,0.6)", paintOrder: "stroke fill", transform: `scale(${0.82 + 0.18 * chunkPop})` }}>
+          <div style={{ fontFamily: "'Montserrat',sans-serif", fontWeight: 900, fontSize: 92, lineHeight: 1.1, textAlign: "center", color: "#fff", WebkitTextStroke: "3px rgba(0,0,0,0.9)", paintOrder: "stroke fill", textShadow: "0 4px 20px rgba(0,0,0,0.95), 0 2px 6px rgba(0,0,0,0.95)", background: "rgba(8,8,12,0.56)", padding: "16px 32px", borderRadius: 26, boxShadow: "0 12px 44px rgba(0,0,0,0.5)", transform: `scale(${0.85 + 0.15 * chunkPop})` }}>
             {chunk.words.map((w) => w.w).join(" ")}
           </div>
         ) : null}

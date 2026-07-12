@@ -40,6 +40,9 @@ const segmentSchema = z.object({
   // "Did you know" slots can carry a stock video CLIP instead of a still.
   aVideo: z.string().optional(),
   aVideoDurationSec: z.number().optional(),
+  // "Did you know" slots can carry a SLIDESHOW of images (the card cross-fades
+  // through them so the video isn't one static picture). Falls back to aImg.
+  media: z.array(z.string()).optional(),
 });
 
 export const differenceCardSchema = z.object({

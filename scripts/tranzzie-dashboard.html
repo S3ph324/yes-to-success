@@ -106,8 +106,8 @@ function renderGenerate() {
     .map((s) => `<option value="${s}" ${s === BG ? "selected" : ""}>${BG_LABELS[s] || s}</option>`).join("");
   app.innerHTML = `
     <div class="row">
-      <div><label>How many videos</label><input id="g-count" type="number" value="1" min="1" max="20" style="width:110px"></div>
-      <div><label>“Alam mo ba?” videos</label><input id="g-dyk" type="number" value="0" min="0" style="width:150px" title="How many of the batch are single-topic 'did you know' videos"></div>
+      <div><label>“What’s the difference” videos</label><input id="g-diff" type="number" value="1" min="0" max="20" style="width:170px" title="A/B comparison videos (cartoon or realistic Jurie on the animated background)"></div>
+      <div><label>“Alam mo ba?” videos</label><input id="g-dyk" type="number" value="0" min="0" max="20" style="width:150px" title="Single-fact 'did you know' videos with an image slideshow"></div>
       <div><label>Jurie look</label>
         <div class="looks" id="g-look">
           <label class="opt ${LOOK === "cartoon" ? "on" : ""}"><input type="radio" name="look" value="cartoon" ${LOOK === "cartoon" ? "checked" : ""}>Cartoon</label>
@@ -130,11 +130,16 @@ function renderGenerate() {
   const log = document.getElementById("log");
   document.getElementById("g-run").onclick = async () => {
     const btn = document.getElementById("g-run");
+    const diff = Math.max(0, +document.getElementById("g-diff").value || 0);
+    const dyk = Math.max(0, +document.getElementById("g-dyk").value || 0);
+    if (diff + dyk < 1) { log.textContent = "!! Set at least one video (difference and/or alam mo ba)."; return; }
     btn.disabled = true;
     log.textContent = "";
+    // The server takes a TOTAL count + how many of it are DYK; the rest are
+    // difference videos. Two explicit fields → count = diff + dyk, dyk = dyk.
     const body = JSON.stringify({
-      count: +document.getElementById("g-count").value,
-      dyk: +document.getElementById("g-dyk").value,
+      count: diff + dyk,
+      dyk,
       topic: document.getElementById("g-topic").value,
       look: LOOK,
       bgStyle: BG,

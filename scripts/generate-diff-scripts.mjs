@@ -53,6 +53,22 @@ const segmentSchema = {
   required: ["aLabel", "bLabel", "introA", "introB", "defA", "defB", "aSearchQuery", "bSearchQuery", "aImagePrompt", "bImagePrompt"],
 };
 
+// DYK videos carry a small SLIDESHOW instead of one static image — the model
+// supplies several distinct visual beats. mediaPrompts is optional (the images
+// step falls back to aImagePrompt if it's missing).
+const dykSegmentSchema = {
+  type: Type.OBJECT,
+  properties: {
+    ...segmentSchema.properties,
+    mediaPrompts: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: "3 DISTINCT image prompts, each a DIFFERENT visual beat/scene of this fact (vary the subject, setting, or angle) for a slideshow — not three near-duplicates.",
+    },
+  },
+  required: segmentSchema.required,
+};
+
 const ai = new GoogleGenAI({
   vertexai: true,
   project: cfg.gcp.project,
@@ -71,7 +87,7 @@ const start = Date.now();
 // can't bleed into the difference videos, and minItems/maxItems on the
 // segments array makes the shape a hard constraint instead of a request —
 // mixed single-call batches kept returning 1-segment difference videos.
-const videoSchema = (segCount) => ({
+const videoSchema = (segCount, segSchema = segmentSchema) => ({
   type: Type.ARRAY,
   items: {
     type: Type.OBJECT,
@@ -84,7 +100,7 @@ const videoSchema = (segCount) => ({
       caption: { type: Type.STRING, description: "Facebook caption per the profile" },
       segments: {
         type: Type.ARRAY,
-        items: segmentSchema,
+        items: segSchema,
         minItems: String(segCount),
         maxItems: String(segCount),
       },
@@ -93,7 +109,7 @@ const videoSchema = (segCount) => ({
   },
 });
 
-const generateVariant = async (n, systemInstruction, segCount, label) => {
+const generateVariant = async (n, systemInstruction, segCount, label, segSchema = segmentSchema) => {
   if (n <= 0) return [];
   const resp = await ai.models.generateContent({
     model: MODEL,
@@ -103,7 +119,7 @@ const generateVariant = async (n, systemInstruction, segCount, label) => {
     config: {
       systemInstruction,
       responseMimeType: "application/json",
-      responseSchema: videoSchema(segCount),
+      responseSchema: videoSchema(segCount, segSchema),
       temperature: 0.8,
     },
   });
@@ -117,7 +133,7 @@ const generateVariant = async (n, systemInstruction, segCount, label) => {
 
 const [diffVideos, dykVideos] = await Promise.all([
   generateVariant(DIFF_COUNT, diffInstruction, 2, "difference"),
-  generateVariant(DYK_COUNT, dykInstruction, 1, "didyouknow"),
+  generateVariant(DYK_COUNT, dykInstruction, 1, "didyouknow", dykSegmentSchema),
 ]);
 for (const v of diffVideos) v.variant = "difference";
 for (const v of dykVideos) v.variant = "didyouknow";
@@ -144,6 +160,10 @@ for (const v of videos) {
     if (s.introA.split(/\s+/).length > 22 || s.defA.split(/\s+/).length > 22) continue;
     // The renderer treats an empty bLabel as "single image, centered".
     s.bLabel = ""; s.introB = ""; s.defB = ""; s.bSearchQuery = ""; s.bImagePrompt = "";
+    // Keep 2-4 distinct slideshow prompts (the images step builds s.media).
+    s.mediaPrompts = Array.isArray(s.mediaPrompts)
+      ? s.mediaPrompts.filter((p) => typeof p === "string" && p.trim()).slice(0, 4)
+      : [];
   } else {
     if (v.segments.length !== 2) continue;
     const segsOk = v.segments.every(
@@ -153,6 +173,7 @@ for (const v of videos) {
         s.defA.split(/\s+/).length <= 26 && s.defB.split(/\s+/).length <= 26,
     );
     if (!segsOk) continue;
+    for (const s of v.segments) delete s.mediaPrompts; // difference videos don't use it
     v.variant = "difference";
   }
   v.id = slugify(v.title);

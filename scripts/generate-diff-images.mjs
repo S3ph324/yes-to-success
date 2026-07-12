@@ -161,6 +161,48 @@ async function worker() {
 }
 await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 
+// DYK slideshow: build s.media (up to DIFF_DYK_MEDIA images) from the script's
+// mediaPrompts so the "did you know" card cross-fades through several visuals
+// instead of showing one static frame. The primary aImg becomes media[0]; the
+// extra distinct beats are generated here. Skipped when a stock VIDEO was used
+// (that path stays a moving clip) or when no mediaPrompts were provided.
+const DYK_MEDIA_MAX = Math.max(1, parseInt(process.env.DIFF_DYK_MEDIA || "3", 10));
+for (let vi = 0; vi < videos.length; vi++) {
+  const v = videos[vi];
+  if (v.variant !== "didyouknow") continue;
+  const s = v.segments[0];
+  // In "ai" mode the image slideshow always wins. Otherwise, keep a stock VIDEO
+  // clip (aVideo) as-is and skip the slideshow.
+  if (!s || (s.aVideo && IMAGE_SOURCE !== "ai")) continue;
+  const prompts = Array.isArray(s.mediaPrompts) ? s.mediaPrompts.filter((p) => p && p.trim()) : [];
+  if (!prompts.length) continue;
+  // Generate every slide FRESH from mediaPrompts — do NOT reuse s.aImg, because
+  // the director QC step (which runs after this) may re-source/replace aImg and
+  // leave a media[] entry pointing at a deleted file.
+  const media = [];
+  for (let k = 0; k < prompts.length && media.length < DYK_MEDIA_MAX; k++) {
+    const base = `${String(vi + 1).padStart(2, "0")}-1a-m${k + 1}`;
+    const rel = path.posix.join(relDir, `${base}.png`);
+    const abs = path.join(absDir, `${base}.png`);
+    try {
+      await fs.access(abs); // resume: reuse an already-generated slide
+      media.push(rel);
+      continue;
+    } catch { /* generate below */ }
+    const fallback =
+      `clean minimal flat illustration for "${v.title}" (a ${v.category} explainer): ${prompts[k]}. ` +
+      `Single centered subject, friendly and clear, no text.`;
+    try {
+      await genImage(prompts[k], abs, fallback);
+      media.push(rel);
+      console.log(`  slideshow ${base} [AI]  (${v.title})`);
+    } catch (err) {
+      console.warn(`  slideshow ${base} FAILED: ${String(err.message || err).slice(0, 80)}`);
+    }
+  }
+  if (media.length) s.media = media;
+}
+
 // Photo attribution: CC BY / BY-SA images legally require credit, so it rides
 // in the Facebook caption. Credits live on the segments (aCredit/bCredit) so
 // quota-starved reruns don't lose or duplicate them — the caption's credit

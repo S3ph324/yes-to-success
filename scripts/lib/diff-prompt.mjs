@@ -111,8 +111,13 @@ Each video has ONE segment: one genuinely surprising true fact.
 - The segment's introA = the FACT itself, one punchy sentence, max 16 words.
 - The segment's defA = WHY/how it works, one sentence, max 16 words.
 - aLabel = short display label for the subject; aSearchQuery + aImagePrompt
-  for its single visual. Leave bLabel, introB, defB, bSearchQuery,
+  for its primary visual. Leave bLabel, introB, defB, bSearchQuery,
   bImagePrompt as empty strings.
+- mediaPrompts = an array of EXACTLY 3 image prompts for a SLIDESHOW — each a
+  DIFFERENT visual beat of this fact (vary the scene, subject, or angle so the
+  three are clearly distinct, not near-duplicates). Each is one clear sentence
+  describing a single centered subject; they play in order as the narration
+  progresses, so order them to follow the fact → why-it-works flow.
 - aSearchQuery doubles as a STOCK VIDEO search — prefer a scene with natural
   MOTION in it ("octopus swimming coral reef", "lightning storm night sky",
   "chef kneading dough closeup"), not an object posed on a white background.

@@ -61,8 +61,9 @@ for (let vi = 0; vi < videos.length; vi++) {
     Array.isArray(v.phases) &&
     v.phases.length > 0 &&
     // Single-image ("did you know") segments have no B side by design, and
-    // may carry a stock video CLIP (aVideo) instead of a still.
-    v.segments.every((s) => (s.aImg || s.aVideo) && (s.bImg || !s.bLabel));
+    // may carry a stock video CLIP (aVideo) or an image SLIDESHOW (media)
+    // instead of a single still.
+    v.segments.every((s) => (s.aImg || s.aVideo || s.media?.length) && (s.bImg || !s.bLabel));
   if (!assetsOk) {
     skipped++;
     console.warn(`  [${vi + 1}/${videos.length}] SKIP ${v.title}: missing audio/images`);
@@ -78,6 +79,7 @@ for (let vi = 0; vi < videos.length; vi++) {
       ...(s.aVideo
         ? { aVideo: s.aVideo, aVideoDurationSec: s.aVideoDurationSec || 8 }
         : {}),
+      ...(Array.isArray(s.media) && s.media.length ? { media: s.media } : {}),
     })),
     phases: v.phases,
     audioSrc: v.audio,
