@@ -21,7 +21,21 @@ import { applyTechsplainsGcpEnv, TS_GCP } from "./techsplains.mjs";
 const MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
 // Fresh GCP projects get a low requests-per-minute quota on the image model —
 // run sequentially and retry 429s with backoff rather than failing the slot.
-const MAX_RETRIES = 5;
+// Both are env-tunable so a quota-heavy batch (e.g. a Tranzzie run with DYK
+// slideshows) can raise the retry ceiling and pace requests to avoid 429s
+// entirely; defaults keep existing callers (Techsplains, the course) unchanged.
+const MAX_RETRIES = parseInt(process.env.DIFF_IMG_MAX_RETRIES || "5", 10);
+// Minimum spacing between image-gen calls (ms). 0 = no pacing (default). A
+// positive value proactively throttles requests UNDER the per-minute quota so
+// the run rarely trips a 429 in the first place.
+const MIN_INTERVAL_MS = parseInt(process.env.DIFF_IMG_MIN_INTERVAL_MS || "0", 10);
+let lastGenAt = 0;
+async function paceGen() {
+  if (MIN_INTERVAL_MS <= 0) return;
+  const waitFor = lastGenAt + MIN_INTERVAL_MS - Date.now();
+  if (waitFor > 0) await new Promise((r) => setTimeout(r, waitFor));
+  lastGenAt = Date.now();
+}
 
 // GCP binding for the Vertex vision-gate (pickBest) and image-gen (genImage).
 // DEFAULT = Techsplains' isolated project, so existing importers that don't
@@ -300,6 +314,7 @@ export async function genImage(prompt, outAbs, fallbackPrompt) {
     // STYLE_TAIL so existing callers (Techsplains, the course) are unchanged.
     const styleTail = process.env.DIFF_IMAGE_STYLE_TAIL || STYLE_TAIL;
     try {
+      await paceGen(); // proactively stay under the per-minute quota
       const resp = await getAi().models.generateContent({
         model: MODEL,
         contents: usePrompt + styleTail,

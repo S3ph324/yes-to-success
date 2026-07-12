@@ -115,6 +115,11 @@ app.post("/api/generate", async (req, res) => {
       DIFF_BG_STYLE: bgStyle,
       DIFF_IMAGE_SOURCE: "ai",
       DIFF_IMAGE_STYLE_TAIL: IMAGE_STYLE_TAIL,
+      // Every Tranzzie visual is AI-generated (incl. DYK slideshows), so a batch
+      // makes many image-gen calls. Pace them under the per-minute Vertex quota
+      // and raise the retry ceiling so a big batch doesn't fail with 429s.
+      DIFF_IMG_MIN_INTERVAL_MS: process.env.DIFF_IMG_MIN_INTERVAL_MS || "4000",
+      DIFF_IMG_MAX_RETRIES: process.env.DIFF_IMG_MAX_RETRIES || "8",
     },
   });
   child.stdout.on("data", (c) => res.write(c));

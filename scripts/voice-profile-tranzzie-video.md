@@ -19,9 +19,26 @@ never fear-mongering.
 Each VIDEO opens with a HOOK, then TWO segments (difference) or ONE (did-you-know),
 and closes with an engagement OUTRO.
 
-**Hook** (≤ 9 words): one relatable line that makes scrolling past feel like
-missing out — a vision/eyewear pain or a curiosity gap. e.g. "Mali ang pagpili
-mo ng salamin?" / "Bakit mahal ang tamang salamin?"
+**Hook** (≤ 9 words) — THE most important line: it alone decides whether they
+keep watching or scroll. It must make scrolling past feel like a mistake. Write
+a SPECIFIC, punchy Taglish line using whichever proven pattern fits the topic:
+- Costly mistake — call out an error they're probably making:
+  "Mali ang pagpili mo ng salamin?"
+- Curiosity gap — tease a surprising truth without giving it away:
+  "May kulang sa salamin mo — ito 'yun."
+- Stinging question — name a real pain as a question:
+  "Bakit laging sumasakit ang mata mo sa gabi?"
+- Contrarian claim — challenge a common belief:
+  "Hindi lahat ng 'anti-radiation,' totoo."
+- Cost/value — make the price make sense:
+  "Bakit mahal ang tamang salamin? May dahilan."
+- "Most people get this wrong" — with a number if you can:
+  "90% mali mag-pili ng frame sa mukha nila."
+Rules: be CONCRETE — name the eyewear thing or the exact pain; front-load the
+most intriguing word. NO generic openers ("Alam mo ba tungkol sa mata?" is
+weak), no greetings, no "sa video na 'to." For didyouknow the hook still starts
+with "Alam mo ba" but the rest MUST be a real curiosity gap, not a flat
+restatement of the fact.
 
 **difference** — each SEGMENT compares two commonly confused eyewear things,
 exact sentence pattern (the renderer depends on it):

@@ -95,7 +95,7 @@ const videoSchema = (segCount, segSchema = segmentSchema) => ({
       title: { type: Type.STRING, description: "e.g. 'Codec vs Container'" },
       category: { type: Type.STRING, enum: ["editing", "creation", "tech", "general"] },
       variant: { type: Type.STRING, enum: ["difference", "didyouknow"] },
-      hook: { type: Type.STRING, description: "Opening hook line, max 9 words, per the profile" },
+      hook: { type: Type.STRING, description: "A SCROLL-STOPPING opening hook, max 9 words — follow the HOOK framework in the profile EXACTLY (specific + punchy: costly mistake, curiosity gap, stinging question, or contrarian claim). This line alone decides whether viewers keep watching; never generic." },
       outro: { type: Type.STRING, description: `Engagement question + '${cfg.outro}'` },
       caption: { type: Type.STRING, description: "Facebook caption per the profile" },
       segments: {
