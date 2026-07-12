@@ -89,11 +89,24 @@ const keyGreen = (absPath) => {
   return r.status === 0;
 };
 
+// Generate the "base" pose FIRST, then feed it back as a reference for every
+// other pose so the character (face, glasses, cap, hair, T-shirt, art style)
+// stays IDENTICAL and only the gesture changes — otherwise each independent
+// gen drifts (different outfit/frames/proportions).
+jobs.sort((a, b) => (b.file.includes("base") ? 1 : 0) - (a.file.includes("base") ? 1 : 0));
+
 console.log(`Generating ${jobs.length} presenter pose(s) for ${cfg.brandName} from ${refParts.length} ref photo(s)…`);
 let ok = 0;
+let anchor = null; // {inlineData} of the first cartoon pose — the consistency lock
 for (const job of jobs) {
-  const prompt = job.prompt || posePrompt(job.file, cfg.brandName, cfg.presenter.style);
-  const parts = [...refParts, { text: prompt }];
+  const basePrompt = job.prompt || posePrompt(job.file, cfg.brandName, cfg.presenter.style);
+  const prompt = anchor
+    ? basePrompt +
+      " CRITICAL CONSISTENCY: this is the EXACT SAME cartoon mascot shown in the LAST reference image — " +
+      "keep her face, glasses, cap, hair, skin tone, the grey T-shirt and the exact flat-vector art style " +
+      "100% IDENTICAL to that reference; change ONLY the hand gesture and expression."
+    : basePrompt;
+  const parts = anchor ? [...refParts, anchor, { text: prompt }] : [...refParts, { text: prompt }];
   let buf = null;
   for (let attempt = 1; attempt <= 3 && !buf; attempt++) {
     try {
@@ -107,6 +120,8 @@ for (const job of jobs) {
     }
   }
   if (!buf) { console.error(`  ✗ FAILED ${job.file}`); continue; }
+  // First successful pose (base) becomes the appearance anchor for the rest.
+  if (!anchor) anchor = { inlineData: { mimeType: "image/png", data: buf.toString("base64") } };
   const absOut = path.join(outDir, job.file);
   if (CUTOUT && hasFfmpeg) {
     // Write the raw green frame to a tmp, key it to a transparent PNG, clean up.

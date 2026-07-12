@@ -5,11 +5,11 @@ import path from "node:path";
 // BLACK studio background (so she composites onto the dark card with a feathered
 // top edge — no bg-removal dependency), upper-body, facing camera, friendly.
 const ATTITUDE = {
-  "jurie-point": "pointing/gesturing to one side with an open hand, as if directing attention to something beside her",
-  "jurie-present": "presenting with an open upturned palm, welcoming gesture",
-  "jurie-think": "one hand near her chin, thoughtful and curious expression",
-  "jurie-explain": "mid-explanation, calm relaxed hands, warm approachable expression",
-  "jurie-base": "friendly neutral standing pose, gentle smile, hands relaxed",
+  "jurie-point": "clearly POINTING to one side with a single extended INDEX FINGER — arm raised, index finger out and the other fingers curled in — unmistakably a pointing gesture, NOT an open palm",
+  "jurie-present": "presenting with ONE open, upturned palm held out to the side (fingers together, palm facing up) — a welcoming 'ta-da / here it is' gesture",
+  "jurie-think": "ONE hand raised to her chin in a thoughtful 'hmm' pose, head tilted slightly, eyebrows raised, curious",
+  "jurie-explain": "BOTH hands open and relaxed in front of her mid-explanation, mouth slightly open as if talking, warm and approachable",
+  "jurie-base": "friendly neutral pose, both arms relaxed down at her sides, calm closed-mouth smile",
 };
 
 // style: "photoreal" (default) or "flat-vector" (cartoon brand mascot). Both
@@ -25,7 +25,9 @@ export function posePrompt(file, brandName, style = "photoreal") {
       `she is the ${brandName} brand mascot, ${attitude}. ` +
       `Modern flat vector illustration: bold clean outlines, smooth flat colors, minimal cel shading, ` +
       `simple friendly facial features, rounded shapes — a Duolingo / Headspace style brand mascot. ` +
-      `She wears the SAME simple cream crew-neck top in every shot (consistent outfit). ` +
+      `She ALWAYS wears the exact same outfit: a plain light-grey short-sleeve crew-neck T-SHIRT ` +
+      `(no sweater, no long sleeves), and the same dark-grey backwards cap and the same clear/white ` +
+      `rectangular glasses in every shot. Keep her face, skin tone and hair identical across shots. ` +
       `Centered, upper body / waist-up, facing the camera, on a PURE FLAT CHROMA-KEY GREEN background ` +
       `(#00FF00, solid uniform green, no gradient, no shadows cast on the background) so it can be cut out cleanly. ` +
       `Vertical 9:16, crisp and readable at small size. No text, no words, no logos, no watermark.`
