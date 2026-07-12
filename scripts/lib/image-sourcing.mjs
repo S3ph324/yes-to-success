@@ -25,16 +25,27 @@ const MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
 // slideshows) can raise the retry ceiling and pace requests to avoid 429s
 // entirely; defaults keep existing callers (Techsplains, the course) unchanged.
 const MAX_RETRIES = parseInt(process.env.DIFF_IMG_MAX_RETRIES || "5", 10);
-// Minimum spacing between image-gen calls (ms). 0 = no pacing (default). A
-// positive value proactively throttles requests UNDER the per-minute quota so
-// the run rarely trips a 429 in the first place.
+// A 429 is a per-minute QUOTA, not a real failure — give it its own generous
+// retry budget (separate from MAX_RETRIES for genuine errors) so a big batch is
+// never dropped for quota; it just waits the quota out.
+const QUOTA_MAX_RETRIES = parseInt(process.env.DIFF_IMG_QUOTA_RETRIES || "20", 10);
+// Spacing between image-gen calls (ms). 0 = no pacing (default). The interval
+// ADAPTS upward on every 429 (up to MAX_INTERVAL_MS, never shrinks within a
+// run) so the batch converges to a rate the quota tolerates and STOPS tripping
+// 429s for the rest of the run — this is what makes hefty batches finish.
 const MIN_INTERVAL_MS = parseInt(process.env.DIFF_IMG_MIN_INTERVAL_MS || "0", 10);
+const MAX_INTERVAL_MS = parseInt(process.env.DIFF_IMG_MAX_INTERVAL_MS || "30000", 10);
+let curInterval = MIN_INTERVAL_MS; // module-global: the learned rate carries across the whole batch
 let lastGenAt = 0;
 async function paceGen() {
-  if (MIN_INTERVAL_MS <= 0) return;
-  const waitFor = lastGenAt + MIN_INTERVAL_MS - Date.now();
+  if (curInterval <= 0) return;
+  const waitFor = lastGenAt + curInterval - Date.now();
   if (waitFor > 0) await new Promise((r) => setTimeout(r, waitFor));
   lastGenAt = Date.now();
+}
+// Widen the global pace after a quota hit so subsequent calls stop tripping it.
+function widenPaceAfterQuota() {
+  curInterval = Math.min(MAX_INTERVAL_MS, Math.max(curInterval, 1500) * 1.5);
 }
 
 // GCP binding for the Vertex vision-gate (pickBest) and image-gen (genImage).
@@ -304,7 +315,9 @@ export async function stockVideo(query, label, usedIds, outAbs) {
 export async function genImage(prompt, outAbs, fallbackPrompt) {
   let lastErr;
   let textOnlyCount = 0;
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+  let errAttempts = 0;   // genuine errors (503 / persistent no-image) — capped at MAX_RETRIES
+  let quotaAttempts = 0; // 429 / RESOURCE_EXHAUSTED — its own generous budget
+  for (;;) {
     // A prompt that keeps producing text-only replies is usually internally
     // contradictory (e.g. "binary code … no letters") — after two of those,
     // stop re-asking the impossible and switch to the simple label fallback.
@@ -332,14 +345,26 @@ export async function genImage(prompt, outAbs, fallbackPrompt) {
     } catch (err) {
       lastErr = err;
       const msg = String(err.message || err);
-      const retryable = msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED") ||
-        msg.includes("no image in response") || msg.includes("503");
-      if (!retryable || attempt === MAX_RETRIES) break;
-      const wait = msg.includes("no image in response")
-        ? 2000
-        : Math.min(60000, 8000 * 2 ** attempt);
-      console.log(`    …retry ${attempt + 1}/${MAX_RETRIES} in ${wait / 1000}s (${msg.slice(0, 60)})`);
-      await sleep(wait);
+      const isQuota = msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED");
+      const isErr = msg.includes("no image in response") || msg.includes("503");
+      if (isQuota) {
+        // Quota: widen the pace for the rest of the batch and wait it out. The
+        // slot is NOT dropped until the (large) quota budget is exhausted.
+        quotaAttempts++;
+        if (quotaAttempts > QUOTA_MAX_RETRIES) break;
+        widenPaceAfterQuota();
+        const wait = Math.min(MAX_INTERVAL_MS, 6000 * Math.min(6, quotaAttempts));
+        console.log(`    …quota (429) — waiting ${(wait / 1000) | 0}s; pacing now ${(curInterval / 1000).toFixed(1)}s/img (${quotaAttempts}/${QUOTA_MAX_RETRIES})`);
+        await sleep(wait);
+      } else if (isErr) {
+        errAttempts++;
+        if (errAttempts > MAX_RETRIES) break;
+        const wait = msg.includes("no image in response") ? 2000 : Math.min(60000, 8000 * 2 ** errAttempts);
+        console.log(`    …retry ${errAttempts}/${MAX_RETRIES} in ${wait / 1000}s (${msg.slice(0, 50)})`);
+        await sleep(wait);
+      } else {
+        break; // non-retryable
+      }
     }
   }
   throw lastErr;
