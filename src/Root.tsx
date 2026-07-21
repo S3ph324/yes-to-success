@@ -38,6 +38,11 @@ import {
   calcMetaFeatureInfographicCard,
 } from "./QuoteCard/FeatureInfographicCard";
 import {
+  BrandCard,
+  brandCardSchema,
+  calcMetaBrandCard,
+} from "./QuoteCard/BrandCard";
+import {
   AdviceCard,
   adviceCardSchema,
   calcMetaAdviceCard,
@@ -247,6 +252,29 @@ export const RemotionRoot: React.FC = () => {
           focusX: 0.46,
           focusY: 0.4,
           aspectRatio: "1:1" as const,
+        }}
+      />
+
+      <Composition
+        id="BrandCard"
+        component={BrandCard}
+        durationInFrames={60}
+        fps={30}
+        width={1080}
+        height={1350}
+        schema={brandCardSchema}
+        calculateMetadata={calcMetaBrandCard}
+        defaultProps={{
+          photoSrc: "",
+          tagline: "See clearly. Live boldly.",
+          productName: "",
+          logoSrc: "",
+          showLogo: true,
+          layout: "minimal" as const,
+          brandGold: "#F4B400",
+          brandName: "Tranzzie Eyeglasses",
+          establishedTag: "SINCE 2019",
+          aspectRatio: "4:5" as const,
         }}
       />
 

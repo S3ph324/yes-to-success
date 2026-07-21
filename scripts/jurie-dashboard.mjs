@@ -1116,6 +1116,7 @@ app.post("/api/generate", extraRefUpload.fields([
   { name: "styleRef", maxCount: 1 },
   { name: "shopPhoto", maxCount: 10 },
   { name: "adviceAvatar", maxCount: 1 },
+  { name: "brandPhoto", maxCount: 1 },
   // Studio Builder varieties — multer.fields() needs fixed names, so the UI
   // assigns each variety row an index (max 8 varieties × 6 photos).
   ...Array.from({ length: 8 }, (_, i) => ({ name: `variantPhotos_${i}`, maxCount: 6 })),
@@ -1163,7 +1164,9 @@ app.post("/api/generate", extraRefUpload.fields([
   // Jurie advice/tweet posters — text-only cards, topic optional (generator
   // rotates the brief topics when none is given).
   const isAdvice = client === "jurie" && (posterType === "advice" || posterType === "tweet");
-  if (!t && !isEyeglassesBatch && !isShop && !isAdvice) return res.status(400).json({ error: "Topic is required." });
+  // Brand-a-Photo — Tranzzie-only; one uploaded photo + text/logo, no topic.
+  const isBrand = client === "tranzzie" && posterType === "brandphoto";
+  if (!t && !isEyeglassesBatch && !isShop && !isAdvice && !isBrand) return res.status(400).json({ error: "Topic is required." });
   // Studio Builder plan (Virtual Photography Studio). Validated BEFORE the
   // cost guard so a bad request never burns a rate-limit slot.
   let shopPlanReq = null;
@@ -1198,6 +1201,15 @@ app.post("/api/generate", extraRefUpload.fields([
   } else if (isShop && !(filesMap.shopPhoto || []).length) {
     return res.status(400).json({ error: "Upload at least one product photo." });
   }
+  // Brand-a-Photo validation (before the cost guard so a bad request is free).
+  let brandPlanReq = null;
+  if (isBrand) {
+    try { brandPlanReq = JSON.parse(req.body?.brandPlan || "null"); } catch { brandPlanReq = null; }
+    if (!brandPlanReq) return res.status(400).json({ error: "Invalid brand-card settings." });
+    if (!(filesMap.brandPhoto || []).length) return res.status(400).json({ error: "Upload a photo first." });
+    if ((brandPlanReq.textMode === "ai" ? "ai" : "own") === "own" && !String(brandPlanReq.tagline || "").trim())
+      return res.status(400).json({ error: "Write a tagline, or switch to 'Let AI suggest'." });
+  }
   if (!guard(req, res)) return;
 
   const extraRefPaths = (filesMap.extraRef || []).map((f) => f.path);
@@ -1224,6 +1236,22 @@ app.post("/api/generate", extraRefUpload.fields([
       (filesMap.shopPhoto || []).map((f) => convertHeicInPlace(f.path).catch(() => f.path)),
     );
   }
+  // Brand-a-Photo: resolve the single uploaded photo + normalize the plan.
+  let brandPlanEnv = "";
+  if (isBrand && brandPlanReq) {
+    const bp = (filesMap.brandPhoto || [])[0];
+    const photo = bp ? await convertHeicInPlace(bp.path).catch(() => bp.path) : "";
+    brandPlanEnv = JSON.stringify({
+      photo,
+      treatment: ["original", "cleanup", "reshoot"].includes(brandPlanReq.treatment) ? brandPlanReq.treatment : "original",
+      textMode: brandPlanReq.textMode === "ai" ? "ai" : "own",
+      tagline: String(brandPlanReq.tagline || "").slice(0, 140),
+      productName: String(brandPlanReq.productName || "").slice(0, 40),
+      showLogo: brandPlanReq.showLogo !== false,
+      layout: ["minimal", "banner", "editorial", "badge"].includes(brandPlanReq.layout) ? brandPlanReq.layout : "minimal",
+      aspect: ["1:1", "4:5", "9:16"].includes(brandPlanReq.aspect) ? brandPlanReq.aspect : "4:5",
+    });
+  }
 
   // Eyeglasses showcase batches are Tranzzie-only and run a separate
   // orchestrator (different content-gen voice + reference-asset source) that
@@ -1236,6 +1264,8 @@ app.post("/api/generate", extraRefUpload.fields([
     ? shopPlanEnv
       ? `▶ [${c.label}] Shop studio for "${String(shopProduct || "product").slice(0, 40)}" · ${shopVarietiesMeta.length} variet${shopVarietiesMeta.length === 1 ? "y" : "ies"} · ${shopPlanReq._totalAi} AI shot(s)${shopPlanReq._shots.specs ? " + specs card" : ""}…`
       : `▶ [${c.label}] TikTok Shop cards for "${String(shopProduct || "product").slice(0, 40)}" · ${shopPhotoPaths.length} photo(s)…`
+    : isBrand
+    ? `▶ [${c.label}] Brand-a-Photo card (${brandPlanReq?.treatment || "original"})…`
     : isAdvice
     ? `▶ [${c.label}] ${n} ${posterType === "tweet" ? "tweet-style" : "advice"} card(s)` + (t ? ` about "${t}"` : "") + "…"
     : `▶ [${c.label}] ${n} ${isEyeglasses ? "eyeglasses showcase " : ""}poster(s) about "${t}"` +
@@ -1310,6 +1340,7 @@ app.post("/api/generate", extraRefUpload.fields([
     // TikTok Shop product listings are always square — no other aspect option.
     env.DASHBOARD_SHOP_ASPECT = "1:1";
   }
+  if (isBrand && brandPlanEnv) env.DASHBOARD_BRANDCARD_PLAN = brandPlanEnv;
   env.JURIE_NO_OPEN = "1";
   const spec = {
     client,
@@ -1317,13 +1348,17 @@ app.post("/api/generate", extraRefUpload.fields([
     header,
     args: isShop
       ? ["scripts/render-shop-tranzzie.mjs"]
-      : isEyeglasses
-        ? ["scripts/batch-eyeglasses-tranzzie.mjs", String(n), t]
-        : ["scripts/batch-jurie.mjs", "--client", client, String(n), t],
+      : isBrand
+        ? ["scripts/render-brandcard-tranzzie.mjs"]
+        : isEyeglasses
+          ? ["scripts/batch-eyeglasses-tranzzie.mjs", String(n), t]
+          : ["scripts/batch-jurie.mjs", "--client", client, String(n), t],
     env,
   };
   const label = isShop
     ? `${c.label} · Shop · "${String(shopProduct || "product").slice(0, 30)}"`
+    : isBrand
+    ? `${c.label} · Brand card`
     : `${c.label} · ${n} poster(s)` + (t ? ` · "${t.slice(0, 40)}"` : "");
   // Busy → queue the request instead of rejecting it; it starts automatically
   // when the current batch finishes.
@@ -2819,6 +2854,9 @@ async function viewGenerate(){
        +'<label class="ptype-card" data-pt="shop" style="flex:1;display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:12px 14px;border:1px solid var(--line);border-radius:10px;transition:border-color .15s,background .15s">'
        +'<input type="radio" name="g_ptype" value="shop" style="width:auto;margin:3px 0 0">'
        +'<span><b>\\ud83d\\udecd\\ufe0f TikTok Shop</b><br><span class="muted" style="font-size:11px">Upload product photos \\u2192 a set of listing cards</span></span></label>'
+       +'<label class="ptype-card" data-pt="brandphoto" style="flex:1;display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:12px 14px;border:1px solid var(--line);border-radius:10px;transition:border-color .15s,background .15s">'
+       +'<input type="radio" name="g_ptype" value="brandphoto" style="width:auto;margin:3px 0 0">'
+       +'<span><b>\\ud83d\\uddbc\\ufe0f Brand a Photo</b><br><span class="muted" style="font-size:11px">One photo \\u2192 text + logo, your layout</span></span></label>'
        +'</div>')
      :showAdvice
      ?('<div class="section-label">Poster type</div>'
@@ -2889,6 +2927,34 @@ async function viewGenerate(){
        .map(s=>'<label class="spec-chip" style="display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border:1px solid var(--line2);border-radius:999px;cursor:pointer;font-size:13px"><input type="checkbox" name="shop_spec" value="'+s[0]+'" style="width:auto;margin:0;accent-color:var(--gold)"> '+s[1]+'</label>').join('')
    +'</div>'
    +'<p class="muted" style="margin:16px 0 0;font-size:11px">Cards are <b>square 1:1</b> \\u2014 the format TikTok Shop product listings use.</p>'
+   +'</div>'
+   // ── Brand-a-Photo panel (shown when poster type = brandphoto) ──────────────
+   +'<div id="brandcard_box" style="display:none;margin-bottom:18px;padding:16px 18px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:12px">'
+   +'<div class="section-label" style="margin:0 0 6px">Photo</div>'
+   +'<p class="muted" style="margin:0 0 10px;font-size:11px">Upload ONE photo of the eyeglasses. Add a tagline + logo and pick a layout \\u2014 keep the real photo, lightly clean it up, or let AI re-shoot it.</p>'
+   +'<label class="ea-drop" id="bc_drop" style="padding:22px 14px;display:block;text-align:center;border:1.5px dashed var(--line2);border-radius:10px;cursor:pointer;position:relative">'
+   +'<input type="file" id="bc_photo" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer">'
+   +'<span id="bc_photo_lbl" class="muted" style="font-size:13px">Click or drop a photo here</span></label>'
+   +'<div id="bc_thumb" style="margin-top:10px"></div>'
+   +'<div class="section-label" style="margin:16px 0 8px">Image</div>'
+   +'<div id="bc_treatment" style="display:flex;flex-wrap:wrap;gap:8px">'
+   +[['original','Keep original','Use my photo as-is'],['cleanup','Clean it up','Light AI polish \\u2014 lighting + background'],['reshoot','AI re-shoot','Full studio re-shoot of the frame']]
+       .map((t,i)=>'<label class="bc-opt" style="flex:1;min-width:150px;display:block;cursor:pointer;padding:10px 12px;border:1px solid var(--line2);border-radius:9px"><input type="radio" name="bc_treat" value="'+t[0]+'"'+(i===0?' checked':'')+' style="width:auto;margin:0 6px 0 0;accent-color:var(--gold)"><b style="font-size:13px">'+t[1]+'</b><br><span class="muted" style="font-size:11px">'+t[2]+'</span></label>').join('')
+   +'</div>'
+   +'<div class="section-label" style="margin:16px 0 8px">Text</div>'
+   +'<div style="display:flex;gap:14px;margin-bottom:8px">'
+   +'<label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="radio" name="bc_text" value="own" checked style="width:auto;margin:0;accent-color:var(--gold)"> Write my own</label>'
+   +'<label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="radio" name="bc_text" value="ai" style="width:auto;margin:0;accent-color:var(--gold)"> Let AI suggest</label>'
+   +'</div>'
+   +'<input id="bc_tagline" maxlength="140" placeholder="Your tagline (e.g. Clear vision, all-day comfort)" style="width:100%;padding:12px 14px">'
+   +'<p id="bc_tag_hint" class="muted" style="display:none;margin:6px 0 0;font-size:11px">Optional: a topic or hint for the AI (or leave blank).</p>'
+   +'<div class="row" style="gap:12px;margin-top:16px;align-items:flex-end">'
+   +'<div style="flex:1"><label style="font-size:11px;display:block;margin-bottom:5px">Product / model name (optional)</label><input id="bc_product" maxlength="40" placeholder="e.g. Aria" style="width:100%;padding:12px 14px"></div>'
+   +'<div style="flex:0 0 150px"><label style="font-size:11px;display:block;margin-bottom:5px">Aspect</label><select id="bc_aspect" style="width:100%;padding:12px 14px"><option value="4:5">4:5 feed</option><option value="1:1">1:1 square</option><option value="9:16">9:16 story</option></select></div>'
+   +'<label style="display:inline-flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;padding-bottom:12px"><input type="checkbox" id="bc_logo" checked style="width:auto;margin:0;accent-color:var(--gold)"> Add logo</label>'
+   +'</div>'
+   +'<div class="section-label" style="margin:16px 0 8px">Layout</div>'
+   +'<div id="bc_layout" style="display:flex;flex-wrap:wrap;gap:10px"></div>'
    +'</div>'
    // ── Advanced toggle (hidden for eyeglasses — settings auto-expand instead) ──
    +'<button class="adv-toggle" id="adv-btn" onclick="toggleAdv()">'
@@ -3069,8 +3135,8 @@ async function viewGenerate(){
   function paintSubject(){
     const pt=curPosterType();
     const row=$('#g_subjrow');if(!row)return;
-    // Advice / tweet cards are text-only — no character/subject needed.
-    if(pt==='advice'||pt==='tweet'){row.innerHTML='';return;}
+    // Advice / tweet / brand-a-photo are photo-or-text only — no character.
+    if(pt==='advice'||pt==='tweet'||pt==='brandphoto'){row.innerHTML='';return;}
     if(pt==='eyeglasses'){
       row.innerHTML='<div class="row" style="align-items:flex-start;margin-top:14px">'
         +'<div><label>Eyeglasses</label>'
@@ -3115,6 +3181,7 @@ async function viewGenerate(){
     const pt = curPosterType();
     const isEye = pt === 'eyeglasses';
     const isShop = pt === 'shop';
+    const isBrand = pt === 'brandphoto';
     const isAdv = pt === 'advice' || pt === 'tweet';
     // Advice series field (Jurie advice/tweet).
     const advBox=$('#advice_box');
@@ -3122,20 +3189,22 @@ async function viewGenerate(){
     // For advice the topic label reads as an optional angle.
     // Topic vs headline — both hidden in shop mode (product inputs instead).
     const secLbl=$('#g_section_label'), topicCell=$('#g_topic_cell'), hlCell=$('#ea_headline_cell');
-    if(secLbl){ secLbl.style.display = (isEye||isShop) ? 'none' : ''; secLbl.textContent = isAdv ? 'Topic / angle (optional)' : 'What do you want to post about?'; }
-    if(topicCell) topicCell.style.display = (isEye||isShop) ? 'none' : '';
+    if(secLbl){ secLbl.style.display = (isEye||isShop||isBrand) ? 'none' : ''; secLbl.textContent = isAdv ? 'Topic / angle (optional)' : 'What do you want to post about?'; }
+    if(topicCell) topicCell.style.display = (isEye||isShop||isBrand) ? 'none' : '';
     if(hlCell)  hlCell.style.display   = isEye ? '' : 'none';
     const promoCell=$('#ea_promo_cell');
     if(promoCell) promoCell.style.display = isEye ? '' : 'none';
     // Shop panel
     const shopBox=$('#shop_box');
     if(shopBox) shopBox.style.display = isShop ? 'block' : 'none';
-    // Brief + brand kit row — hidden for eyeglasses & shop
+    const brandBox=$('#brandcard_box');
+    if(brandBox) brandBox.style.display = isBrand ? 'block' : 'none';
+    // Brief + brand kit row — hidden for eyeglasses & shop & brand-a-photo
     const mainRow=$('#g_mainonly_row');
-    if(mainRow) mainRow.style.display = (isEye||isShop) ? 'none' : '';
-    // Advanced toggle — hidden for eyeglasses (auto-opens) & shop (not used)
+    if(mainRow) mainRow.style.display = (isEye||isShop||isBrand) ? 'none' : '';
+    // Advanced toggle — hidden for eyeglasses (auto-opens), shop, brand-a-photo
     const advBtn=$('#adv-btn'), advBody=$('#adv-body');
-    if(advBtn) advBtn.style.display = (isEye||isShop) ? 'none' : '';
+    if(advBtn) advBtn.style.display = (isEye||isShop||isBrand) ? 'none' : '';
     if(advBody) { if(isEye) advBody.classList.add('open'); else advBody.classList.remove('open'); }
     // Eyeglasses style box
     const ebox=$('#g_estyle_box');
@@ -3145,7 +3214,7 @@ async function viewGenerate(){
     if(aihlLbl) aihlLbl.style.display = isEye ? '' : 'none';
     // Count field is irrelevant for shop (fixed 5-card set)
     const countCell=$('#g_count')?$('#g_count').closest('div'):null;
-    if(countCell) countCell.style.opacity = isShop ? '0.4' : '1';
+    if(countCell) countCell.style.opacity = (isShop||isBrand) ? '0.4' : '1';
   }
   document.querySelectorAll('input[name="g_ptype"]').forEach(r=>{
     r.onchange=()=>{syncPtypeCards();paintSubject();saveGenSettings();};
@@ -3246,6 +3315,44 @@ async function viewGenerate(){
     shvAddRow();
     $('#shv_add').onclick=()=>shvAddRow();
     const ident=$('#shv_identical');if(ident)ident.onchange=shmPaint;
+  }
+  // ── Brand-a-Photo wiring ──────────────────────────────────────────────────
+  if($('#brandcard_box')){
+    let bcLayout='minimal';
+    const bcThumb=t=>{const wrap=i=>'<svg viewBox="0 0 60 74" width="44" height="54" style="border-radius:6px;background:#141210;border:1px solid var(--line2);flex:none">'+i+'</svg>';
+      if(t==='minimal')return wrap('<rect x="0" y="0" width="60" height="74" fill="#2a2622"/><circle cx="10" cy="10" r="4" fill="none" stroke="#fff" stroke-width="1.5"/><rect x="6" y="58" width="34" height="4" rx="2" fill="#fff"/><rect x="6" y="65" width="16" height="3" rx="1.5" fill="#F4B400"/>');
+      if(t==='banner')return wrap('<rect x="0" y="0" width="60" height="52" fill="#2a2622"/><rect x="0" y="52" width="60" height="22" fill="#141210"/><rect x="0" y="52" width="60" height="2" fill="#F4B400"/><circle cx="10" cy="63" r="4" fill="none" stroke="#fff" stroke-width="1.5"/><rect x="18" y="61" width="30" height="4" rx="2" fill="#fff"/>');
+      if(t==='editorial')return wrap('<rect x="0" y="0" width="34" height="74" fill="#2a2622"/><rect x="34" y="0" width="26" height="74" fill="#141210"/><circle cx="47" cy="12" r="4" fill="none" stroke="#fff" stroke-width="1.5"/><rect x="40" y="36" width="16" height="4" rx="2" fill="#fff"/><rect x="40" y="43" width="14" height="4" rx="2" fill="#fff"/><rect x="40" y="52" width="8" height="2" fill="#F4B400"/>');
+      return wrap('<rect x="0" y="0" width="60" height="74" fill="#2a2622"/><rect x="6" y="50" width="48" height="20" rx="4" fill="rgba(20,18,16,.85)" stroke="rgba(255,255,255,.2)"/><circle cx="14" cy="60" r="4" fill="none" stroke="#fff" stroke-width="1.5"/><rect x="22" y="58" width="26" height="4" rx="2" fill="#fff"/>');
+    };
+    const bcDefs=[['minimal','Minimal'],['banner','Banner'],['editorial','Editorial'],['badge','Badge']];
+    $('#bc_layout').innerHTML=bcDefs.map(d=>'<label class="bc-lay" data-l="'+d[0]+'" style="display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;padding:8px;border:1.5px solid '+(d[0]===bcLayout?'var(--gold)':'var(--line2)')+';border-radius:9px">'+bcThumb(d[0])+'<span style="font-size:11px">'+d[1]+'</span></label>').join('');
+    const paintLay=()=>{Array.prototype.forEach.call(document.querySelectorAll('#bc_layout .bc-lay'),el=>{el.style.borderColor=el.dataset.l===bcLayout?'var(--gold)':'var(--line2)';});};
+    Array.prototype.forEach.call(document.querySelectorAll('#bc_layout .bc-lay'),el=>{el.onclick=()=>{bcLayout=el.dataset.l;paintLay();};});
+    window._bcLayout=()=>bcLayout;
+    // Treatment radios highlight
+    const paintTreat=()=>{Array.prototype.forEach.call(document.querySelectorAll('#bc_treatment .bc-opt'),el=>{const r=el.querySelector('input');el.style.borderColor=r.checked?'var(--gold)':'var(--line2)';el.style.background=r.checked?'rgba(232,182,74,.06)':'transparent';});};
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="bc_treat"]'),r=>r.onchange=paintTreat);paintTreat();
+    // Text mode toggle
+    const paintText=()=>{const ai=(document.querySelector('input[name="bc_text"]:checked')||{}).value==='ai';
+      const tp=$('#bc_tagline');if(tp)tp.placeholder=ai?'Optional hint for the AI (or leave blank)':'Your tagline (e.g. Clear vision, all-day comfort)';
+      const h=$('#bc_tag_hint');if(h)h.style.display=ai?'':'none';};
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="bc_text"]'),r=>r.onchange=paintText);paintText();
+    // Photo dropzone + preview
+    const bcFile=$('#bc_photo');
+    const bcPaint=()=>{const f=bcFile.files&&bcFile.files[0];
+      $('#bc_photo_lbl').textContent=f?f.name:'Click or drop a photo here';
+      const tw=$('#bc_thumb');tw.innerHTML='';
+      if(f){const u=URL.createObjectURL(f);tw.innerHTML='<img src="'+u+'" style="max-width:160px;border-radius:8px;border:1px solid var(--line2)">';}};
+    if(bcFile)bcFile.onchange=bcPaint;
+    {const dz=$('#bc_drop');if(dz){
+      dz.addEventListener('dragover',e=>{e.preventDefault();dz.style.borderColor='var(--gold)';});
+      dz.addEventListener('dragleave',()=>{dz.style.borderColor='var(--line2)';});
+      dz.addEventListener('drop',e=>{e.preventDefault();dz.style.borderColor='var(--line2)';
+        const f=(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]);
+        if(!f||f.type.indexOf('image/')!==0)return;
+        try{const dt=new DataTransfer();dt.items.add(f);bcFile.files=dt.files;}catch(_){}
+        bcPaint();});}}
   }
   document.querySelectorAll('input[name="shop_spec"]').forEach(c=>{
     const paint=()=>{c.closest('.spec-chip').style.borderColor=c.checked?'var(--gold)':'var(--line2)';
@@ -3543,6 +3650,7 @@ async function viewGenerate(){
     const posterType=(showEyeglasses||showAdvice)?curPosterType():'main';
     const isEyePoster = posterType === 'eyeglasses';
     const isShopPoster = posterType === 'shop';
+    const isBrandPoster = posterType === 'brandphoto';
     const isAdvicePoster = posterType === 'advice' || posterType === 'tweet';
     // Studio Builder: collect varieties (name + files) from the DOM rows.
     let shopPlanObj=null,shopVarFiles=[];
@@ -3563,8 +3671,8 @@ async function viewGenerate(){
     // Topic required only for quote posters; optional for eyeglasses/advice; n/a for shop.
     const topic = isEyePoster
       ? ($('#ea_headline')&&$('#ea_headline').value.trim() || '')
-      : (isShopPoster ? '' : $('#g_topic').value.trim());
-    if(!isEyePoster && !isShopPoster && !isAdvicePoster && !topic) return toast('Enter a topic first',true);
+      : ((isShopPoster||isBrandPoster) ? '' : $('#g_topic').value.trim());
+    if(!isEyePoster && !isShopPoster && !isBrandPoster && !isAdvicePoster && !topic) return toast('Enter a topic first',true);
     const fd=new FormData();
     fd.append('client',CLIENT);
     fd.append('topic',topic);
@@ -3586,6 +3694,16 @@ async function viewGenerate(){
       fd.append('shopProduct',($('#shop_product')||{}).value||'');
       fd.append('shopMaterial',($('#shop_material')||{}).value||'');
       fd.append('shopAspect',($('#shop_aspect')||{}).value||'1:1');
+      fd.append('characterId','');
+    }else if(posterType==='brandphoto'){
+      const bf=$('#bc_photo')&&$('#bc_photo').files&&$('#bc_photo').files[0];
+      if(!bf) return toast('Upload a photo first',true);
+      const textMode=(document.querySelector('input[name="bc_text"]:checked')||{}).value||'own';
+      const tagline=($('#bc_tagline')||{}).value||'';
+      if(textMode==='own'&&!tagline.trim()) return toast('Write a tagline, or switch to Let AI suggest',true);
+      const treatment=(document.querySelector('input[name="bc_treat"]:checked')||{}).value||'original';
+      fd.append('brandPhoto',bf);
+      fd.append('brandPlan',JSON.stringify({treatment:treatment,textMode:textMode,tagline:tagline,productName:($('#bc_product')||{}).value||'',showLogo:!!(($('#bc_logo')||{}).checked),layout:(window._bcLayout?window._bcLayout():'minimal'),aspect:($('#bc_aspect')||{}).value||'4:5'}));
       fd.append('characterId','');
     }else if(posterType==='eyeglasses'){
       const promoVal=$('#ea_promo')?$('#ea_promo').value.trim():'';
