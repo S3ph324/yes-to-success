@@ -31,7 +31,8 @@ const client = await resolveClient("tranzzie");
 // ── Plan ─────────────────────────────────────────────────────────────────
 const parseJson = (s, fb) => { try { return JSON.parse(s); } catch { return fb; } };
 const plan = parseJson(process.env.DASHBOARD_BRANDCARD_PLAN, null);
-if (!plan || !plan.photo) { console.error("No brand-card plan / photo provided."); process.exit(1); }
+const allPhotos = (Array.isArray(plan?.photos) && plan.photos.length ? plan.photos : [plan?.photo]).filter(Boolean);
+if (!plan || !allPhotos.length) { console.error("No brand-card plan / photo provided."); process.exit(1); }
 const treatment = ["original", "cleanup", "reshoot"].includes(plan.treatment) ? plan.treatment : "original";
 const textMode = plan.textMode === "ai" ? "ai" : "own";
 const LAYOUTS = ["minimal", "banner", "editorial", "badge"];
@@ -68,10 +69,18 @@ const gcpLocation = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
 const inputRel = path.posix.join("_brandcard-input", stamp);
 const inputDir = path.join(publicDir, inputRel);
 await fs.mkdir(inputDir, { recursive: true });
-const ext = (path.extname(plan.photo) || ".png").toLowerCase();
+const ext = (path.extname(allPhotos[0]) || ".png").toLowerCase();
 const stagedRel = path.posix.join(inputRel, `photo${ext}`);
-try { await fs.copyFile(plan.photo, path.join(publicDir, stagedRel)); }
+try { await fs.copyFile(allPhotos[0], path.join(publicDir, stagedRel)); }
 catch (e) { console.error(`Could not read the uploaded photo: ${e.message}`); process.exit(1); }
+// Stage any EXTRA reference photos too (used only by the AI re-shoot, as
+// additional angles for a more accurate frame model).
+const extraStagedAbs = [];
+for (let i = 1; i < allPhotos.length; i++) {
+  const eext = (path.extname(allPhotos[i]) || ".png").toLowerCase();
+  const dest = path.join(inputDir, `photo-${i}${eext}`);
+  try { await fs.copyFile(allPhotos[i], dest); extraStagedAbs.push(dest); } catch { /* skip unreadable ref */ }
+}
 
 const genRel = path.posix.join("generated-brandcard", stamp);
 let photoRel = stagedRel; // default: the original
@@ -92,8 +101,15 @@ const CLEANUP_PROMPT =
 
 if (treatment !== "original") {
   if (!gcpProject) { console.error("✗ No GOOGLE_CLOUD_PROJECT — cannot run AI image treatment."); process.exit(1); }
-  const refParts = await buildRefParts([path.join(publicDir, stagedRel)], 1);
+  // Cleanup keeps ONE photo (it must preserve that exact composition). Reshoot
+  // uses every reference photo given — multiple angles help Gemini model the
+  // frame's true shape/material more accurately than a single snapshot.
+  const refPaths = treatment === "reshoot"
+    ? [path.join(publicDir, stagedRel), ...extraStagedAbs]
+    : [path.join(publicDir, stagedRel)];
+  const refParts = await buildRefParts(refPaths, 6);
   const prompt = treatment === "cleanup" ? CLEANUP_PROMPT : buildShotPrompt("hero", 0);
+  if (refPaths.length > 1) console.log(`Using ${refPaths.length} reference photos for a more accurate re-shoot…`);
   console.log(`Running '${treatment}' AI image treatment (Gemini) in ${gcpLocation}…`);
   const { made, errors } = await generateShopShots({
     jobs: [{ id: "img", prompt, refParts }],

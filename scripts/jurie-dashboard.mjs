@@ -1116,7 +1116,7 @@ app.post("/api/generate", extraRefUpload.fields([
   { name: "styleRef", maxCount: 1 },
   { name: "shopPhoto", maxCount: 10 },
   { name: "adviceAvatar", maxCount: 1 },
-  { name: "brandPhoto", maxCount: 1 },
+  { name: "brandPhoto", maxCount: 6 },
   // Studio Builder varieties — multer.fields() needs fixed names, so the UI
   // assigns each variety row an index (max 8 varieties × 6 photos).
   ...Array.from({ length: 8 }, (_, i) => ({ name: `variantPhotos_${i}`, maxCount: 6 })),
@@ -1236,14 +1236,19 @@ app.post("/api/generate", extraRefUpload.fields([
       (filesMap.shopPhoto || []).map((f) => convertHeicInPlace(f.path).catch(() => f.path)),
     );
   }
-  // Brand-a-Photo: resolve the single uploaded photo + normalize the plan.
+  // Brand-a-Photo: resolve the uploaded photo(s) + normalize the plan.
   let brandPlanEnv = "";
   if (isBrand && brandPlanReq) {
-    const bp = (filesMap.brandPhoto || [])[0];
-    const photo = bp ? await convertHeicInPlace(bp.path).catch(() => bp.path) : "";
+    const bps = (filesMap.brandPhoto || []).slice(0, 6);
+    const photos = await Promise.all(bps.map((f) => convertHeicInPlace(f.path).catch(() => f.path)));
+    // 2+ reference photos only help the AI re-shoot (multiple angles to model
+    // the frame accurately) — original/cleanup only ever use one photo, so
+    // force re-shoot server-side too (defense in depth vs. the UI's forcing).
+    const requestedTreatment = ["original", "cleanup", "reshoot"].includes(brandPlanReq.treatment) ? brandPlanReq.treatment : "original";
     brandPlanEnv = JSON.stringify({
-      photo,
-      treatment: ["original", "cleanup", "reshoot"].includes(brandPlanReq.treatment) ? brandPlanReq.treatment : "original",
+      photo: photos[0] || "",
+      photos,
+      treatment: photos.length > 1 ? "reshoot" : requestedTreatment,
       textMode: brandPlanReq.textMode === "ai" ? "ai" : "own",
       tagline: String(brandPlanReq.tagline || "").slice(0, 140),
       productName: String(brandPlanReq.productName || "").slice(0, 40),
@@ -2933,9 +2938,10 @@ async function viewGenerate(){
    +'<div class="section-label" style="margin:0 0 6px">Photo</div>'
    +'<p class="muted" style="margin:0 0 10px;font-size:11px">Upload ONE photo of the eyeglasses. Add a tagline + logo and pick a layout \\u2014 keep the real photo, lightly clean it up, or let AI re-shoot it.</p>'
    +'<label class="ea-drop" id="bc_drop" style="padding:22px 14px;display:block;text-align:center;border:1.5px dashed var(--line2);border-radius:10px;cursor:pointer;position:relative">'
-   +'<input type="file" id="bc_photo" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer">'
-   +'<span id="bc_photo_lbl" class="muted" style="font-size:13px">Click or drop a photo here</span></label>'
-   +'<div id="bc_thumb" style="margin-top:10px"></div>'
+   +'<input type="file" id="bc_photo" accept="image/*" multiple style="position:absolute;inset:0;opacity:0;cursor:pointer">'
+   +'<span id="bc_photo_lbl" class="muted" style="font-size:13px">Click or drop 1\\u20136 photos here</span></label>'
+   +'<div id="bc_thumb" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"></div>'
+   +'<p id="bc_multi_hint" class="muted" style="display:none;margin:8px 0 0;font-size:11px">\\ud83d\\udcf8 Multiple photos detected \\u2014 AI re-shoot is auto-selected so it can use all angles to model the frame more accurately.</p>'
    +'<div class="section-label" style="margin:16px 0 8px">Image</div>'
    +'<div id="bc_treatment" style="display:flex;flex-wrap:wrap;gap:8px">'
    +[['original','Keep original','Use my photo as-is'],['cleanup','Clean it up','Light AI polish \\u2014 lighting + background'],['reshoot','AI re-shoot','Full studio re-shoot of the frame']]
@@ -3338,20 +3344,35 @@ async function viewGenerate(){
       const tp=$('#bc_tagline');if(tp)tp.placeholder=ai?'Optional hint for the AI (or leave blank)':'Your tagline (e.g. Clear vision, all-day comfort)';
       const h=$('#bc_tag_hint');if(h)h.style.display=ai?'':'none';};
     Array.prototype.forEach.call(document.querySelectorAll('input[name="bc_text"]'),r=>r.onchange=paintText);paintText();
-    // Photo dropzone + preview
+    // Photo dropzone + preview (1-6 photos). 2+ photos auto-forces AI re-shoot
+    // and locks the treatment picker, since only re-shoot can use multiple
+    // reference angles — original/cleanup only ever look at one photo.
     const bcFile=$('#bc_photo');
-    const bcPaint=()=>{const f=bcFile.files&&bcFile.files[0];
-      $('#bc_photo_lbl').textContent=f?f.name:'Click or drop a photo here';
+    const bcPaint=()=>{const fs=Array.from(bcFile.files||[]).slice(0,6);
+      $('#bc_photo_lbl').textContent=fs.length?fs.length+' photo(s) selected':'Click or drop 1\\u20136 photos here';
       const tw=$('#bc_thumb');tw.innerHTML='';
-      if(f){const u=URL.createObjectURL(f);tw.innerHTML='<img src="'+u+'" style="max-width:160px;border-radius:8px;border:1px solid var(--line2)">';}};
+      fs.forEach(f=>{const u=URL.createObjectURL(f);const d=document.createElement('div');
+        d.style.cssText='width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--line2);background:#0d0d0f';
+        d.innerHTML='<img src="'+u+'" style="width:100%;height:100%;object-fit:cover">';tw.appendChild(d);});
+      const multi=fs.length>1;
+      const hint=$('#bc_multi_hint');if(hint)hint.style.display=multi?'':'none';
+      Array.prototype.forEach.call(document.querySelectorAll('input[name="bc_treat"]'),r=>{
+        if(multi){r.checked=(r.value==='reshoot');r.disabled=(r.value!=='reshoot');}
+        else{r.disabled=false;}
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('#bc_treatment .bc-opt'),el=>{
+        const r=el.querySelector('input');el.style.opacity=r.disabled?'0.4':'1';el.style.cursor=r.disabled?'default':'pointer';
+        el.style.borderColor=r.checked?'var(--gold)':'var(--line2)';el.style.background=r.checked?'rgba(232,182,74,.06)':'transparent';
+      });
+    };
     if(bcFile)bcFile.onchange=bcPaint;
     {const dz=$('#bc_drop');if(dz){
       dz.addEventListener('dragover',e=>{e.preventDefault();dz.style.borderColor='var(--gold)';});
       dz.addEventListener('dragleave',()=>{dz.style.borderColor='var(--line2)';});
       dz.addEventListener('drop',e=>{e.preventDefault();dz.style.borderColor='var(--line2)';
-        const f=(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]);
-        if(!f||f.type.indexOf('image/')!==0)return;
-        try{const dt=new DataTransfer();dt.items.add(f);bcFile.files=dt.files;}catch(_){}
+        const files=Array.from((e.dataTransfer&&e.dataTransfer.files)||[]).filter(f=>f.type.indexOf('image/')===0).slice(0,6);
+        if(!files.length)return;
+        try{const dt=new DataTransfer();files.forEach(f=>dt.items.add(f));bcFile.files=dt.files;}catch(_){}
         bcPaint();});}}
   }
   document.querySelectorAll('input[name="shop_spec"]').forEach(c=>{
@@ -3696,13 +3717,15 @@ async function viewGenerate(){
       fd.append('shopAspect',($('#shop_aspect')||{}).value||'1:1');
       fd.append('characterId','');
     }else if(posterType==='brandphoto'){
-      const bf=$('#bc_photo')&&$('#bc_photo').files&&$('#bc_photo').files[0];
-      if(!bf) return toast('Upload a photo first',true);
+      const bfs=Array.from((($('#bc_photo')||{}).files)||[]).slice(0,6);
+      if(!bfs.length) return toast('Upload a photo first',true);
       const textMode=(document.querySelector('input[name="bc_text"]:checked')||{}).value||'own';
       const tagline=($('#bc_tagline')||{}).value||'';
       if(textMode==='own'&&!tagline.trim()) return toast('Write a tagline, or switch to Let AI suggest',true);
-      const treatment=(document.querySelector('input[name="bc_treat"]:checked')||{}).value||'original';
-      fd.append('brandPhoto',bf);
+      // 2+ reference photos only benefit the AI re-shoot (it can cross-check
+      // angles); original/cleanup only ever look at one photo, so force it.
+      const treatment=bfs.length>1?'reshoot':((document.querySelector('input[name="bc_treat"]:checked')||{}).value||'original');
+      bfs.forEach(f=>fd.append('brandPhoto',f));
       fd.append('brandPlan',JSON.stringify({treatment:treatment,textMode:textMode,tagline:tagline,productName:($('#bc_product')||{}).value||'',showLogo:!!(($('#bc_logo')||{}).checked),layout:(window._bcLayout?window._bcLayout():'minimal'),aspect:($('#bc_aspect')||{}).value||'4:5'}));
       fd.append('characterId','');
     }else if(posterType==='eyeglasses'){
