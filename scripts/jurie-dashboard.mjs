@@ -19,6 +19,8 @@ import multer from "multer";
 import path from "node:path";
 import url from "node:url";
 import heicConvert from "heic-convert";
+import { GoogleGenAI } from "@google/genai";
+import { applyGcpEnv } from "./lib/client.mjs";
 import { registerTryonRoutes } from "./tryon-routes.mjs";
 import { registerEyeglassAngleRoutes } from "./eyeglasses-angles-routes.mjs";
 import { hackFormat } from "./lib/format-hacker.mjs";
@@ -1254,7 +1256,7 @@ app.post("/api/generate", extraRefUpload.fields([
       productName: String(brandPlanReq.productName || "").slice(0, 40),
       showLogo: brandPlanReq.showLogo !== false,
       layout: ["minimal", "banner", "editorial", "badge"].includes(brandPlanReq.layout) ? brandPlanReq.layout : "minimal",
-      aspect: ["1:1", "4:5", "9:16"].includes(brandPlanReq.aspect) ? brandPlanReq.aspect : "4:5",
+      aspect: ["1:1", "4:5", "9:16", "all"].includes(brandPlanReq.aspect) ? brandPlanReq.aspect : "4:5",
     });
   }
 
@@ -1376,6 +1378,43 @@ app.post("/api/generate", extraRefUpload.fields([
   }
   startGenJob(spec);
   res.json({ ok: true, queued: false });
+});
+
+// Brand-a-Photo — 4 tagline ideas to pick from (instead of committing to one
+// AI-written line sight-unseen). A direct Gemini call, not a spawned job —
+// fast, no render, no job queue involved.
+app.post("/api/brandcard/taglines", async (req, res) => {
+  const { productName, hint } = req.body || {};
+  applyGcpEnv();
+  const gcpProject = process.env.GOOGLE_CLOUD_PROJECT;
+  const gcpLocation = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
+  if (!gcpProject) return res.status(400).json({ error: "No GCP project configured for AI taglines." });
+  try {
+    const voice = await fs.readFile(path.join(projectRoot, "scripts", "voice-profile-tranzzie.md"), "utf-8").catch(() => "");
+    const ai = new GoogleGenAI({ vertexai: true, project: gcpProject, location: gcpLocation });
+    const hintTxt = String(hint || "").trim().slice(0, 140);
+    const nameTxt = String(productName || "").trim().slice(0, 40);
+    const extra = (hintTxt ? `\nHint / topic to build on: "${hintTxt}".` : "") + (nameTxt ? `\nFrame name: "${nameTxt}".` : "");
+    const resp = await ai.models.generateContent({
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+      contents: [{ role: "user", parts: [{ text:
+        "Write 4 DIFFERENT short marketing taglines (captions) for a Tranzzie Eyeglasses " +
+        "product poster — each max ~10 words, punchy, warm, benefit-led. Eyewear / eye-comfort " +
+        "themed. Brand-safe: describe FEATURES and comfort, never a medical cure or guarantee. " +
+        "No hashtags, no emojis, no quotation marks, no brand name, no numbering. " +
+        "Return ONLY the 4 taglines, one per line." + extra }] }],
+      config: { systemInstruction: voice || "You write for a friendly Filipino optical clinic, Tranzzie Eyeglasses.", temperature: 1.0 },
+    });
+    const lines = String(resp.text || "")
+      .split("\n")
+      .map((l) => l.trim().replace(/^[-*\d.)\s]+/, "").replace(/^["']|["']$/g, "").trim())
+      .filter(Boolean)
+      .slice(0, 4);
+    if (!lines.length) return res.status(502).json({ error: "AI returned no taglines — try again." });
+    res.json({ taglines: lines });
+  } catch (e) {
+    res.status(502).json({ error: `AI tagline request failed: ${(e?.message || e)?.toString().slice(0, 160)}` });
+  }
 });
 
 // Spawn one generation batch and wire its lifecycle. When it exits, the next
@@ -2813,6 +2852,10 @@ async function render(){
 }
 let es;
 async function viewGenerate(){
+  // Brand-a-Photo "Regenerate" support — the photos + plan of the last
+  // successful brand-card submission, kept in memory so a retry doesn't
+  // require re-uploading (File objects stay valid blobs for reuse).
+  let bcLastSubmit=null;
   const [briefs,brands,chars,cls,glasses]=await Promise.all([
     api('/api/briefs?client='+CLIENT),
     api('/api/brand?client='+CLIENT),
@@ -2935,13 +2978,29 @@ async function viewGenerate(){
    +'</div>'
    // ── Brand-a-Photo panel (shown when poster type = brandphoto) ──────────────
    +'<div id="brandcard_box" style="display:none;margin-bottom:18px;padding:16px 18px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:12px">'
+   +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid var(--line2);border-radius:9px">'
+   +'<label class="muted" style="font-size:11px;white-space:nowrap">Card style</label>'
+   +'<select id="bc_preset_sel" style="flex:1;min-width:160px;padding:8px 10px;font-size:12.5px"><option value="">\\u2014 none \\u2014</option></select>'
+   +'<button type="button" class="sec" id="bc_preset_save" style="font-size:11.5px;padding:7px 12px">\\ud83d\\udcbe Save as preset</button>'
+   +'<button type="button" class="sec" id="bc_preset_del" style="font-size:11.5px;padding:7px 12px;display:none">\\u2715 Delete</button>'
+   +'<button type="button" class="sec" id="bc_retry_btn" style="font-size:11.5px;padding:7px 12px;display:none;margin-left:auto">\\ud83d\\udd01 Regenerate last</button>'
+   +'</div>'
+   +'<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer;margin-bottom:14px">'
+   +'<input type="checkbox" id="bc_batch_toggle" style="width:auto;margin:0;accent-color:var(--gold)"> \\ud83d\\udcda Batch mode <span class="muted" style="font-size:11px">(multiple different frames, one shared style)</span></label>'
    +'<div class="section-label" style="margin:0 0 6px">Photo</div>'
+   +'<div id="bc_single_photo">'
    +'<p class="muted" style="margin:0 0 10px;font-size:11px">Upload ONE photo of the eyeglasses. Add a tagline + logo and pick a layout \\u2014 keep the real photo, lightly clean it up, or let AI re-shoot it.</p>'
    +'<label class="ea-drop" id="bc_drop" style="padding:22px 14px;display:block;text-align:center;border:1.5px dashed var(--line2);border-radius:10px;cursor:pointer;position:relative">'
    +'<input type="file" id="bc_photo" accept="image/*" multiple style="position:absolute;inset:0;opacity:0;cursor:pointer">'
    +'<span id="bc_photo_lbl" class="muted" style="font-size:13px">Click or drop 1\\u20136 photos here</span></label>'
    +'<div id="bc_thumb" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"></div>'
    +'<p id="bc_multi_hint" class="muted" style="display:none;margin:8px 0 0;font-size:11px">\\ud83d\\udcf8 Multiple photos detected \\u2014 AI re-shoot is auto-selected so it can use all angles to model the frame more accurately.</p>'
+   +'</div>'
+   +'<div id="bc_batch_photo" style="display:none">'
+   +'<p class="muted" style="margin:0 0 10px;font-size:11px">Each frame below is a SEPARATE card \\u2014 its own photo(s), tagline, and product name. Image treatment, text mode, logo, layout, and aspect (below) apply to all of them.</p>'
+   +'<div id="bcb_list"></div>'
+   +'<button type="button" class="sec" id="bcb_add" style="margin-top:2px">\\uff0b Add another frame</button>'
+   +'</div>'
    +'<div class="section-label" style="margin:16px 0 8px">Image</div>'
    +'<div id="bc_treatment" style="display:flex;flex-wrap:wrap;gap:8px">'
    +[['original','Keep original','Use my photo as-is'],['cleanup','Clean it up','Light AI polish \\u2014 lighting + background'],['reshoot','AI re-shoot','Full studio re-shoot of the frame']]
@@ -2952,11 +3011,16 @@ async function viewGenerate(){
    +'<label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="radio" name="bc_text" value="own" checked style="width:auto;margin:0;accent-color:var(--gold)"> Write my own</label>'
    +'<label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="radio" name="bc_text" value="ai" style="width:auto;margin:0;accent-color:var(--gold)"> Let AI suggest</label>'
    +'</div>'
+   +'<div id="bc_single_text">'
    +'<input id="bc_tagline" maxlength="140" placeholder="Your tagline (e.g. Clear vision, all-day comfort)" style="width:100%;padding:12px 14px">'
    +'<p id="bc_tag_hint" class="muted" style="display:none;margin:6px 0 0;font-size:11px">Optional: a topic or hint for the AI (or leave blank).</p>'
+   +'<button type="button" class="sec" id="bc_tag_ideas_btn" style="display:none;margin-top:8px;font-size:11.5px;padding:7px 12px">\\u2728 Get 4 tagline ideas</button>'
+   +'<div id="bc_tag_ideas" style="display:none;margin-top:8px;flex-wrap:wrap;gap:7px"></div>'
+   +'</div>'
+   +'<p id="bc_batch_text_note" class="muted" style="display:none;margin:0;font-size:11px">Each frame above has its own tagline (and its own AI hint, if \\u201cLet AI suggest\\u201d is picked).</p>'
    +'<div class="row" style="gap:12px;margin-top:16px;align-items:flex-end">'
-   +'<div style="flex:1"><label style="font-size:11px;display:block;margin-bottom:5px">Product / model name (optional)</label><input id="bc_product" maxlength="40" placeholder="e.g. Aria" style="width:100%;padding:12px 14px"></div>'
-   +'<div style="flex:0 0 150px"><label style="font-size:11px;display:block;margin-bottom:5px">Aspect</label><select id="bc_aspect" style="width:100%;padding:12px 14px"><option value="4:5">4:5 feed</option><option value="1:1">1:1 square</option><option value="9:16">9:16 story</option></select></div>'
+   +'<div id="bc_single_product" style="flex:1"><label style="font-size:11px;display:block;margin-bottom:5px">Product / model name (optional)</label><input id="bc_product" maxlength="40" placeholder="e.g. Aria" style="width:100%;padding:12px 14px"></div>'
+   +'<div style="flex:0 0 150px"><label style="font-size:11px;display:block;margin-bottom:5px">Aspect</label><select id="bc_aspect" style="width:100%;padding:12px 14px"><option value="4:5">4:5 feed</option><option value="1:1">1:1 square</option><option value="9:16">9:16 story</option><option value="all">\\u2b1a All 3 formats</option></select></div>'
    +'<label style="display:inline-flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;padding-bottom:12px"><input type="checkbox" id="bc_logo" checked style="width:auto;margin:0;accent-color:var(--gold)"> Add logo</label>'
    +'</div>'
    +'<div class="section-label" style="margin:16px 0 8px">Layout</div>'
@@ -3325,16 +3389,30 @@ async function viewGenerate(){
   // ── Brand-a-Photo wiring ──────────────────────────────────────────────────
   if($('#brandcard_box')){
     let bcLayout='minimal';
-    const bcThumb=t=>{const wrap=i=>'<svg viewBox="0 0 60 74" width="44" height="54" style="border-radius:6px;background:#141210;border:1px solid var(--line2);flex:none">'+i+'</svg>';
-      if(t==='minimal')return wrap('<rect x="0" y="0" width="60" height="74" fill="#2a2622"/><circle cx="10" cy="10" r="4" fill="none" stroke="#fff" stroke-width="1.5"/><rect x="6" y="58" width="34" height="4" rx="2" fill="#fff"/><rect x="6" y="65" width="16" height="3" rx="1.5" fill="#F4B400"/>');
-      if(t==='banner')return wrap('<rect x="0" y="0" width="60" height="52" fill="#2a2622"/><rect x="0" y="52" width="60" height="22" fill="#141210"/><rect x="0" y="52" width="60" height="2" fill="#F4B400"/><circle cx="10" cy="63" r="4" fill="none" stroke="#fff" stroke-width="1.5"/><rect x="18" y="61" width="30" height="4" rx="2" fill="#fff"/>');
-      if(t==='editorial')return wrap('<rect x="0" y="0" width="34" height="74" fill="#2a2622"/><rect x="34" y="0" width="26" height="74" fill="#141210"/><circle cx="47" cy="12" r="4" fill="none" stroke="#fff" stroke-width="1.5"/><rect x="40" y="36" width="16" height="4" rx="2" fill="#fff"/><rect x="40" y="43" width="14" height="4" rx="2" fill="#fff"/><rect x="40" y="52" width="8" height="2" fill="#F4B400"/>');
-      return wrap('<rect x="0" y="0" width="60" height="74" fill="#2a2622"/><rect x="6" y="50" width="48" height="20" rx="4" fill="rgba(20,18,16,.85)" stroke="rgba(255,255,255,.2)"/><circle cx="14" cy="60" r="4" fill="none" stroke="#fff" stroke-width="1.5"/><rect x="22" y="58" width="26" height="4" rx="2" fill="#fff"/>');
+    // Layout thumbnails use the REAL uploaded photo (once selected) instead of
+    // a generic placeholder, so the user compares layouts against their own
+    // frame before committing to a render. Coordinates mirror the actual
+    // BrandCard composition's proportions (60x74 unit box).
+    let bcPhotoUrl='';
+    const bcPhotoDiv=(x,y,w,h)=>'<div style="position:absolute;left:'+x+'px;top:'+y+'px;width:'+w+'px;height:'+h+'px;'+(bcPhotoUrl?('background-image:url('+bcPhotoUrl+');background-size:cover;background-position:center'):'background:#2a2622')+'"></div>';
+    const bcFlatDiv=(x,y,w,h,color,radius,border)=>'<div style="position:absolute;left:'+x+'px;top:'+y+'px;width:'+w+'px;height:'+h+'px;'+(radius?('border-radius:'+radius+'px;'):'')+(border?('border:'+border+';'):'')+'background:'+color+'"></div>';
+    const bcCircleDiv=(cx,cy,r)=>'<div style="position:absolute;left:'+(cx-r)+'px;top:'+(cy-r)+'px;width:'+(2*r)+'px;height:'+(2*r)+'px;border-radius:50%;border:1.4px solid #fff"></div>';
+    const bcBarDiv=(x,y,w,h,color,radius)=>'<div style="position:absolute;left:'+x+'px;top:'+y+'px;width:'+w+'px;height:'+h+'px;border-radius:'+(radius||2)+'px;background:'+color+'"></div>';
+    const bcThumbHtml=t=>{
+      const wrap=inner=>'<div style="position:relative;width:60px;height:74px;border-radius:6px;overflow:hidden;background:#141210;flex:none">'+inner+'</div>';
+      if(t==='minimal')return wrap(bcPhotoDiv(0,0,60,74)+bcCircleDiv(10,10,4)+bcBarDiv(6,58,34,4,'#fff',2)+bcBarDiv(6,65,16,3,'#F4B400',1.5));
+      if(t==='banner')return wrap(bcPhotoDiv(0,0,60,52)+bcFlatDiv(0,52,60,22,'#141210')+bcFlatDiv(0,52,60,2,'#F4B400')+bcCircleDiv(10,63,4)+bcBarDiv(18,61,30,4,'#fff',2));
+      if(t==='editorial')return wrap(bcPhotoDiv(0,0,34,74)+bcFlatDiv(34,0,26,74,'#141210')+bcCircleDiv(47,12,4)+bcBarDiv(40,36,16,4,'#fff',2)+bcBarDiv(40,43,14,4,'#fff',2)+bcBarDiv(40,52,8,2,'#F4B400',1));
+      return wrap(bcPhotoDiv(0,0,60,74)+bcFlatDiv(6,50,48,20,'rgba(20,18,16,.85)',4,'1px solid rgba(255,255,255,.2)')+bcCircleDiv(14,60,4)+bcBarDiv(22,58,26,4,'#fff',2));
     };
     const bcDefs=[['minimal','Minimal'],['banner','Banner'],['editorial','Editorial'],['badge','Badge']];
-    $('#bc_layout').innerHTML=bcDefs.map(d=>'<label class="bc-lay" data-l="'+d[0]+'" style="display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;padding:8px;border:1.5px solid '+(d[0]===bcLayout?'var(--gold)':'var(--line2)')+';border-radius:9px">'+bcThumb(d[0])+'<span style="font-size:11px">'+d[1]+'</span></label>').join('');
+    const renderBcLayoutThumbs=()=>{
+      $('#bc_layout').innerHTML=bcDefs.map(d=>'<label class="bc-lay" data-l="'+d[0]+'" style="display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;padding:8px;border:1.5px solid '+(d[0]===bcLayout?'var(--gold)':'var(--line2)')+';border-radius:9px">'+bcThumbHtml(d[0])+'<span style="font-size:11px">'+d[1]+'</span></label>').join('');
+    };
+    renderBcLayoutThumbs();
     const paintLay=()=>{Array.prototype.forEach.call(document.querySelectorAll('#bc_layout .bc-lay'),el=>{el.style.borderColor=el.dataset.l===bcLayout?'var(--gold)':'var(--line2)';});};
-    Array.prototype.forEach.call(document.querySelectorAll('#bc_layout .bc-lay'),el=>{el.onclick=()=>{bcLayout=el.dataset.l;paintLay();};});
+    // Delegated on the parent (survives renderBcLayoutThumbs() rebuilding children).
+    $('#bc_layout').addEventListener('click',e=>{const el=e.target.closest('.bc-lay');if(!el)return;bcLayout=el.dataset.l;paintLay();});
     window._bcLayout=()=>bcLayout;
     // Treatment radios highlight
     const paintTreat=()=>{Array.prototype.forEach.call(document.querySelectorAll('#bc_treatment .bc-opt'),el=>{const r=el.querySelector('input');el.style.borderColor=r.checked?'var(--gold)':'var(--line2)';el.style.background=r.checked?'rgba(232,182,74,.06)':'transparent';});};
@@ -3342,8 +3420,34 @@ async function viewGenerate(){
     // Text mode toggle
     const paintText=()=>{const ai=(document.querySelector('input[name="bc_text"]:checked')||{}).value==='ai';
       const tp=$('#bc_tagline');if(tp)tp.placeholder=ai?'Optional hint for the AI (or leave blank)':'Your tagline (e.g. Clear vision, all-day comfort)';
-      const h=$('#bc_tag_hint');if(h)h.style.display=ai?'':'none';};
+      const h=$('#bc_tag_hint');if(h)h.style.display=ai?'':'none';
+      const ib=$('#bc_tag_ideas_btn');if(ib)ib.style.display=ai?'inline-flex':'none';
+      if(!ai){const ideas=$('#bc_tag_ideas');if(ideas){ideas.style.display='none';ideas.innerHTML='';}}};
     Array.prototype.forEach.call(document.querySelectorAll('input[name="bc_text"]'),r=>r.onchange=paintText);paintText();
+    // 4 AI tagline suggestions — a lightweight direct call (not a full render
+    // job); picking one commits it as "own" text so the render job uses it
+    // verbatim instead of re-rolling its own single AI tagline.
+    const bcIdeasBtn=$('#bc_tag_ideas_btn');
+    if(bcIdeasBtn)bcIdeasBtn.onclick=async()=>{
+      bcIdeasBtn.disabled=true;const origLabel=bcIdeasBtn.textContent;bcIdeasBtn.textContent='Thinking…';
+      const ideasBox=$('#bc_tag_ideas');
+      try{
+        const r=await fetch('/api/brandcard/taglines',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({client:CLIENT,productName:($('#bc_product')||{}).value||'',hint:($('#bc_tagline')||{}).value||''})});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok||!d.taglines||!d.taglines.length){toast(d.error||'Could not get tagline ideas',true);return;}
+        ideasBox.style.display='flex';
+        ideasBox.innerHTML=d.taglines.map((t,i)=>'<button type="button" class="sec bc-tag-idea" data-i="'+i+'" style="font-size:12px;padding:8px 12px;text-align:left;max-width:100%">'+t.replace(/</g,'&lt;')+'</button>').join('');
+        Array.prototype.forEach.call(ideasBox.querySelectorAll('.bc-tag-idea'),(btn,i)=>{
+          btn.onclick=()=>{
+            $('#bc_tagline').value=d.taglines[i];
+            const ownRadio=document.querySelector('input[name="bc_text"][value="own"]');
+            if(ownRadio){ownRadio.checked=true;ownRadio.dispatchEvent(new Event('change'));} // clears/hides the ideas box via paintText()
+          };
+        });
+      }catch(e){toast('Network error getting tagline ideas',true);}
+      bcIdeasBtn.disabled=false;bcIdeasBtn.textContent=origLabel;
+    };
     // Photo dropzone + preview (1-6 photos). 2+ photos auto-forces AI re-shoot
     // and locks the treatment picker, since only re-shoot can use multiple
     // reference angles — original/cleanup only ever look at one photo.
@@ -3351,9 +3455,11 @@ async function viewGenerate(){
     const bcPaint=()=>{const fs=Array.from(bcFile.files||[]).slice(0,6);
       $('#bc_photo_lbl').textContent=fs.length?fs.length+' photo(s) selected':'Click or drop 1\\u20136 photos here';
       const tw=$('#bc_thumb');tw.innerHTML='';
-      fs.forEach(f=>{const u=URL.createObjectURL(f);const d=document.createElement('div');
+      bcPhotoUrl='';
+      fs.forEach((f,i)=>{const u=URL.createObjectURL(f);if(i===0)bcPhotoUrl=u;const d=document.createElement('div');
         d.style.cssText='width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--line2);background:#0d0d0f';
         d.innerHTML='<img src="'+u+'" style="width:100%;height:100%;object-fit:cover">';tw.appendChild(d);});
+      renderBcLayoutThumbs();
       const multi=fs.length>1;
       const hint=$('#bc_multi_hint');if(hint)hint.style.display=multi?'':'none';
       Array.prototype.forEach.call(document.querySelectorAll('input[name="bc_treat"]'),r=>{
@@ -3374,6 +3480,118 @@ async function viewGenerate(){
         if(!files.length)return;
         try{const dt=new DataTransfer();files.forEach(f=>dt.items.add(f));bcFile.files=dt.files;}catch(_){}
         bcPaint();});}}
+    // Card-style presets (localStorage) — captures treatment/text mode/logo/
+    // layout/aspect so a repeated look doesn't need re-picking every time.
+    const BC_PS_KEY='bc_presets_v1';
+    const bcPsLoad=()=>{try{return JSON.parse(localStorage.getItem(BC_PS_KEY)||'[]');}catch(_){return [];}};
+    const bcPsSave=arr=>{try{localStorage.setItem(BC_PS_KEY,JSON.stringify(arr));}catch(_){}};
+    const bcPsSel=$('#bc_preset_sel');
+    const bcPsDelBtn=$('#bc_preset_del');
+    const bcPsRender=selectName=>{
+      const list=bcPsLoad();
+      bcPsSel.innerHTML='<option value="">\\u2014 none \\u2014</option>'+list.map(p=>'<option value="'+String(p.name).replace(/"/g,'&quot;')+'">'+String(p.name).replace(/</g,'&lt;')+'</option>').join('');
+      bcPsSel.value=selectName||'';
+      bcPsDelBtn.style.display=bcPsSel.value?'':'none';
+    };
+    const bcPsCurrent=()=>({
+      treatment:(document.querySelector('input[name="bc_treat"]:checked')||{}).value||'original',
+      textMode:(document.querySelector('input[name="bc_text"]:checked')||{}).value||'own',
+      showLogo:!!($('#bc_logo')||{}).checked,
+      layout:bcLayout,
+      aspect:($('#bc_aspect')||{}).value||'4:5'
+    });
+    const bcPsApply=p=>{
+      if(!p)return;
+      const multiNow=Array.from((bcFile.files||[])).length>1;
+      if(!multiNow)Array.prototype.forEach.call(document.querySelectorAll('input[name="bc_treat"]'),r=>{r.checked=(r.value===p.treatment);});
+      Array.prototype.forEach.call(document.querySelectorAll('input[name="bc_text"]'),r=>{r.checked=(r.value===p.textMode);});
+      if($('#bc_logo'))$('#bc_logo').checked=!!p.showLogo;
+      bcLayout=['minimal','banner','editorial','badge'].indexOf(p.layout)>=0?p.layout:'minimal';
+      paintLay();paintTreat();paintText();
+      if($('#bc_aspect'))$('#bc_aspect').value=['1:1','4:5','9:16','all'].indexOf(p.aspect)>=0?p.aspect:'4:5';
+    };
+    bcPsRender();
+    bcPsSel.onchange=()=>{
+      const name=bcPsSel.value;
+      bcPsDelBtn.style.display=name?'':'none';
+      if(!name)return;
+      const p=bcPsLoad().find(x=>x.name===name);
+      if(p)bcPsApply(p);
+    };
+    $('#bc_preset_save').onclick=()=>{
+      const name=(window.prompt('Name this card style:','')||'').trim().slice(0,40);
+      if(!name)return;
+      const list=bcPsLoad();
+      const cur=bcPsCurrent();
+      const i=list.findIndex(p=>p.name===name);
+      const entry=Object.assign({name:name},cur);
+      if(i>=0)list[i]=entry;else list.push(entry);
+      bcPsSave(list);
+      bcPsRender(name);
+      toast('Saved preset "'+name+'"');
+    };
+    bcPsDelBtn.onclick=()=>{
+      const name=bcPsSel.value;if(!name)return;
+      if(!window.confirm('Delete preset "'+name+'"?'))return;
+      bcPsSave(bcPsLoad().filter(p=>p.name!==name));
+      bcPsRender();
+    };
+    // Regenerate — replays the last submission's exact photos + settings
+    // (single card or the whole batch, whichever ran last).
+    const bcRetryBtn=$('#bc_retry_btn');
+    if(bcRetryBtn)bcRetryBtn.onclick=async()=>{
+      if(!bcLastSubmit||!bcLastSubmit.items||!bcLastSubmit.items.length)return;
+      bcRetryBtn.disabled=true;
+      for(const it of bcLastSubmit.items){await submitBrandCard(it.photos,it.plan);}
+      if(bcLastSubmit.items.length>1)toast('\\ud83d\\udd01 Regenerating '+bcLastSubmit.items.length+' brand cards\\u2026');
+      bcRetryBtn.disabled=false;
+    };
+    // Batch mode toggle — swaps the single photo/tagline UI for a per-frame
+    // list; shared treatment/text-mode/logo/layout/aspect still apply to all.
+    const bcBatchToggle=$('#bc_batch_toggle');
+    const bcbWireRow=row=>{
+      const inp=row.querySelector('.bcb_files'),lbl=row.querySelector('.bcb_lbl'),tw=row.querySelector('.bcb_thumbs'),dz=row.querySelector('.bcb_drop');
+      const paint=()=>{const fs=Array.from(inp.files||[]).slice(0,6);
+        lbl.textContent=fs.length?fs.length+' photo(s)':'Click or drop 1\\u20136 photos';
+        tw.innerHTML='';fs.forEach(f=>{const u=URL.createObjectURL(f);const d=document.createElement('div');
+          d.style.cssText='width:46px;height:46px;border-radius:7px;overflow:hidden;border:1px solid var(--line2);background:#0d0d0f';
+          d.innerHTML='<img src="'+u+'" style="width:100%;height:100%;object-fit:cover">';tw.appendChild(d);});};
+      inp.onchange=paint;
+      const hi=on=>{dz.style.borderColor=on?'var(--gold)':'var(--line2)';};
+      dz.addEventListener('dragover',e=>{e.preventDefault();hi(true);});
+      dz.addEventListener('dragleave',()=>hi(false));
+      dz.addEventListener('drop',e=>{e.preventDefault();hi(false);
+        const files=Array.from((e.dataTransfer&&e.dataTransfer.files)||[]).filter(f=>f.type.indexOf('image/')===0).slice(0,6);
+        if(!files.length)return;
+        try{const dt=new DataTransfer();files.forEach(f=>dt.items.add(f));inp.files=dt.files;}catch(_){}
+        paint();});
+      row.querySelector('.bcb_del').onclick=()=>row.remove();
+    };
+    const bcbAddRow=()=>{
+      if(document.querySelectorAll('#bcb_list .bcb_row').length>=10)return toast('Max 10 frames per batch',true);
+      const row=document.createElement('div');row.className='bcb_row';
+      row.style.cssText='display:flex;gap:12px;align-items:flex-start;margin-bottom:10px;padding:10px;border:1px solid var(--line2);border-radius:10px';
+      row.innerHTML='<div style="flex:1"><label class="bcb_drop" style="padding:14px 10px;display:block;text-align:center;border:1.5px dashed var(--line2);border-radius:9px;cursor:pointer;position:relative">'
+        +'<input type="file" class="bcb_files" accept="image/*" multiple style="position:absolute;inset:0;opacity:0;cursor:pointer">'
+        +'<span class="bcb_lbl muted" style="font-size:12.5px">Click or drop 1\\u20136 photos</span></label>'
+        +'<div class="bcb_thumbs" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div></div>'
+        +'<div style="flex:1;display:flex;flex-direction:column;gap:8px">'
+        +'<input class="bcb_tagline" maxlength="140" placeholder="Tagline (or AI hint, if \\u2018Let AI suggest\\u2019 is on)" style="width:100%;padding:10px 12px">'
+        +'<input class="bcb_product" maxlength="40" placeholder="Product / model name (optional)" style="width:100%;padding:10px 12px">'
+        +'<button type="button" class="sec bcb_del" style="align-self:flex-start;font-size:11px;padding:5px 10px">\\u2715 Remove</button></div>';
+      $('#bcb_list').appendChild(row);bcbWireRow(row);
+    };
+    const bcPaintBatchMode=()=>{
+      const on=!!(bcBatchToggle&&bcBatchToggle.checked);
+      const sp=$('#bc_single_photo');if(sp)sp.style.display=on?'none':'';
+      const bp=$('#bc_batch_photo');if(bp)bp.style.display=on?'':'none';
+      const st=$('#bc_single_text');if(st)st.style.display=on?'none':'';
+      const btn=$('#bc_batch_text_note');if(btn)btn.style.display=on?'':'none';
+      const spd=$('#bc_single_product');if(spd)spd.style.display=on?'none':'';
+      if(on&&document.querySelectorAll('#bcb_list .bcb_row').length===0)bcbAddRow();
+    };
+    if(bcBatchToggle)bcBatchToggle.onchange=bcPaintBatchMode;
+    const bcbAddBtn=$('#bcb_add');if(bcbAddBtn)bcbAddBtn.onclick=()=>bcbAddRow();
   }
   document.querySelectorAll('input[name="shop_spec"]').forEach(c=>{
     const paint=()=>{c.closest('.spec-chip').style.borderColor=c.checked?'var(--gold)':'var(--line2)';
@@ -3717,17 +3935,42 @@ async function viewGenerate(){
       fd.append('shopAspect',($('#shop_aspect')||{}).value||'1:1');
       fd.append('characterId','');
     }else if(posterType==='brandphoto'){
+      const textMode=(document.querySelector('input[name="bc_text"]:checked')||{}).value||'own';
+      const sharedSettings={showLogo:!!(($('#bc_logo')||{}).checked),layout:(window._bcLayout?window._bcLayout():'minimal'),aspect:($('#bc_aspect')||{}).value||'4:5'};
+      const sharedTreatRadio=(document.querySelector('input[name="bc_treat"]:checked')||{}).value||'original';
+      // 2+ reference photos only benefit the AI re-shoot (it can cross-check
+      // angles); original/cleanup only ever look at one photo, so force it —
+      // per-item in batch mode, since each frame's photo count differs.
+      const treatFor=n=>n>1?'reshoot':sharedTreatRadio;
+      if((($('#bc_batch_toggle')||{}).checked)){
+        const rows=Array.from(document.querySelectorAll('#bcb_list .bcb_row'));
+        const items=[];
+        for(const row of rows){
+          const files=Array.from(((row.querySelector('.bcb_files')||{}).files)||[]).slice(0,6);
+          const tag=((row.querySelector('.bcb_tagline')||{}).value||'').trim();
+          if(!files.length)continue;
+          if(textMode==='own'&&!tag)continue;
+          items.push({photos:files,plan:Object.assign({treatment:treatFor(files.length),textMode:textMode,tagline:tag,productName:((row.querySelector('.bcb_product')||{}).value||'').trim()},sharedSettings)});
+        }
+        if(!items.length) return toast('Add at least one frame with a photo'+(textMode==='own'?' and a tagline':'')+' to the batch',true);
+        $('#g_go').disabled=true;
+        for(const it of items){await submitBrandCard(it.photos,it.plan);}
+        $('#g_go').disabled=false;
+        bcLastSubmit={items:items};
+        const rb=$('#bc_retry_btn');if(rb)rb.style.display='inline-flex';
+        toast('Queued '+items.length+' brand card'+(items.length===1?'':'s')+' for generation.');
+        return;
+      }
       const bfs=Array.from((($('#bc_photo')||{}).files)||[]).slice(0,6);
       if(!bfs.length) return toast('Upload a photo first',true);
-      const textMode=(document.querySelector('input[name="bc_text"]:checked')||{}).value||'own';
       const tagline=($('#bc_tagline')||{}).value||'';
       if(textMode==='own'&&!tagline.trim()) return toast('Write a tagline, or switch to Let AI suggest',true);
-      // 2+ reference photos only benefit the AI re-shoot (it can cross-check
-      // angles); original/cleanup only ever look at one photo, so force it.
-      const treatment=bfs.length>1?'reshoot':((document.querySelector('input[name="bc_treat"]:checked')||{}).value||'original');
+      const treatment=treatFor(bfs.length);
       bfs.forEach(f=>fd.append('brandPhoto',f));
-      fd.append('brandPlan',JSON.stringify({treatment:treatment,textMode:textMode,tagline:tagline,productName:($('#bc_product')||{}).value||'',showLogo:!!(($('#bc_logo')||{}).checked),layout:(window._bcLayout?window._bcLayout():'minimal'),aspect:($('#bc_aspect')||{}).value||'4:5'}));
+      const bcPlanObj=Object.assign({treatment:treatment,textMode:textMode,tagline:tagline,productName:($('#bc_product')||{}).value||''},sharedSettings);
+      fd.append('brandPlan',JSON.stringify(bcPlanObj));
       fd.append('characterId','');
+      bcLastSubmit={items:[{photos:bfs,plan:bcPlanObj}]};
     }else if(posterType==='eyeglasses'){
       const promoVal=$('#ea_promo')?$('#ea_promo').value.trim():'';
       if(promoVal)fd.append('promo',promoVal);
@@ -3796,6 +4039,9 @@ async function viewGenerate(){
       toast(err,true);
       return;
     }
+    if(posterType==='brandphoto'&&bcLastSubmit){
+      const rb=$('#bc_retry_btn');if(rb)rb.style.display='inline-flex';
+    }
     if(d.queued){
       // A batch is already running — this one waits its turn. Don't touch the
       // running batch's log/progress; just surface the queue state. If the
@@ -3818,6 +4064,36 @@ async function viewGenerate(){
     toast('Could not start: '+((err&&err.message)||String(err)),true);
    }
   };
+  // Regenerate — resubmits the last brand-card's exact photos + settings
+  // without touching the current form (used by #bc_retry_btn).
+  async function submitBrandCard(photos,planObj){
+    const fd=new FormData();
+    fd.append('client',CLIENT);
+    fd.append('posterType','brandphoto');
+    fd.append('characterId','');
+    photos.forEach(f=>fd.append('brandPhoto',f));
+    fd.append('brandPlan',JSON.stringify(planObj));
+    try{
+      const r=await fetch('/api/generate',{method:'POST',body:fd});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok){toast(d.error||'Failed to start',true);return;}
+      if(d.queued){
+        toast('⏳ Added to generation queue — position '+d.position);
+        updateQInfo({queued:d.position});
+        if(!es)connectGenSSE(false);
+        return;
+      }
+      phase='';
+      $('#g_log').style.display='block';$('#g_log').textContent='';
+      $('#g_prog').style.display='block';
+      const gr=$('#g_result');if(gr){gr.style.display='none';gr.innerHTML='';}
+      $('#g_bar').style.background='linear-gradient(90deg,var(--gold),#ffe27a)';setProg(2,false);
+      connectGenSSE(true);
+      toast('🔁 Regenerating brand card…');
+    }catch(err){
+      toast('Could not start: '+((err&&err.message)||String(err)),true);
+    }
+  }
   // SSE wiring for the generation log. fresh=true closes any previous stream
   // first (new job, clean log); fresh=false attaches to a stream already in
   // progress (queued submit after a page refresh).

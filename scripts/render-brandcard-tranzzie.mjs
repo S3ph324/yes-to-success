@@ -37,7 +37,9 @@ const treatment = ["original", "cleanup", "reshoot"].includes(plan.treatment) ? 
 const textMode = plan.textMode === "ai" ? "ai" : "own";
 const LAYOUTS = ["minimal", "banner", "editorial", "badge"];
 const layout = LAYOUTS.includes(plan.layout) ? plan.layout : "minimal";
-const aspect = ["1:1", "4:5", "9:16"].includes(plan.aspect) ? plan.aspect : "4:5";
+const ASPECTS = ["1:1", "4:5", "9:16"];
+const aspect = plan.aspect === "all" ? "all" : (ASPECTS.includes(plan.aspect) ? plan.aspect : "4:5");
+const aspectsToRender = aspect === "all" ? ASPECTS : [aspect];
 const showLogo = plan.showLogo !== false;
 const productName = String(plan.productName || "").trim().slice(0, 40);
 let tagline = String(plan.tagline || "").trim().slice(0, 140);
@@ -158,32 +160,45 @@ const t0 = Date.now();
 const bundleLocation = await bundle({ entryPoint: path.join(projectRoot, "src", "index.ts"), webpackOverride: (c) => c });
 console.log(`  bundled in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 
-const fname = `tranzzie-brandcard-${slug}_${layout}.png`;
-const inputProps = {
-  photoSrc: photoRel, tagline, productName, logoSrc, showLogo, layout,
-  brandGold, brandName: client.label || "Tranzzie Eyeglasses", establishedTag, aspectRatio: aspect,
-};
-let ok = false;
-try {
-  const composition = await selectComposition({ serveUrl: bundleLocation, id: "BrandCard", inputProps });
-  await renderStill({ composition, serveUrl: bundleLocation, output: path.join(exportDir, fname), inputProps, imageFormat: "png", frame: 40 });
-  ok = true;
-  console.log(`  ✓ ${fname}`);
-} catch (err) {
-  console.warn(`  FAILED ${fname}: ${(err.message || err)?.toString().slice(0, 160)}`);
+// One bundle + one AI treatment/tagline pass covers every aspect ratio — only
+// the final still render repeats per ratio, since that's cheap.
+const ASPECT_SUFFIX = { "1:1": "1x1", "4:5": "4x5", "9:16": "9x16" };
+const rendered = [];
+for (const ar of aspectsToRender) {
+  const fname = aspectsToRender.length > 1
+    ? `tranzzie-brandcard-${slug}_${layout}_${ASPECT_SUFFIX[ar]}.png`
+    : `tranzzie-brandcard-${slug}_${layout}.png`;
+  const inputProps = {
+    photoSrc: photoRel, tagline, productName, logoSrc, showLogo, layout,
+    brandGold, brandName: client.label || "Tranzzie Eyeglasses", establishedTag, aspectRatio: ar,
+  };
+  try {
+    const composition = await selectComposition({ serveUrl: bundleLocation, id: "BrandCard", inputProps });
+    await renderStill({ composition, serveUrl: bundleLocation, output: path.join(exportDir, fname), inputProps, imageFormat: "png", frame: 40 });
+    rendered.push({ ar, fname, ok: true });
+    console.log(`  ✓ ${fname}`);
+  } catch (err) {
+    rendered.push({ ar, fname, ok: false });
+    console.warn(`  FAILED ${fname}: ${(err.message || err)?.toString().slice(0, 160)}`);
+  }
 }
+const ok = rendered.some((r) => r.ok);
 
 // ── Caption + gallery ──────────────────────────────────────────────────────
 try {
   await fs.writeFile(path.join(exportDir, "captions.txt"),
     `${productName ? productName + " — " : ""}${client.label || "Tranzzie Eyeglasses"}\n${tagline}\n\nShop now on TikTok. #Tranzzie #Eyeglasses\n`);
+  const imgsHtml = rendered.map((r) =>
+    r.ok ? `<figure style="margin:0 0 20px"><img src="./${r.fname}"><figcaption>${r.ar}</figcaption></figure>` : `<p>${r.ar}: render failed.</p>`
+  ).join("");
   await fs.writeFile(path.join(exportDir, "gallery.html"),
     `<!doctype html><meta charset="utf-8"><title>Tranzzie brand card ${stamp}</title>` +
-    `<style>body{background:#111;color:#eee;font-family:system-ui;margin:24px}img{max-width:420px;border-radius:10px;display:block}</style>` +
-    `<h1>Tranzzie — brand card — ${stamp}</h1>${ok ? `<img src="./${fname}">` : "<p>Render failed.</p>"}<p>${tagline}</p>`);
+    `<style>body{background:#111;color:#eee;font-family:system-ui;margin:24px}img{max-width:420px;border-radius:10px;display:block}figcaption{color:#999;font-size:12px;margin-top:4px}</style>` +
+    `<h1>Tranzzie — brand card — ${stamp}</h1>${ok ? imgsHtml : "<p>Render failed.</p>"}<p>${tagline}</p>`);
 } catch (e) { console.warn(`  could not write caption/gallery: ${e?.message || e}`); }
 
-console.log(`\n${ok ? "✓ 1/1 card" : "✗ 0/1 card"}\n  Export : ${exportDir}\n  Review : ${path.join(exportDir, "gallery.html")}`);
+const okCount = rendered.filter((r) => r.ok).length;
+console.log(`\n${ok ? `✓ ${okCount}/${rendered.length} card(s)` : `✗ 0/${rendered.length} card(s)`}\n  Export : ${exportDir}\n  Review : ${path.join(exportDir, "gallery.html")}`);
 
 // ── Cleanup staged input + generated image (baked into the card) ──────────
 await fs.rm(inputDir, { recursive: true, force: true }).catch(() => {});
