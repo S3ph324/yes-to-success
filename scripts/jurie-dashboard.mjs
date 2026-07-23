@@ -3422,7 +3422,11 @@ async function viewGenerate(){
       const tp=$('#bc_tagline');if(tp)tp.placeholder=ai?'Optional hint for the AI (or leave blank)':'Your tagline (e.g. Clear vision, all-day comfort)';
       const h=$('#bc_tag_hint');if(h)h.style.display=ai?'':'none';
       const ib=$('#bc_tag_ideas_btn');if(ib)ib.style.display=ai?'inline-flex':'none';
-      if(!ai){const ideas=$('#bc_tag_ideas');if(ideas){ideas.style.display='none';ideas.innerHTML='';}}};
+      if(!ai){const ideas=$('#bc_tag_ideas');if(ideas){ideas.style.display='none';ideas.innerHTML='';}}
+      // Same toggle for every batch row's own "4 ideas" button (rows are added
+      // dynamically, so this must re-run on every text-mode change, not just once).
+      Array.prototype.forEach.call(document.querySelectorAll('.bcb_ideas_btn'),b=>{b.style.display=ai?'inline-flex':'none';});
+      if(!ai)Array.prototype.forEach.call(document.querySelectorAll('.bcb_ideas'),d=>{d.style.display='none';d.innerHTML='';});};
     Array.prototype.forEach.call(document.querySelectorAll('input[name="bc_text"]'),r=>r.onchange=paintText);paintText();
     // 4 AI tagline suggestions — a lightweight direct call (not a full render
     // job); picking one commits it as "own" text so the render job uses it
@@ -3566,6 +3570,25 @@ async function viewGenerate(){
         try{const dt=new DataTransfer();files.forEach(f=>dt.items.add(f));inp.files=dt.files;}catch(_){}
         paint();});
       row.querySelector('.bcb_del').onclick=()=>row.remove();
+      // Per-row "4 tagline ideas" — same lightweight endpoint as single mode,
+      // scoped to this row's own product name + tagline-as-hint.
+      const ideasBtn=row.querySelector('.bcb_ideas_btn'),ideasBox=row.querySelector('.bcb_ideas');
+      const taglineField=row.querySelector('.bcb_tagline'),productField=row.querySelector('.bcb_product');
+      if(ideasBtn)ideasBtn.onclick=async()=>{
+        ideasBtn.disabled=true;const orig=ideasBtn.textContent;ideasBtn.textContent='Thinking\\u2026';
+        try{
+          const r=await fetch('/api/brandcard/taglines',{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({client:CLIENT,productName:(productField||{}).value||'',hint:(taglineField||{}).value||''})});
+          const d=await r.json().catch(()=>({}));
+          if(!r.ok||!d.taglines||!d.taglines.length){toast(d.error||'Could not get tagline ideas',true);return;}
+          ideasBox.style.display='flex';
+          ideasBox.innerHTML=d.taglines.map((t,i)=>'<button type="button" class="sec bcb-tag-idea" data-i="'+i+'" style="font-size:11.5px;padding:6px 10px;text-align:left;max-width:100%">'+t.replace(/</g,'&lt;')+'</button>').join('');
+          Array.prototype.forEach.call(ideasBox.querySelectorAll('.bcb-tag-idea'),(btn,i)=>{
+            btn.onclick=()=>{taglineField.value=d.taglines[i];ideasBox.style.display='none';ideasBox.innerHTML='';};
+          });
+        }catch(e){toast('Network error getting tagline ideas',true);}
+        ideasBtn.disabled=false;ideasBtn.textContent=orig;
+      };
     };
     const bcbAddRow=()=>{
       if(document.querySelectorAll('#bcb_list .bcb_row').length>=10)return toast('Max 10 frames per batch',true);
@@ -3577,9 +3600,15 @@ async function viewGenerate(){
         +'<div class="bcb_thumbs" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div></div>'
         +'<div style="flex:1;display:flex;flex-direction:column;gap:8px">'
         +'<input class="bcb_tagline" maxlength="140" placeholder="Tagline (or AI hint, if \\u2018Let AI suggest\\u2019 is on)" style="width:100%;padding:10px 12px">'
+        +'<button type="button" class="sec bcb_ideas_btn" style="display:none;align-self:flex-start;font-size:11px;padding:5px 10px">\\u2728 4 ideas</button>'
+        +'<div class="bcb_ideas" style="display:none;flex-wrap:wrap;gap:6px"></div>'
         +'<input class="bcb_product" maxlength="40" placeholder="Product / model name (optional)" style="width:100%;padding:10px 12px">'
         +'<button type="button" class="sec bcb_del" style="align-self:flex-start;font-size:11px;padding:5px 10px">\\u2715 Remove</button></div>';
       $('#bcb_list').appendChild(row);bcbWireRow(row);
+      // A row can be added after "Let AI suggest" is already selected — sync
+      // its ideas button to the CURRENT mode instead of always starting hidden.
+      const aiNow=(document.querySelector('input[name="bc_text"]:checked')||{}).value==='ai';
+      const ib=row.querySelector('.bcb_ideas_btn');if(ib)ib.style.display=aiNow?'inline-flex':'none';
     };
     const bcPaintBatchMode=()=>{
       const on=!!(bcBatchToggle&&bcBatchToggle.checked);
