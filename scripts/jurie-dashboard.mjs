@@ -154,7 +154,7 @@ app.use(express.json({ limit: "16mb" }));
 // against env DASH_PASS (plaintext, set in Railway for best security) OR, if
 // that's unset, a committed SHA-256 HASH so it works out of the box WITHOUT
 // putting the real password in this public repo. Override either via env.
-const AUTH_USER = (process.env.DASH_USER || "admin1").trim();
+const AUTH_USER = (process.env.DASH_USER || "Jurie").trim();
 const AUTH_PASS = process.env.DASH_PASS || ""; // optional plaintext override
 const AUTH_PASS_HASH = (process.env.DASH_PASS_HASH || "a472960de7918b89f4fb873d323032ca25008c070a442b78eb65766a87cf56a9").toLowerCase();
 const sha256 = (s) => crypto.createHash("sha256").update(String(s)).digest("hex");
