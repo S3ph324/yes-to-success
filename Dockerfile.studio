@@ -2,7 +2,7 @@
 # Multi-client Quote Poster Studio + B-Roll (scripts/jurie-dashboard.mjs).
 # Separate from the existing Dockerfile (which ships server.mjs) — do not
 # merge. Includes Chromium deps for Remotion rendering.
-# (Redeploy trigger — v0.36.2: default login username changed admin1 → Jurie.)
+# (Redeploy trigger — v0.37.0: Brand-a-Photo remembers your last batch (photos + inputs) and photos are click-to-remove.)
 
 FROM node:20-bookworm-slim AS base
 

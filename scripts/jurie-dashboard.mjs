@@ -2813,6 +2813,40 @@ function fmtStamp(s){
   const yr=+m[1],mo=+m[2]-1,dy=+m[3],hr=+m[4],mn=+m[5];
   const h=hr%12||12,ap=hr<12?'AM':'PM';
   return _MON[mo]+' '+dy+', '+yr+' \xb7 '+h+':'+(mn<10?'0':'')+mn+' '+ap;}
+// ── Tiny IndexedDB key/value store ────────────────────────────────────────
+// Switching tabs re-renders the whole view, so form state has to be saved
+// somewhere. localStorage covers text, but it CANNOT hold File objects —
+// IndexedDB structured-clones them, so it is the only way to remember photos
+// the user already uploaded. Every call is best-effort: if IDB is unavailable
+// (private mode, quota), persistence silently degrades instead of throwing.
+const _IDB_NAME='qps_state',_IDB_STORE='kv';
+let _idbP=null;
+function idbOpen(){
+  if(_idbP)return _idbP;
+  _idbP=new Promise((res,rej)=>{
+    let rq;try{rq=indexedDB.open(_IDB_NAME,1);}catch(e){rej(e);return;}
+    rq.onupgradeneeded=()=>{const db=rq.result;
+      if(!db.objectStoreNames.contains(_IDB_STORE))db.createObjectStore(_IDB_STORE);};
+    rq.onsuccess=()=>res(rq.result);
+    rq.onerror=()=>rej(rq.error);
+  });
+  _idbP.catch(()=>{_idbP=null;});
+  return _idbP;
+}
+async function idbSet(key,val){
+  try{const db=await idbOpen();
+    await new Promise((res,rej)=>{const tx=db.transaction(_IDB_STORE,'readwrite');
+      tx.objectStore(_IDB_STORE).put(val,key);
+      tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error);});
+  }catch(_){/* best-effort */}
+}
+async function idbGet(key){
+  try{const db=await idbOpen();
+    return await new Promise((res,rej)=>{const tx=db.transaction(_IDB_STORE,'readonly');
+      const rq=tx.objectStore(_IDB_STORE).get(key);
+      rq.onsuccess=()=>res(rq.result);rq.onerror=()=>rej(rq.error);});
+  }catch(_){return undefined;}
+}
 function goBatches(){TAB='batches';render();}
 function toggleAdv(){const b=document.getElementById('adv-btn'),d=document.getElementById('adv-body');if(b)b.classList.toggle('open');if(d)d.classList.toggle('open');}
 async function buildNav(){
@@ -3412,11 +3446,11 @@ async function viewGenerate(){
     renderBcLayoutThumbs();
     const paintLay=()=>{Array.prototype.forEach.call(document.querySelectorAll('#bc_layout .bc-lay'),el=>{el.style.borderColor=el.dataset.l===bcLayout?'var(--gold)':'var(--line2)';});};
     // Delegated on the parent (survives renderBcLayoutThumbs() rebuilding children).
-    $('#bc_layout').addEventListener('click',e=>{const el=e.target.closest('.bc-lay');if(!el)return;bcLayout=el.dataset.l;paintLay();});
+    $('#bc_layout').addEventListener('click',e=>{const el=e.target.closest('.bc-lay');if(!el)return;bcLayout=el.dataset.l;paintLay();bcSaveState();});
     window._bcLayout=()=>bcLayout;
     // Treatment radios highlight
     const paintTreat=()=>{Array.prototype.forEach.call(document.querySelectorAll('#bc_treatment .bc-opt'),el=>{const r=el.querySelector('input');el.style.borderColor=r.checked?'var(--gold)':'var(--line2)';el.style.background=r.checked?'rgba(232,182,74,.06)':'transparent';});};
-    Array.prototype.forEach.call(document.querySelectorAll('input[name="bc_treat"]'),r=>r.onchange=paintTreat);paintTreat();
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="bc_treat"]'),r=>r.onchange=()=>{paintTreat();bcSaveState();});paintTreat();
     // Text mode toggle
     const paintText=()=>{const ai=(document.querySelector('input[name="bc_text"]:checked')||{}).value==='ai';
       const tp=$('#bc_tagline');if(tp)tp.placeholder=ai?'Optional hint for the AI (or leave blank)':'Your tagline (e.g. Clear vision, all-day comfort)';
@@ -3427,7 +3461,7 @@ async function viewGenerate(){
       // dynamically, so this must re-run on every text-mode change, not just once).
       Array.prototype.forEach.call(document.querySelectorAll('.bcb_ideas_btn'),b=>{b.style.display=ai?'inline-flex':'none';});
       if(!ai)Array.prototype.forEach.call(document.querySelectorAll('.bcb_ideas'),d=>{d.style.display='none';d.innerHTML='';});};
-    Array.prototype.forEach.call(document.querySelectorAll('input[name="bc_text"]'),r=>r.onchange=paintText);paintText();
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="bc_text"]'),r=>r.onchange=()=>{paintText();bcSaveState();});paintText();
     // 4 AI tagline suggestions — a lightweight direct call (not a full render
     // job); picking one commits it as "own" text so the render job uses it
     // verbatim instead of re-rolling its own single AI tagline.
@@ -3447,6 +3481,7 @@ async function viewGenerate(){
             $('#bc_tagline').value=d.taglines[i];
             const ownRadio=document.querySelector('input[name="bc_text"][value="own"]');
             if(ownRadio){ownRadio.checked=true;ownRadio.dispatchEvent(new Event('change'));} // clears/hides the ideas box via paintText()
+            bcSaveState();
           };
         });
       }catch(e){toast('Network error getting tagline ideas',true);}
@@ -3456,13 +3491,109 @@ async function viewGenerate(){
     // and locks the treatment picker, since only re-shoot can use multiple
     // reference angles — original/cleanup only ever look at one photo.
     const bcFile=$('#bc_photo');
+    // A FileList is immutable, so "removing" a photo means rebuilding the
+    // input's list from a DataTransfer minus that index.
+    const removeFileAt=(inp,idx)=>{
+      const fs=Array.from(inp.files||[]);
+      if(idx<0||idx>=fs.length)return false;
+      fs.splice(idx,1);
+      try{const dt=new DataTransfer();fs.forEach(f=>dt.items.add(f));inp.files=dt.files;}catch(_){return false;}
+      return true;
+    };
+    // One clickable thumbnail with a hover ✕ overlay; click removes it.
+    const makeThumb=(file,size,onRemove)=>{
+      const u=URL.createObjectURL(file);
+      const d=document.createElement('div');
+      d.title='Click to remove';
+      d.style.cssText='position:relative;width:'+size+'px;height:'+size+'px;border-radius:8px;overflow:hidden;border:1px solid var(--line2);background:#0d0d0f;cursor:pointer;flex:none';
+      d.innerHTML='<img src="'+u+'" style="width:100%;height:100%;object-fit:cover;display:block">'
+        +'<div class="thumb_x" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(8,8,10,.62);color:#fff;font-size:'+Math.round(size/3.4)+'px;line-height:1">\\u2715</div>';
+      const x=d.querySelector('.thumb_x');
+      d.addEventListener('mouseenter',()=>{x.style.display='flex';});
+      d.addEventListener('mouseleave',()=>{x.style.display='none';});
+      d.addEventListener('click',onRemove);
+      return {el:d,url:u};
+    };
+    // ── Persisted brand-card state (text + Files together, in IndexedDB) ────
+    const BC_STATE_KEY='brandcard_state_'+CLIENT;
+    let bcRestoring=false,bcDirty=false,bcSaveT=null;
+    const bcCollectState=()=>({
+      treatment:(document.querySelector('input[name="bc_treat"]:checked')||{}).value||'original',
+      textMode:(document.querySelector('input[name="bc_text"]:checked')||{}).value||'own',
+      tagline:($('#bc_tagline')||{}).value||'',
+      product:($('#bc_product')||{}).value||'',
+      aspect:($('#bc_aspect')||{}).value||'4:5',
+      showLogo:!!(($('#bc_logo')||{}).checked),
+      layout:bcLayout,
+      batchMode:!!(($('#bc_batch_toggle')||{}).checked),
+      photos:Array.from(bcFile.files||[]).slice(0,6),
+      rows:Array.prototype.map.call(document.querySelectorAll('#bcb_list .bcb_row'),row=>({
+        photos:Array.from(((row.querySelector('.bcb_files')||{}).files)||[]).slice(0,6),
+        tagline:((row.querySelector('.bcb_tagline')||{}).value)||'',
+        product:((row.querySelector('.bcb_product')||{}).value)||''
+      }))
+    });
+    // Debounced so typing doesn't hit IDB on every keystroke. The bcRestoring
+    // guard stops the restore pass from saving over the state it is reading.
+    const bcSaveState=()=>{
+      if(bcRestoring)return;
+      bcDirty=true;
+      clearTimeout(bcSaveT);
+      bcSaveT=setTimeout(()=>{idbSet(BC_STATE_KEY,bcCollectState());},250);
+    };
+    const bcRestoreState=async()=>{
+      const s=await idbGet(BC_STATE_KEY);
+      // If the user already started interacting while IDB was resolving, their
+      // input wins — never clobber live typing with a stale snapshot.
+      if(!s||bcDirty)return;
+      bcRestoring=true;
+      try{
+        if($('#bc_tagline')&&s.tagline)$('#bc_tagline').value=s.tagline;
+        if($('#bc_product')&&s.product)$('#bc_product').value=s.product;
+        if($('#bc_aspect')&&s.aspect)$('#bc_aspect').value=s.aspect;
+        if($('#bc_logo')&&s.showLogo!=null)$('#bc_logo').checked=!!s.showLogo;
+        if(s.layout&&['minimal','banner','editorial','badge'].indexOf(s.layout)>=0)bcLayout=s.layout;
+        const txr=document.querySelector('input[name="bc_text"][value="'+(s.textMode==='ai'?'ai':'own')+'"]');
+        if(txr)txr.checked=true;
+        // Photos before bcPaint — its 2+-photo rule may lock the treatment.
+        if(s.photos&&s.photos.length){
+          try{const dt=new DataTransfer();s.photos.slice(0,6).forEach(f=>dt.items.add(f));bcFile.files=dt.files;}catch(_){}
+        }
+        bcPaint();
+        // Treatment AFTER bcPaint, so a 1-photo restore keeps the saved choice
+        // instead of whatever the picker happened to default to.
+        if(Array.from(bcFile.files||[]).length<2&&s.treatment){
+          const tr=document.querySelector('input[name="bc_treat"][value="'+s.treatment+'"]');
+          if(tr)tr.checked=true;
+        }
+        paintTreat();paintLay();renderBcLayoutThumbs();
+        if(s.batchMode&&$('#bc_batch_toggle')){
+          $('#bc_batch_toggle').checked=true;
+          $('#bcb_list').innerHTML='';
+          (s.rows||[]).forEach(rw=>{
+            bcbAddRow();
+            const row=$('#bcb_list').lastElementChild;
+            if(!row)return;
+            if(rw.tagline)row.querySelector('.bcb_tagline').value=rw.tagline;
+            if(rw.product)row.querySelector('.bcb_product').value=rw.product;
+            if(rw.photos&&rw.photos.length){
+              const fi=row.querySelector('.bcb_files');
+              try{const dt=new DataTransfer();rw.photos.slice(0,6).forEach(f=>dt.items.add(f));fi.files=dt.files;}catch(_){}
+              fi.dispatchEvent(new Event('change'));
+            }
+          });
+          bcPaintBatchMode();
+        }
+        // Last — it also syncs every batch row's tagline-ideas button.
+        paintText();
+      }finally{bcRestoring=false;}
+    };
     const bcPaint=()=>{const fs=Array.from(bcFile.files||[]).slice(0,6);
-      $('#bc_photo_lbl').textContent=fs.length?fs.length+' photo(s) selected':'Click or drop 1\\u20136 photos here';
+      $('#bc_photo_lbl').textContent=fs.length?fs.length+' photo(s) selected \\u2014 click one to remove':'Click or drop 1\\u20136 photos here';
       const tw=$('#bc_thumb');tw.innerHTML='';
       bcPhotoUrl='';
-      fs.forEach((f,i)=>{const u=URL.createObjectURL(f);if(i===0)bcPhotoUrl=u;const d=document.createElement('div');
-        d.style.cssText='width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--line2);background:#0d0d0f';
-        d.innerHTML='<img src="'+u+'" style="width:100%;height:100%;object-fit:cover">';tw.appendChild(d);});
+      fs.forEach((f,i)=>{const t=makeThumb(f,64,()=>{if(removeFileAt(bcFile,i)){bcPaint();bcSaveState();}});
+        if(i===0)bcPhotoUrl=t.url;tw.appendChild(t.el);});
       renderBcLayoutThumbs();
       const multi=fs.length>1;
       const hint=$('#bc_multi_hint');if(hint)hint.style.display=multi?'':'none';
@@ -3475,7 +3606,7 @@ async function viewGenerate(){
         el.style.borderColor=r.checked?'var(--gold)':'var(--line2)';el.style.background=r.checked?'rgba(232,182,74,.06)':'transparent';
       });
     };
-    if(bcFile)bcFile.onchange=bcPaint;
+    if(bcFile)bcFile.onchange=()=>{bcPaint();bcSaveState();};
     {const dz=$('#bc_drop');if(dz){
       dz.addEventListener('dragover',e=>{e.preventDefault();dz.style.borderColor='var(--gold)';});
       dz.addEventListener('dragleave',()=>{dz.style.borderColor='var(--line2)';});
@@ -3483,7 +3614,7 @@ async function viewGenerate(){
         const files=Array.from((e.dataTransfer&&e.dataTransfer.files)||[]).filter(f=>f.type.indexOf('image/')===0).slice(0,6);
         if(!files.length)return;
         try{const dt=new DataTransfer();files.forEach(f=>dt.items.add(f));bcFile.files=dt.files;}catch(_){}
-        bcPaint();});}}
+        bcPaint();bcSaveState();});}}
     // Card-style presets (localStorage) — captures treatment/text mode/logo/
     // layout/aspect so a repeated look doesn't need re-picking every time.
     const BC_PS_KEY='bc_presets_v1';
@@ -3513,6 +3644,7 @@ async function viewGenerate(){
       bcLayout=['minimal','banner','editorial','badge'].indexOf(p.layout)>=0?p.layout:'minimal';
       paintLay();paintTreat();paintText();
       if($('#bc_aspect'))$('#bc_aspect').value=['1:1','4:5','9:16','all'].indexOf(p.aspect)>=0?p.aspect:'4:5';
+      bcSaveState();
     };
     bcPsRender();
     bcPsSel.onchange=()=>{
@@ -3556,11 +3688,10 @@ async function viewGenerate(){
     const bcbWireRow=row=>{
       const inp=row.querySelector('.bcb_files'),lbl=row.querySelector('.bcb_lbl'),tw=row.querySelector('.bcb_thumbs'),dz=row.querySelector('.bcb_drop');
       const paint=()=>{const fs=Array.from(inp.files||[]).slice(0,6);
-        lbl.textContent=fs.length?fs.length+' photo(s)':'Click or drop 1\\u20136 photos';
-        tw.innerHTML='';fs.forEach(f=>{const u=URL.createObjectURL(f);const d=document.createElement('div');
-          d.style.cssText='width:46px;height:46px;border-radius:7px;overflow:hidden;border:1px solid var(--line2);background:#0d0d0f';
-          d.innerHTML='<img src="'+u+'" style="width:100%;height:100%;object-fit:cover">';tw.appendChild(d);});};
-      inp.onchange=paint;
+        lbl.textContent=fs.length?fs.length+' photo(s) \\u2014 click one to remove':'Click or drop 1\\u20136 photos';
+        tw.innerHTML='';
+        fs.forEach((f,i)=>{const t=makeThumb(f,46,()=>{if(removeFileAt(inp,i)){paint();bcSaveState();}});tw.appendChild(t.el);});};
+      inp.onchange=()=>{paint();bcSaveState();};
       const hi=on=>{dz.style.borderColor=on?'var(--gold)':'var(--line2)';};
       dz.addEventListener('dragover',e=>{e.preventDefault();hi(true);});
       dz.addEventListener('dragleave',()=>hi(false));
@@ -3568,8 +3699,9 @@ async function viewGenerate(){
         const files=Array.from((e.dataTransfer&&e.dataTransfer.files)||[]).filter(f=>f.type.indexOf('image/')===0).slice(0,6);
         if(!files.length)return;
         try{const dt=new DataTransfer();files.forEach(f=>dt.items.add(f));inp.files=dt.files;}catch(_){}
-        paint();});
-      row.querySelector('.bcb_del').onclick=()=>row.remove();
+        paint();bcSaveState();});
+      row.querySelector('.bcb_del').onclick=()=>{row.remove();bcSaveState();};
+      Array.prototype.forEach.call(row.querySelectorAll('.bcb_tagline,.bcb_product'),f=>f.addEventListener('input',bcSaveState));
       // Per-row "4 tagline ideas" — same lightweight endpoint as single mode,
       // scoped to this row's own product name + tagline-as-hint.
       const ideasBtn=row.querySelector('.bcb_ideas_btn'),ideasBox=row.querySelector('.bcb_ideas');
@@ -3584,7 +3716,7 @@ async function viewGenerate(){
           ideasBox.style.display='flex';
           ideasBox.innerHTML=d.taglines.map((t,i)=>'<button type="button" class="sec bcb-tag-idea" data-i="'+i+'" style="font-size:11.5px;padding:6px 10px;text-align:left;max-width:100%">'+t.replace(/</g,'&lt;')+'</button>').join('');
           Array.prototype.forEach.call(ideasBox.querySelectorAll('.bcb-tag-idea'),(btn,i)=>{
-            btn.onclick=()=>{taglineField.value=d.taglines[i];ideasBox.style.display='none';ideasBox.innerHTML='';};
+            btn.onclick=()=>{taglineField.value=d.taglines[i];ideasBox.style.display='none';ideasBox.innerHTML='';bcSaveState();};
           });
         }catch(e){toast('Network error getting tagline ideas',true);}
         ideasBtn.disabled=false;ideasBtn.textContent=orig;
@@ -3619,8 +3751,15 @@ async function viewGenerate(){
       const spd=$('#bc_single_product');if(spd)spd.style.display=on?'none':'';
       if(on&&document.querySelectorAll('#bcb_list .bcb_row').length===0)bcbAddRow();
     };
-    if(bcBatchToggle)bcBatchToggle.onchange=bcPaintBatchMode;
-    const bcbAddBtn=$('#bcb_add');if(bcbAddBtn)bcbAddBtn.onclick=()=>bcbAddRow();
+    if(bcBatchToggle)bcBatchToggle.onchange=()=>{bcPaintBatchMode();bcSaveState();};
+    const bcbAddBtn=$('#bcb_add');if(bcbAddBtn)bcbAddBtn.onclick=()=>{bcbAddRow();bcSaveState();};
+    // ── Remember the last brand card (inputs AND uploaded photos) ──────────
+    // Leaving for the Batches tab (or any tab) destroys this whole view, so
+    // everything is snapshotted to IndexedDB — text in the same record as the
+    // Files, which keeps the batch rows' photos and their captions in step.
+    ['#bc_tagline','#bc_product'].forEach(sel=>{const el=$(sel);if(el)el.addEventListener('input',bcSaveState);});
+    ['#bc_aspect','#bc_logo'].forEach(sel=>{const el=$(sel);if(el)el.addEventListener('change',bcSaveState);});
+    bcRestoreState();
   }
   document.querySelectorAll('input[name="shop_spec"]').forEach(c=>{
     const paint=()=>{c.closest('.spec-chip').style.borderColor=c.checked?'var(--gold)':'var(--line2)';
