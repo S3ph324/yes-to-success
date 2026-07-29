@@ -1439,6 +1439,14 @@ const BC_ANCHORS = [
   "bottom-left", "bottom-center", "bottom-right",
 ];
 const BC_ROLES = ["tagline", "productName", "brandName", "establishedTag"];
+const BC_FONT_CLASSES = ["sans", "serif", "slab", "mono", "condensed-sans", "display-serif", "script"];
+const BC_WIDTHS = ["condensed", "normal", "extended"];
+const BC_CONTRASTS = ["low", "medium", "high"];
+const BC_STROKE_COLORS = ["brand", "light", "dark"];
+const BC_SHADOWS = ["none", "soft", "hard-offset", "long"];
+const BC_FILLS = ["solid", "outline-only", "gradient"];
+const BC_UNDERLINES = ["none", "single", "thick"];
+const BC_HIGHLIGHTS = ["none", "marker", "box"];
 
 // Everything the model returns is untrusted: a hallucinated fontScale of 9 or
 // an xPct of -400 would render a broken or blank card, so every numeric field
@@ -1476,9 +1484,33 @@ function sanitizeLayoutSpec(raw) {
     const yHi = vSeg === "top" ? 88 : vSeg === "center" ? 96 : 100;
     const xLo = hSeg === "right" ? 10 : 0;
     const xHi = hSeg === "left" ? 92 : 100;
+    // Text effects. Same rigour as the geometry: whitelist every enum, clamp
+    // every number, and make sure no combination can erase the copy —
+    // strokeWidthEm is capped well below the width that fills a letter's
+    // counters, opacity has a floor, and "outline-only" (transparent fill)
+    // forces a minimum stroke or it would render literally nothing.
+    const fxIn = (b.effects && typeof b.effects === "object") ? b.effects : {};
+    const fill = pick(fxIn.fill, BC_FILLS, "solid");
+    const strokeRaw = num(fxIn.strokeWidthEm, 0, 0.08, 0);
+    const effects = {
+      strokeWidthEm: fill === "outline-only" ? Math.max(0.015, strokeRaw) : strokeRaw,
+      strokeColor: pick(fxIn.strokeColor, BC_STROKE_COLORS, "light"),
+      shadow: pick(fxIn.shadow, BC_SHADOWS, "none"),
+      shadowOffsetEm: num(fxIn.shadowOffsetEm, 0, 0.5, 0.04),
+      shadowBlurEm: num(fxIn.shadowBlurEm, 0, 0.5, 0.06),
+      fill,
+      underline: pick(fxIn.underline, BC_UNDERLINES, "none"),
+      highlight: pick(fxIn.highlight, BC_HIGHLIGHTS, "none"),
+      opacity: num(fxIn.opacity, 0.15, 1, 1),
+    };
     textBlocks.push({
       role,
       anchor,
+      fontFamily: pick(b.fontFamily, BC_FONT_CLASSES, "sans"),
+      fontStyle: b.fontStyle === "italic" ? "italic" : "normal",
+      widthClass: pick(b.widthClass, BC_WIDTHS, "normal"),
+      contrast: pick(b.contrast, BC_CONTRASTS, "low"),
+      effects,
       xPct: num(b.xPct, xLo, xHi, 6),
       yPct: num(b.yPct, yLo, yHi, 88),
       maxWidthPct: num(b.maxWidthPct, 12, 140, 80),
@@ -1518,6 +1550,25 @@ const LAYOUT_SPEC_SCHEMA = {
         properties: {
           role: { type: Type.STRING, enum: BC_ROLES },
           anchor: { type: Type.STRING, enum: BC_ANCHORS },
+          fontFamily: { type: Type.STRING, enum: BC_FONT_CLASSES },
+          fontStyle: { type: Type.STRING, enum: ["normal", "italic"] },
+          widthClass: { type: Type.STRING, enum: BC_WIDTHS },
+          contrast: { type: Type.STRING, enum: BC_CONTRASTS },
+          effects: {
+            type: Type.OBJECT,
+            properties: {
+              strokeWidthEm: { type: Type.NUMBER },
+              strokeColor: { type: Type.STRING, enum: BC_STROKE_COLORS },
+              shadow: { type: Type.STRING, enum: BC_SHADOWS },
+              shadowOffsetEm: { type: Type.NUMBER },
+              shadowBlurEm: { type: Type.NUMBER },
+              fill: { type: Type.STRING, enum: BC_FILLS },
+              underline: { type: Type.STRING, enum: BC_UNDERLINES },
+              highlight: { type: Type.STRING, enum: BC_HIGHLIGHTS },
+              opacity: { type: Type.NUMBER },
+            },
+            required: ["strokeWidthEm", "strokeColor", "shadow", "shadowOffsetEm", "shadowBlurEm", "fill", "underline", "highlight", "opacity"],
+          },
           xPct: { type: Type.NUMBER }, yPct: { type: Type.NUMBER },
           maxWidthPct: { type: Type.NUMBER },
           align: { type: Type.STRING, enum: ["left", "center", "right"] },
@@ -1531,7 +1582,7 @@ const LAYOUT_SPEC_SCHEMA = {
           scrim: { type: Type.STRING, enum: ["none", "gradient", "solid-bar", "blur"] },
           scrimOpacity: { type: Type.NUMBER },
         },
-        required: ["role", "anchor", "xPct", "yPct", "maxWidthPct", "align", "fontScale", "weight", "case", "trackingEm", "lineHeight", "rotationDeg", "zOrder", "scrim", "scrimOpacity"],
+        required: ["role", "anchor", "fontFamily", "fontStyle", "widthClass", "contrast", "effects", "xPct", "yPct", "maxWidthPct", "align", "fontScale", "weight", "case", "trackingEm", "lineHeight", "rotationDeg", "zOrder", "scrim", "scrimOpacity"],
       },
     },
     logo: {
@@ -1563,6 +1614,24 @@ const LAYOUT_SPEC_PROMPT =
   "  establishedTag - a small supporting line (est. date, strapline, category)\n" +
   "Use each role at most once, and only include roles that genuinely appear. If the " +
   "reference has just one piece of text, return just one block.\n\n" +
+  "TYPEFACE: classify the CHARACTER of the type onto the fixed axes below. Do NOT try " +
+  "to identify or name the actual font (never answer 'Futura', 'Helvetica' and so on) — " +
+  "these classes get mapped onto a different set of fonts entirely.\n" +
+  "  fontFamily  - sans | serif | slab | mono | condensed-sans | display-serif | script\n" +
+  "  fontStyle   - normal | italic (is it slanted / cursive-angled?)\n" +
+  "  widthClass  - condensed | normal | extended (how narrow or wide the letterforms are)\n" +
+  "  contrast    - low | medium | high (how much the stroke thickness varies within a " +
+  "letter; a geometric sans is low, a Didone-style display serif is high)\n\n" +
+  "EFFECTS: per block, report the treatment applied to the type itself:\n" +
+  "  strokeWidthEm  - outline thickness in em (0 if the type is not outlined)\n" +
+  "  strokeColor    - brand | light | dark (which of the THREE TONES it reads as, not a hue)\n" +
+  "  shadow         - none | soft | hard-offset | long, with shadowOffsetEm and shadowBlurEm\n" +
+  "  fill           - solid | outline-only (hollow letters) | gradient\n" +
+  "  underline      - none | single | thick\n" +
+  "  highlight      - none | marker | box (a bar sitting behind JUST the text)\n" +
+  "  opacity        - 0-1 if the type is faded back\n" +
+  "Report tone only (light/dark/brand), never a specific colour — the output is " +
+  "recoloured to a fixed brand palette regardless of what the reference uses.\n\n" +
   "For every block report: the 9-grid anchor it hangs off and its xPct/yPct position " +
   "(0-100 of canvas width/height, where the anchor point sits); maxWidthPct; alignment; " +
   "fontScale (CAP HEIGHT as a fraction of canvas HEIGHT, e.g. 0.10 for large display " +
@@ -3659,7 +3728,22 @@ async function viewGenerate(){
         const left=ah==='center'?x-bw/2:ah==='right'?x-bw:x;
         const top=av==='center'?y-fh/2:av==='bottom'?y-fh:y;
         const col=b.role==='tagline'?'#fff':'#F4B400';
-        inner+='<div style="position:absolute;left:'+left.toFixed(1)+'px;top:'+top.toFixed(1)+'px;width:'+bw.toFixed(1)+'px;height:'+fh.toFixed(1)+'px;background:'+col+';opacity:.92;border-radius:1px;transform:rotate('+(b.rotationDeg||0)+'deg)"></div>';
+        const fx=b.effects||{};
+        // The bar stands in for a line of type, so make it carry the traits a
+        // user would actually notice: width class, weight, italic, hollow
+        // letters, and a highlight bar.
+        const wf=b.widthClass==='condensed'||b.fontFamily==='condensed-sans'?0.72:b.widthClass==='extended'?1.12:1;
+        const bwv=Math.max(3,Math.min(W*1.3,bw*wf));
+        // Heavier weights read as a chunkier bar.
+        const hv=Math.max(1.2,fh*(0.42+0.5*(Math.min(900,Math.max(100,b.weight||400))/900)));
+        const hollow=fx.fill==='outline-only'||(fx.strokeWidthEm>0&&fx.fill!=='solid');
+        const strokeCol=fx.strokeColor==='brand'?'#F4B400':fx.strokeColor==='dark'?'#141210':'#fff';
+        const hi=fx.highlight&&fx.highlight!=='none';
+        const bg=hi?(fx.highlight==='marker'?'#F4B400':'rgba(20,18,16,.86)'):(hollow?'transparent':col);
+        const bd=hollow?('1px solid '+strokeCol):(fx.strokeWidthEm>0?('1px solid '+strokeCol):'none');
+        const skew=b.fontStyle==='italic'?' skewX(-12deg)':'';
+        const op=fx.opacity!=null?Math.max(0.2,Math.min(1,fx.opacity)):0.92;
+        inner+='<div style="position:absolute;left:'+left.toFixed(1)+'px;top:'+top.toFixed(1)+'px;width:'+bwv.toFixed(1)+'px;height:'+hv.toFixed(1)+'px;background:'+bg+';border:'+bd+';opacity:'+op.toFixed(2)+';border-radius:1px;box-sizing:border-box;transform:rotate('+(b.rotationDeg||0)+'deg)'+skew+'"></div>';
       });
       if(bcLayoutSpec.logo){
         const lg=bcLayoutSpec.logo,r=Math.max(2,Math.min(12,(lg.scalePct/100)*H/2));
@@ -3685,25 +3769,60 @@ async function viewGenerate(){
     window._bcLayoutSpec=()=>(bcLayout==='custom'?bcLayoutSpec:null);
     // ── Custom layout: reference image \\u2192 typography spec ────────────────
     const ROLE_LBL={tagline:'Tagline',productName:'Product name',brandName:'Brand name',establishedTag:'Strapline'};
+    const FAM_LBL={sans:'sans',serif:'serif',slab:'slab serif',mono:'monospace',
+      'condensed-sans':'condensed sans','display-serif':'display serif',script:'script'};
+    // Classes we cannot match with a real face on disk. Surfaced in the summary
+    // so an approximation is never a silent downgrade.
+    const FONT_FALLBACK={mono:'no monospace face is bundled, so it falls back to the system monospace',
+      slab:'no true slab face is bundled, so it is approximated with Fraunces'};
+    // Faces with no italic file — the browser synthesizes an oblique instead.
+    const SYNTH_ITALIC={sans:1,'condensed-sans':1,mono:1,script:1,slab:1};
     const bcRenderSpecSummary=()=>{
       const box=$('#bc_spec_summary');if(!box)return;
       if(!bcLayoutSpec){box.style.display='none';box.innerHTML='';return;}
+      const fallbacks={};
       const rows=(bcLayoutSpec.textBlocks||[]).map(b=>{
         const sz=b.fontScale>=0.11?'display size':b.fontScale>=0.06?'large':b.fontScale>=0.035?'medium':'small';
-        const bits=[sz,b.anchor.replace(/-/g,' '),b.align+'-aligned','weight '+b.weight];
+        // Typeface phrase, e.g. "condensed italic display serif".
+        const famLbl=FAM_LBL[b.fontFamily]||'sans';
+        const tf=[];
+        // condensed-sans already says condensed, so don't say it twice.
+        if(b.widthClass&&b.widthClass!=='normal'&&b.fontFamily!=='condensed-sans')tf.push(b.widthClass);
+        if(b.fontStyle==='italic')tf.push('italic');
+        if(b.contrast==='high'&&b.fontFamily!=='display-serif')tf.push('high-contrast');
+        tf.push(famLbl);
+        const bits=[sz,tf.join(' '),'weight '+b.weight];
         if(b.case==='upper')bits.push('UPPERCASE');else if(b.case==='title')bits.push('Title Case');
         if(Math.abs(b.trackingEm)>=0.02)bits.push((b.trackingEm>0?'wide':'tight')+' tracking');
+        // Effects, in plain English.
+        const fx=b.effects||{};
+        if(fx.strokeWidthEm>0)bits.push((fx.strokeWidthEm>=0.04?'thick ':'')+(fx.strokeColor==='brand'?'gold ':fx.strokeColor==='dark'?'dark ':'')+'outline');
+        if(fx.fill==='outline-only')bits.push('hollow letters');
+        else if(fx.fill==='gradient')bits.push('gradient fill');
+        if(fx.shadow&&fx.shadow!=='none')bits.push(fx.shadow.replace(/-/g,' ')+' shadow');
+        if(fx.underline&&fx.underline!=='none')bits.push(fx.underline==='thick'?'thick underline':'underlined');
+        if(fx.highlight&&fx.highlight!=='none')bits.push(fx.highlight==='marker'?'marker highlight':'boxed highlight');
+        if(fx.opacity!=null&&fx.opacity<0.95)bits.push('faded to '+Math.round(fx.opacity*100)+'%');
         if(b.rotationDeg)bits.push(b.rotationDeg+'\\u00b0 rotated');
         if(b.scrim!=='none')bits.push('on a '+b.scrim.replace(/-/g,' '));
+        bits.push(b.anchor.replace(/-/g,' '));
+        bits.push(b.align+'-aligned');
+        // Note anything we could not match exactly, so it is not a silent downgrade.
+        if(FONT_FALLBACK[b.fontFamily])fallbacks[FONT_FALLBACK[b.fontFamily]]=1;
+        if(b.fontStyle==='italic'&&SYNTH_ITALIC[b.fontFamily])fallbacks['italic on a '+famLbl+' is synthesized \\u2014 no true italic file for that face']=1;
         return '<li style="margin:0 0 3px"><b style="color:var(--txt)">'+(ROLE_LBL[b.role]||b.role)+'</b> \\u2014 '+bits.join(', ')+'</li>';
       }).join('');
+      const fbKeys=Object.keys(fallbacks);
+      const fbLine=fbKeys.length
+        ? '<p style="margin:8px 0 0;color:var(--mut);font-size:10.5px">\\u2139 Font notes: '+fbKeys.join('; ')+'.</p>'
+        : '';
       const logoLine=bcLayoutSpec.logo?'<li style="margin:0 0 3px"><b style="color:var(--txt)">Logo</b> \\u2014 '+bcLayoutSpec.logo.anchor.replace(/-/g,' ')+', '+Math.round(bcLayoutSpec.logo.scalePct)+'% of height</li>':'';
       const flat=bcSpecFlattened.length
         ? '<p style="margin:8px 0 0;color:#e0a33a;font-size:11px">\\u26a0 '+bcSpecFlattened.map(r=>ROLE_LBL[r]||r).join(', ')+' sat behind the subject in your reference. That needs a cut-out of your frame, which is not wired up yet \\u2014 for now it renders in front of the photo.</p>'
         : '';
       box.style.display='';
       box.innerHTML='<div style="color:var(--mut)"><b style="color:var(--gold)">Picked up:</b> '+(bcLayoutSpec.notes||'custom text layout').replace(/</g,'&lt;')+'</div>'
-        +'<ul style="margin:7px 0 0;padding-left:16px;color:var(--mut);line-height:1.5">'+rows+logoLine+'</ul>'+flat
+        +'<ul style="margin:7px 0 0;padding-left:16px;color:var(--mut);line-height:1.5">'+rows+logoLine+'</ul>'+fbLine+flat
         +'<p style="margin:8px 0 0;color:var(--mut);font-size:10.5px">Only geometry and typography were read. Your photo, your words, Tranzzie\\u2019s colours and logo are what render.</p>';
     };
     {

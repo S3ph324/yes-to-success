@@ -37,9 +37,40 @@ export const BRAND_ANCHORS = [
 ] as const;
 export type BrandAnchor = (typeof BRAND_ANCHORS)[number];
 
+export const BRAND_FONT_CLASSES = [
+  "sans", "serif", "slab", "mono", "condensed-sans", "display-serif", "script",
+] as const;
+export type BrandFontClass = (typeof BRAND_FONT_CLASSES)[number];
+
+// Text effects lifted from the reference. Colours are NEVER sampled from it —
+// strokeColor/shadow/highlight resolve to Tranzzie's own gold / white / dark.
+export const layoutEffectsSchema = z.object({
+  strokeWidthEm: z.number().default(0),
+  strokeColor: z.enum(["brand", "light", "dark"]).default("light"),
+  shadow: z.enum(["none", "soft", "hard-offset", "long"]).default("none"),
+  shadowOffsetEm: z.number().default(0.04),
+  shadowBlurEm: z.number().default(0.06),
+  fill: z.enum(["solid", "outline-only", "gradient"]).default("solid"),
+  underline: z.enum(["none", "single", "thick"]).default("none"),
+  highlight: z.enum(["none", "marker", "box"]).default("none"),
+  opacity: z.number().default(1),
+});
+export type LayoutEffects = z.infer<typeof layoutEffectsSchema>;
+export const DEFAULT_EFFECTS: LayoutEffects = {
+  strokeWidthEm: 0, strokeColor: "light", shadow: "none", shadowOffsetEm: 0.04,
+  shadowBlurEm: 0.06, fill: "solid", underline: "none", highlight: "none", opacity: 1,
+};
+
 export const layoutBlockSchema = z.object({
   role: z.enum(["tagline", "productName", "brandName", "establishedTag"]).default("tagline"),
   anchor: z.enum(BRAND_ANCHORS).default("bottom-left"),
+  // Typeface CHARACTER, classified onto axes we can map onto faces we own —
+  // never an attempt to name the reference's actual font.
+  fontFamily: z.enum(BRAND_FONT_CLASSES).default("sans"),
+  fontStyle: z.enum(["normal", "italic"]).default("normal"),
+  widthClass: z.enum(["condensed", "normal", "extended"]).default("normal"),
+  contrast: z.enum(["low", "medium", "high"]).default("low"),
+  effects: layoutEffectsSchema.optional(),
   xPct: z.number().default(6),
   yPct: z.number().default(88),
   maxWidthPct: z.number().default(80),
@@ -110,13 +141,60 @@ const resolveSrc = (src: string) => {
   }
 };
 
+// ── Typeface classes → the faces we actually ship ─────────────────────────
+// public/fonts holds Archivo (wght 100-900 + a real wdth 62-125 axis),
+// Fraunces (wght + SOFT/WONK, with a true italic file), Bodoni Moda (didone,
+// true italic file), Montserrat and Sacramento. So most classes map to a real
+// face; the two that cannot are flagged as approximations rather than being
+// silently swapped:
+//   slab  -> Fraunces with its softness/wonk dialled out (no true slab face)
+//   mono  -> the CSS generic monospace (no mono face on disk)
+// Archivo has no italic file, so italic on a sans class is a synthesized
+// oblique. The dashboard summary surfaces all three of these to the user.
+const FRAUNCES = "'Fraunces',Georgia,serif";
+const BODONI = "'Bodoni Moda','Fraunces',Georgia,serif";
+const SACRAMENTO = "'Sacramento',cursive";
+const MONO = "ui-monospace,'SF Mono',Menlo,Consolas,monospace";
+
+type Typeface = { stack: string; varSettings?: string; widthAxis: boolean };
+const resolveTypeface = (family: BrandFontClass, contrast: string): Typeface => {
+  switch (family) {
+    case "serif":
+      // Extreme stroke contrast reads as a didone, so let contrast pick it.
+      return contrast === "high"
+        ? { stack: BODONI, varSettings: "'opsz' 72", widthAxis: false }
+        : { stack: FRAUNCES, varSettings: "'SOFT' 30, 'WONK' 1, 'opsz' 90", widthAxis: false };
+    case "display-serif":
+      return { stack: BODONI, varSettings: "'opsz' 96", widthAxis: false };
+    case "slab":
+      return { stack: FRAUNCES, varSettings: "'SOFT' 0, 'WONK' 0, 'opsz' 144", widthAxis: false };
+    case "script":
+      return { stack: SACRAMENTO, widthAxis: false };
+    case "mono":
+      return { stack: MONO, widthAxis: false };
+    case "condensed-sans":
+    case "sans":
+    default:
+      return { stack: ARCHIVO, widthAxis: true };
+  }
+};
+
 const useBrandFonts = () => {
   const [handle] = useState(() => delayRender("load-brand-fonts"));
   useEffect(() => {
-    const f = new FontFace("Archivo", `url(${staticFile("fonts/Archivo.ttf")}) format("truetype")`, { weight: "100 900", stretch: "62% 125%" });
-    f.load()
-      .then((l) => { document.fonts.add(l); continueRender(handle); })
-      .catch(() => continueRender(handle));
+    const faces = [
+      new FontFace("Archivo", `url(${staticFile("fonts/Archivo.ttf")}) format("truetype")`, { weight: "100 900", stretch: "62% 125%" }),
+      new FontFace("Fraunces", `url(${staticFile("fonts/Fraunces.ttf")}) format("truetype")`, { weight: "100 900", style: "normal" }),
+      new FontFace("Fraunces", `url(${staticFile("fonts/Fraunces-Italic.ttf")}) format("truetype")`, { weight: "100 900", style: "italic" }),
+      new FontFace("Bodoni Moda", `url(${staticFile("fonts/BodoniModa.ttf")}) format("truetype")`, { weight: "400 900", style: "normal" }),
+      new FontFace("Bodoni Moda", `url(${staticFile("fonts/BodoniModa-Italic.ttf")}) format("truetype")`, { weight: "400 900", style: "italic" }),
+      new FontFace("Montserrat", `url(${staticFile("fonts/Montserrat.ttf")}) format("truetype")`, { weight: "100 900" }),
+      new FontFace("Sacramento", `url(${staticFile("fonts/Sacramento.ttf")}) format("truetype")`, { weight: "400" }),
+    ];
+    // One slow/missing face must not hang the render, so settle rather than all.
+    Promise.allSettled(
+      faces.map((f) => f.load().then((l) => { document.fonts.add(l); })),
+    ).then(() => continueRender(handle)).catch(() => continueRender(handle));
   }, [handle]);
 };
 
@@ -230,6 +308,8 @@ export const BrandCard: React.FC<BrandCardProps> = ({
       if (b.scrim === "blur") return { background: `rgba(20,18,16,${o * 0.6})`, backdropFilter: `blur(${Math.round(10 * scale)}px)` };
       return { background: `linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,${o}) 55%, rgba(0,0,0,${o}) 100%)` };
     };
+    // Effect colours resolve to Tranzzie's palette only.
+    const fxColor = (c: string) => (c === "brand" ? gold : c === "dark" ? DARK : "#fff");
     const lg = layoutSpec?.logo ?? null;
     return (
       <AbsoluteFill style={{ background: DARK, overflow: "hidden", opacity: fade, fontFamily: ARCHIVO }}>
@@ -238,6 +318,29 @@ export const BrandCard: React.FC<BrandCardProps> = ({
           const txt = roleText[b.role];
           // fontScale is a CAP height fraction; ~0.72 converts it to font-size.
           const fontPx = Math.round((clamp(b.fontScale, 0.015, 0.25) / 0.72) * height);
+          const face = resolveTypeface(b.fontFamily, b.contrast);
+          const fx = b.effects ?? DEFAULT_EFFECTS;
+          const ink = roleColor[b.role];
+          const strokeC = fxColor(fx.strokeColor);
+          // Outline-only with no stroke would render nothing at all, so an
+          // unfilled block always keeps a minimum visible outline.
+          const rawStroke = clamp(fx.strokeWidthEm, 0, 0.08);
+          const strokeEm = fx.fill === "outline-only" ? Math.max(0.015, rawStroke) : rawStroke;
+          const offEm = clamp(fx.shadowOffsetEm, 0, 0.5);
+          const blurEm = clamp(fx.shadowBlurEm, 0, 0.5);
+          const shadowC = fx.shadow === "none" ? "" : "rgba(0,0,0,0.62)";
+          const textShadow =
+            fx.shadow === "soft" ? `0 ${offEm}em ${Math.max(blurEm, 0.08)}em ${shadowC}`
+            : fx.shadow === "hard-offset" ? `${offEm}em ${offEm}em 0 ${shadowC}`
+            // "long" = a stacked cast shadow, built from repeated hard offsets.
+            : fx.shadow === "long" ? Array.from({ length: 8 }, (_, k) =>
+                `${((k + 1) * offEm) / 2}em ${((k + 1) * offEm) / 2}em 0 ${shadowC}`).join(", ")
+            : b.scrim === "none" && fx.highlight === "none" ? tShadow : "none";
+          const isGradient = fx.fill === "gradient";
+          const gradientStyle = isGradient
+            ? { backgroundImage: `linear-gradient(180deg, ${ink} 0%, ${gold} 100%)`,
+                WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }
+            : {};
           return (
             <div
               key={`${b.role}-${i}`}
@@ -249,19 +352,50 @@ export const BrandCard: React.FC<BrandCardProps> = ({
                 transform: `${anchorShift(b.anchor)} rotate(${clamp(b.rotationDeg, -90, 90)}deg)`,
                 transformOrigin: "center",
                 textAlign: b.align,
-                fontFamily: ARCHIVO,
+                fontFamily: face.stack,
+                fontVariationSettings: face.varSettings || undefined,
+                fontStyle: b.fontStyle === "italic" ? "italic" : "normal",
+                // Only Archivo carries a real width axis; asking for a stretch
+                // on a face without one just does nothing rather than faking it.
+                fontStretch: face.widthAxis
+                  ? (b.widthClass === "condensed" ? "70%" : b.widthClass === "extended" ? "120%" : "100%")
+                  : undefined,
                 fontWeight: clamp(Math.round(b.weight / 100) * 100, 100, 900),
                 fontSize: fontPx,
                 lineHeight: clamp(b.lineHeight, 0.8, 2.2),
                 letterSpacing: `${clamp(b.trackingEm, -0.05, 0.6)}em`,
                 textTransform: b.case === "upper" ? "uppercase" : b.case === "title" ? "capitalize" : "none",
-                color: roleColor[b.role],
-                textShadow: b.scrim === "none" ? tShadow : undefined,
+                color: fx.fill === "outline-only" ? "transparent" : ink,
+                WebkitTextStrokeWidth: strokeEm > 0 ? `${strokeEm}em` : undefined,
+                WebkitTextStrokeColor: strokeEm > 0 ? strokeC : undefined,
+                textDecoration: fx.underline === "none" ? "none" : "underline",
+                textDecorationThickness: fx.underline === "thick" ? "0.12em" : undefined,
+                textUnderlineOffset: fx.underline === "none" ? undefined : "0.14em",
+                // Floor keeps a hallucinated 0 from erasing the copy entirely.
+                opacity: clamp(fx.opacity, 0.15, 1),
+                textShadow: textShadow || undefined,
                 padding: b.scrim === "none" ? 0 : `${Math.round(fontPx * 0.34)}px ${Math.round(fontPx * 0.44)}px`,
                 ...blockScrim(b),
+                ...gradientStyle,
               }}
             >
-              {txt}
+              {/* A highlight is a bar behind JUST the text, so it has to live on
+                  an inline box — distinct from the block-level scrim above. */}
+              {fx.highlight === "none" ? txt : (
+                <span
+                  style={{
+                    // Marker hugs the text; box pads it out into a solid plate.
+                    background: fx.highlight === "marker" ? `${gold}` : "rgba(20,18,16,0.86)",
+                    color: fx.highlight === "marker" ? DARK : undefined,
+                    WebkitBoxDecorationBreak: "clone",
+                    boxDecorationBreak: "clone",
+                    padding: fx.highlight === "marker" ? "0.02em 0.12em" : "0.12em 0.26em",
+                    borderRadius: fx.highlight === "box" ? "0.06em" : 0,
+                  }}
+                >
+                  {txt}
+                </span>
+              )}
             </div>
           );
         })}
