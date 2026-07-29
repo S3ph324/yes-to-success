@@ -35,8 +35,17 @@ const allPhotos = (Array.isArray(plan?.photos) && plan.photos.length ? plan.phot
 if (!plan || !allPhotos.length) { console.error("No brand-card plan / photo provided."); process.exit(1); }
 const treatment = ["original", "cleanup", "reshoot"].includes(plan.treatment) ? plan.treatment : "original";
 const textMode = plan.textMode === "ai" ? "ai" : "own";
-const LAYOUTS = ["minimal", "banner", "editorial", "badge"];
-const layout = LAYOUTS.includes(plan.layout) ? plan.layout : "minimal";
+const LAYOUTS = ["minimal", "banner", "editorial", "badge", "custom"];
+let layout = LAYOUTS.includes(plan.layout) ? plan.layout : "minimal";
+// "custom" is driven by a typography spec extracted from a reference image
+// (already clamped by the dashboard). Without a usable spec there is nothing
+// to position against, so degrade to a real layout instead of a blank card.
+const layoutSpec = (plan.layoutSpec && Array.isArray(plan.layoutSpec.textBlocks) && plan.layoutSpec.textBlocks.length)
+  ? plan.layoutSpec : null;
+if (layout === "custom" && !layoutSpec) {
+  console.warn("⚠ layout=custom but no usable layoutSpec — falling back to 'minimal'.");
+  layout = "minimal";
+}
 const ASPECTS = ["1:1", "4:5", "9:16"];
 const aspect = plan.aspect === "all" ? "all" : (ASPECTS.includes(plan.aspect) ? plan.aspect : "4:5");
 const aspectsToRender = aspect === "all" ? ASPECTS : [aspect];
@@ -169,7 +178,7 @@ for (const ar of aspectsToRender) {
     ? `tranzzie-brandcard-${slug}_${layout}_${ASPECT_SUFFIX[ar]}.png`
     : `tranzzie-brandcard-${slug}_${layout}.png`;
   const inputProps = {
-    photoSrc: photoRel, tagline, productName, logoSrc, showLogo, layout,
+    photoSrc: photoRel, tagline, productName, logoSrc, showLogo, layout, layoutSpec,
     brandGold, brandName: client.label || "Tranzzie Eyeglasses", establishedTag, aspectRatio: ar,
   };
   try {

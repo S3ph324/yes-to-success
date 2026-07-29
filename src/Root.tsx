@@ -271,6 +271,7 @@ export const RemotionRoot: React.FC = () => {
           logoSrc: "",
           showLogo: true,
           layout: "minimal" as const,
+          layoutSpec: null,
           brandGold: "#F4B400",
           brandName: "Tranzzie Eyeglasses",
           establishedTag: "SINCE 2019",

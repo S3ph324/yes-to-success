@@ -19,7 +19,7 @@ import multer from "multer";
 import path from "node:path";
 import url from "node:url";
 import heicConvert from "heic-convert";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { applyGcpEnv } from "./lib/client.mjs";
 import { registerTryonRoutes } from "./tryon-routes.mjs";
 import { registerEyeglassAngleRoutes } from "./eyeglasses-angles-routes.mjs";
@@ -1247,6 +1247,17 @@ app.post("/api/generate", extraRefUpload.fields([
     // the frame accurately) — original/cleanup only ever use one photo, so
     // force re-shoot server-side too (defense in depth vs. the UI's forcing).
     const requestedTreatment = ["original", "cleanup", "reshoot"].includes(brandPlanReq.treatment) ? brandPlanReq.treatment : "original";
+    // "custom" needs a spec that survives clamping — otherwise fall back to a
+    // real layout rather than shipping a broken card.
+    let layout = ["minimal", "banner", "editorial", "badge", "custom"].includes(brandPlanReq.layout) ? brandPlanReq.layout : "minimal";
+    let layoutSpec = null;
+    if (layout === "custom") {
+      layoutSpec = sanitizeLayoutSpec(brandPlanReq.layoutSpec);
+      if (!layoutSpec) {
+        log("⚠ Custom layout requested without a usable spec — falling back to 'minimal'.");
+        layout = "minimal";
+      }
+    }
     brandPlanEnv = JSON.stringify({
       photo: photos[0] || "",
       photos,
@@ -1255,7 +1266,8 @@ app.post("/api/generate", extraRefUpload.fields([
       tagline: String(brandPlanReq.tagline || "").slice(0, 140),
       productName: String(brandPlanReq.productName || "").slice(0, 40),
       showLogo: brandPlanReq.showLogo !== false,
-      layout: ["minimal", "banner", "editorial", "badge"].includes(brandPlanReq.layout) ? brandPlanReq.layout : "minimal",
+      layout,
+      layoutSpec,
       aspect: ["1:1", "4:5", "9:16", "all"].includes(brandPlanReq.aspect) ? brandPlanReq.aspect : "4:5",
     });
   }
@@ -1414,6 +1426,191 @@ app.post("/api/brandcard/taglines", async (req, res) => {
     res.json({ taglines: lines });
   } catch (e) {
     res.status(502).json({ error: `AI tagline request failed: ${(e?.message || e)?.toString().slice(0, 160)}` });
+  }
+});
+
+// ── Custom brand-card layout: reference → typography spec ─────────────────
+// The user uploads any image they liked and we lift ONLY its text geometry and
+// typographic treatment. Never its photo, palette, brand, product or wording —
+// the reference is analysed, then deleted, and never composited into output.
+const BC_ANCHORS = [
+  "top-left", "top-center", "top-right",
+  "center-left", "center", "center-right",
+  "bottom-left", "bottom-center", "bottom-right",
+];
+const BC_ROLES = ["tagline", "productName", "brandName", "establishedTag"];
+
+// Everything the model returns is untrusted: a hallucinated fontScale of 9 or
+// an xPct of -400 would render a broken or blank card, so every numeric field
+// is clamped and every enum is whitelisted before it can reach the renderer.
+// The key invariant is that the ANCHOR POINT always lands on the canvas
+// (0..100) — clamping to a range that still permits off-canvas positions was
+// tested and produced cards whose copy was silently invisible. Type can still
+// bleed off an edge, but via maxWidthPct/rotation from an on-canvas anchor,
+// which cannot hide the text entirely. Floors on fontScale and maxWidthPct
+// likewise keep a degenerate spec legible rather than microscopic.
+function sanitizeLayoutSpec(raw) {
+  const num = (v, lo, hi, dflt) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return dflt;
+    return Math.min(hi, Math.max(lo, n));
+  };
+  const pick = (v, list, dflt) => (list.includes(v) ? v : dflt);
+  if (!raw || typeof raw !== "object") return null;
+  const blocksIn = Array.isArray(raw.textBlocks) ? raw.textBlocks : [];
+  const seen = new Set();
+  const textBlocks = [];
+  for (const b of blocksIn) {
+    if (!b || typeof b !== "object") continue;
+    const role = pick(b.role, BC_ROLES, null);
+    if (!role || seen.has(role)) continue; // one block per role
+    seen.add(role);
+    const anchor = pick(b.anchor, BC_ANCHORS, "bottom-left");
+    // Anchor-aware position limits. Pinning the anchor on-canvas alone is NOT
+    // enough: a top-anchored block grows downward, so yPct=100 would push all
+    // of its text below the frame (verified — it rendered an invisible card).
+    // Bound each axis by the direction the box actually grows.
+    const vSeg = anchor === "center" ? "center" : anchor.split("-")[0];
+    const hSeg = anchor === "center" ? "center" : anchor.split("-")[1];
+    const yLo = vSeg === "bottom" ? 8 : vSeg === "center" ? 4 : 0;
+    const yHi = vSeg === "top" ? 88 : vSeg === "center" ? 96 : 100;
+    const xLo = hSeg === "right" ? 10 : 0;
+    const xHi = hSeg === "left" ? 92 : 100;
+    textBlocks.push({
+      role,
+      anchor,
+      xPct: num(b.xPct, xLo, xHi, 6),
+      yPct: num(b.yPct, yLo, yHi, 88),
+      maxWidthPct: num(b.maxWidthPct, 12, 140, 80),
+      align: pick(b.align, ["left", "center", "right"], "left"),
+      fontScale: num(b.fontScale, 0.015, 0.25, 0.05),
+      weight: Math.round(num(b.weight, 100, 900, 800) / 100) * 100,
+      case: pick(b.case, ["upper", "title", "as-is"], "as-is"),
+      trackingEm: num(b.trackingEm, -0.05, 0.6, 0),
+      lineHeight: num(b.lineHeight, 0.8, 2.2, 1.15),
+      rotationDeg: num(b.rotationDeg, -90, 90, 0),
+      zOrder: pick(b.zOrder, ["above-photo", "behind-subject"], "above-photo"),
+      scrim: pick(b.scrim, ["none", "gradient", "solid-bar", "blur"], "none"),
+      scrimOpacity: num(b.scrimOpacity, 0, 1, 0),
+    });
+    if (textBlocks.length >= BC_ROLES.length) break;
+  }
+  if (!textBlocks.length) return null;
+  let logo = null;
+  if (raw.logo && typeof raw.logo === "object") {
+    logo = {
+      anchor: pick(raw.logo.anchor, BC_ANCHORS, "top-left"),
+      xPct: num(raw.logo.xPct, 0, 100, 6),
+      yPct: num(raw.logo.yPct, 0, 100, 6),
+      scalePct: num(raw.logo.scalePct, 3, 40, 12),
+    };
+  }
+  return { textBlocks, logo, notes: String(raw.notes || "").slice(0, 240) };
+}
+
+const LAYOUT_SPEC_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    textBlocks: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          role: { type: Type.STRING, enum: BC_ROLES },
+          anchor: { type: Type.STRING, enum: BC_ANCHORS },
+          xPct: { type: Type.NUMBER }, yPct: { type: Type.NUMBER },
+          maxWidthPct: { type: Type.NUMBER },
+          align: { type: Type.STRING, enum: ["left", "center", "right"] },
+          fontScale: { type: Type.NUMBER },
+          weight: { type: Type.NUMBER },
+          case: { type: Type.STRING, enum: ["upper", "title", "as-is"] },
+          trackingEm: { type: Type.NUMBER },
+          lineHeight: { type: Type.NUMBER },
+          rotationDeg: { type: Type.NUMBER },
+          zOrder: { type: Type.STRING, enum: ["above-photo", "behind-subject"] },
+          scrim: { type: Type.STRING, enum: ["none", "gradient", "solid-bar", "blur"] },
+          scrimOpacity: { type: Type.NUMBER },
+        },
+        required: ["role", "anchor", "xPct", "yPct", "maxWidthPct", "align", "fontScale", "weight", "case", "trackingEm", "lineHeight", "rotationDeg", "zOrder", "scrim", "scrimOpacity"],
+      },
+    },
+    logo: {
+      type: Type.OBJECT,
+      properties: {
+        anchor: { type: Type.STRING, enum: BC_ANCHORS },
+        xPct: { type: Type.NUMBER }, yPct: { type: Type.NUMBER },
+        scalePct: { type: Type.NUMBER },
+      },
+      required: ["anchor", "xPct", "yPct", "scalePct"],
+    },
+    notes: { type: Type.STRING },
+  },
+  required: ["textBlocks", "notes"],
+};
+
+const LAYOUT_SPEC_PROMPT =
+  "You are analysing a reference image ONLY to describe its TEXT LAYOUT and TYPOGRAPHY " +
+  "as reusable geometry. Someone else will apply that geometry to a COMPLETELY DIFFERENT " +
+  "photo, brand and set of words.\n\n" +
+  "Therefore: IGNORE what the image is of. IGNORE its subject matter, its colours, its " +
+  "brand, its product, and the actual words it uses. Never copy or quote its wording. " +
+  "Describe only WHERE text sits and HOW it is styled.\n\n" +
+  "Map each distinct piece of text you see onto the closest of these roles, by its " +
+  "function in the composition, not its content:\n" +
+  "  tagline        - the big headline / hero statement\n" +
+  "  productName    - a smaller product or model label\n" +
+  "  brandName      - the brand wordmark set as text\n" +
+  "  establishedTag - a small supporting line (est. date, strapline, category)\n" +
+  "Use each role at most once, and only include roles that genuinely appear. If the " +
+  "reference has just one piece of text, return just one block.\n\n" +
+  "For every block report: the 9-grid anchor it hangs off and its xPct/yPct position " +
+  "(0-100 of canvas width/height, where the anchor point sits); maxWidthPct; alignment; " +
+  "fontScale (CAP HEIGHT as a fraction of canvas HEIGHT, e.g. 0.10 for large display " +
+  "type, 0.02 for fine print); weight 100-900; casing; trackingEm (letter-spacing in em, " +
+  "negative for tight display type); lineHeight; rotationDeg; whether the text sits above " +
+  "the photo or is partly hidden BEHIND the main subject (zOrder); and whether it sits on " +
+  "a scrim (none/gradient/solid-bar/blur) with its opacity 0-1.\n\n" +
+  "Also report the logo mark's anchor, xPct/yPct and scalePct (its height as a percent of " +
+  "canvas height) if a logo or emblem is present.\n\n" +
+  "notes: ONE short line naming the layout idea in the abstract, e.g. 'oversized type " +
+  "bleeding off the left edge, small caps label above'. Do not mention the subject or brand.";
+
+app.post("/api/brandcard/layout-spec", extraRefUpload.fields([{ name: "layoutRef", maxCount: 1 }]), async (req, res) => {
+  const refFile = ((req.files || {}).layoutRef || [])[0];
+  if (!refFile) return res.status(400).json({ error: "Upload a reference image first." });
+  let refPath = refFile.path;
+  try {
+    refPath = await convertHeicInPlace(refPath).catch(() => refPath);
+    applyGcpEnv();
+    const gcpProject = process.env.GOOGLE_CLOUD_PROJECT;
+    const gcpLocation = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
+    if (!gcpProject) return res.status(400).json({ error: "No GCP project configured for layout extraction." });
+    const buf = await fs.readFile(refPath);
+    const ext = path.extname(refPath).toLowerCase();
+    const mime = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
+    const ai = new GoogleGenAI({ vertexai: true, project: gcpProject, location: gcpLocation });
+    const resp = await ai.models.generateContent({
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+      contents: [{ role: "user", parts: [
+        { inlineData: { mimeType: mime, data: buf.toString("base64") } },
+        { text: LAYOUT_SPEC_PROMPT },
+      ] }],
+      config: { responseMimeType: "application/json", responseSchema: LAYOUT_SPEC_SCHEMA, temperature: 0.2 },
+    });
+    let parsed = null;
+    try { parsed = JSON.parse(resp.text || "null"); } catch { parsed = null; }
+    const spec = sanitizeLayoutSpec(parsed);
+    if (!spec) return res.status(502).json({ error: "Could not read a text layout from that image — try one with clearer type." });
+    // Phase 1 has no subject cutout yet, so behind-subject blocks are rendered
+    // above the photo. Tell the UI which ones so it can say so.
+    const flattened = spec.textBlocks.filter((b) => b.zOrder === "behind-subject").map((b) => b.role);
+    res.json({ spec, flattened });
+  } catch (e) {
+    res.status(502).json({ error: `Layout extraction failed: ${(e?.message || e)?.toString().slice(0, 160)}` });
+  } finally {
+    // The reference is disposable by design — it never reaches the renderer.
+    await fs.unlink(refPath).catch(() => {});
+    if (refPath !== refFile.path) await fs.unlink(refFile.path).catch(() => {});
   }
 });
 
@@ -3059,6 +3256,13 @@ async function viewGenerate(){
    +'</div>'
    +'<div class="section-label" style="margin:16px 0 8px">Layout</div>'
    +'<div id="bc_layout" style="display:flex;flex-wrap:wrap;gap:10px"></div>'
+   +'<div id="bc_custom_box" style="display:none;margin-top:12px;padding:12px 14px;background:rgba(255,255,255,.02);border:1px solid var(--line2);border-radius:10px">'
+   +'<p class="muted" style="margin:0 0 10px;font-size:11px">Upload any poster or ad whose <b>text layout</b> you like. We read only where the type sits and how it is styled \\u2014 placement, size hierarchy, weight, casing, tracking, rotation, scrims and logo position. Its photo, colours, brand and wording are never used, and the file is deleted right after we read it. Your photo, your words, Tranzzie\\u2019s colours and logo are what actually render.</p>'
+   +'<label class="ea-drop" id="bc_ref_drop" style="padding:18px 14px;display:block;text-align:center;border:1.5px dashed var(--line2);border-radius:10px;cursor:pointer;position:relative">'
+   +'<input type="file" id="bc_ref_file" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer">'
+   +'<span id="bc_ref_lbl" class="muted" style="font-size:12.5px">Click or drop a reference image</span></label>'
+   +'<div id="bc_spec_summary" style="display:none;margin-top:10px;font-size:11.5px"></div>'
+   +'</div>'
    +'</div>'
    // ── Advanced toggle (hidden for eyeglasses — settings auto-expand instead) ──
    +'<button class="adv-toggle" id="adv-btn" onclick="toggleAdv()">'
@@ -3428,6 +3632,9 @@ async function viewGenerate(){
     // frame before committing to a render. Coordinates mirror the actual
     // BrandCard composition's proportions (60x74 unit box).
     let bcPhotoUrl='';
+    // Typography spec lifted from a reference image (layout==='custom' only).
+    // Geometry only — never the reference's photo, palette, brand or wording.
+    let bcLayoutSpec=null,bcSpecFlattened=[];
     const bcPhotoDiv=(x,y,w,h)=>'<div style="position:absolute;left:'+x+'px;top:'+y+'px;width:'+w+'px;height:'+h+'px;'+(bcPhotoUrl?('background-image:url('+bcPhotoUrl+');background-size:cover;background-position:center'):'background:#2a2622')+'"></div>';
     const bcFlatDiv=(x,y,w,h,color,radius,border)=>'<div style="position:absolute;left:'+x+'px;top:'+y+'px;width:'+w+'px;height:'+h+'px;'+(radius?('border-radius:'+radius+'px;'):'')+(border?('border:'+border+';'):'')+'background:'+color+'"></div>';
     const bcCircleDiv=(cx,cy,r)=>'<div style="position:absolute;left:'+(cx-r)+'px;top:'+(cy-r)+'px;width:'+(2*r)+'px;height:'+(2*r)+'px;border-radius:50%;border:1.4px solid #fff"></div>';
@@ -3437,17 +3644,97 @@ async function viewGenerate(){
       if(t==='minimal')return wrap(bcPhotoDiv(0,0,60,74)+bcCircleDiv(10,10,4)+bcBarDiv(6,58,34,4,'#fff',2)+bcBarDiv(6,65,16,3,'#F4B400',1.5));
       if(t==='banner')return wrap(bcPhotoDiv(0,0,60,52)+bcFlatDiv(0,52,60,22,'#141210')+bcFlatDiv(0,52,60,2,'#F4B400')+bcCircleDiv(10,63,4)+bcBarDiv(18,61,30,4,'#fff',2));
       if(t==='editorial')return wrap(bcPhotoDiv(0,0,34,74)+bcFlatDiv(34,0,26,74,'#141210')+bcCircleDiv(47,12,4)+bcBarDiv(40,36,16,4,'#fff',2)+bcBarDiv(40,43,14,4,'#fff',2)+bcBarDiv(40,52,8,2,'#F4B400',1));
-      return wrap(bcPhotoDiv(0,0,60,74)+bcFlatDiv(6,50,48,20,'rgba(20,18,16,.85)',4,'1px solid rgba(255,255,255,.2)')+bcCircleDiv(14,60,4)+bcBarDiv(22,58,26,4,'#fff',2));
+      if(t==='badge')return wrap(bcPhotoDiv(0,0,60,74)+bcFlatDiv(6,50,48,20,'rgba(20,18,16,.85)',4,'1px solid rgba(255,255,255,.2)')+bcCircleDiv(14,60,4)+bcBarDiv(22,58,26,4,'#fff',2));
+      // CUSTOM — a live preview drawn from the extracted spec's own geometry,
+      // so the tile shows the treatment that was actually picked up.
+      if(!bcLayoutSpec)
+        return wrap(bcPhotoDiv(0,0,60,74)+'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.55);font-size:19px;line-height:1">\\uff0b</div>');
+      const W=60,H=74;let inner=bcPhotoDiv(0,0,W,H);
+      (bcLayoutSpec.textBlocks||[]).forEach(b=>{
+        const fh=Math.max(1.5,Math.min(22,(b.fontScale/0.72)*H));
+        const bw=Math.max(4,Math.min(W*1.3,(b.maxWidthPct/100)*W));
+        const x=(b.xPct/100)*W,y=(b.yPct/100)*H;
+        const av=b.anchor==='center'?'center':b.anchor.split('-')[0];
+        const ah=b.anchor==='center'?'center':b.anchor.split('-')[1];
+        const left=ah==='center'?x-bw/2:ah==='right'?x-bw:x;
+        const top=av==='center'?y-fh/2:av==='bottom'?y-fh:y;
+        const col=b.role==='tagline'?'#fff':'#F4B400';
+        inner+='<div style="position:absolute;left:'+left.toFixed(1)+'px;top:'+top.toFixed(1)+'px;width:'+bw.toFixed(1)+'px;height:'+fh.toFixed(1)+'px;background:'+col+';opacity:.92;border-radius:1px;transform:rotate('+(b.rotationDeg||0)+'deg)"></div>';
+      });
+      if(bcLayoutSpec.logo){
+        const lg=bcLayoutSpec.logo,r=Math.max(2,Math.min(12,(lg.scalePct/100)*H/2));
+        const lav=lg.anchor==='center'?'center':lg.anchor.split('-')[0];
+        const lah=lg.anchor==='center'?'center':lg.anchor.split('-')[1];
+        let lx=(lg.xPct/100)*W,ly=(lg.yPct/100)*H;
+        if(lah==='center')lx-=r;else if(lah==='right')lx-=2*r;
+        if(lav==='center')ly-=r;else if(lav==='bottom')ly-=2*r;
+        inner+=bcCircleDiv(lx+r,ly+r,r);
+      }
+      return wrap(inner);
     };
-    const bcDefs=[['minimal','Minimal'],['banner','Banner'],['editorial','Editorial'],['badge','Badge']];
+    const bcDefs=[['minimal','Minimal'],['banner','Banner'],['editorial','Editorial'],['badge','Badge'],['custom','Custom']];
     const renderBcLayoutThumbs=()=>{
       $('#bc_layout').innerHTML=bcDefs.map(d=>'<label class="bc-lay" data-l="'+d[0]+'" style="display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;padding:8px;border:1.5px solid '+(d[0]===bcLayout?'var(--gold)':'var(--line2)')+';border-radius:9px">'+bcThumbHtml(d[0])+'<span style="font-size:11px">'+d[1]+'</span></label>').join('');
     };
     renderBcLayoutThumbs();
-    const paintLay=()=>{Array.prototype.forEach.call(document.querySelectorAll('#bc_layout .bc-lay'),el=>{el.style.borderColor=el.dataset.l===bcLayout?'var(--gold)':'var(--line2)';});};
+    const paintLay=()=>{Array.prototype.forEach.call(document.querySelectorAll('#bc_layout .bc-lay'),el=>{el.style.borderColor=el.dataset.l===bcLayout?'var(--gold)':'var(--line2)';});
+      const cb=$('#bc_custom_box');if(cb)cb.style.display=bcLayout==='custom'?'':'none';};
     // Delegated on the parent (survives renderBcLayoutThumbs() rebuilding children).
     $('#bc_layout').addEventListener('click',e=>{const el=e.target.closest('.bc-lay');if(!el)return;bcLayout=el.dataset.l;paintLay();bcSaveState();});
     window._bcLayout=()=>bcLayout;
+    window._bcLayoutSpec=()=>(bcLayout==='custom'?bcLayoutSpec:null);
+    // ── Custom layout: reference image \\u2192 typography spec ────────────────
+    const ROLE_LBL={tagline:'Tagline',productName:'Product name',brandName:'Brand name',establishedTag:'Strapline'};
+    const bcRenderSpecSummary=()=>{
+      const box=$('#bc_spec_summary');if(!box)return;
+      if(!bcLayoutSpec){box.style.display='none';box.innerHTML='';return;}
+      const rows=(bcLayoutSpec.textBlocks||[]).map(b=>{
+        const sz=b.fontScale>=0.11?'display size':b.fontScale>=0.06?'large':b.fontScale>=0.035?'medium':'small';
+        const bits=[sz,b.anchor.replace(/-/g,' '),b.align+'-aligned','weight '+b.weight];
+        if(b.case==='upper')bits.push('UPPERCASE');else if(b.case==='title')bits.push('Title Case');
+        if(Math.abs(b.trackingEm)>=0.02)bits.push((b.trackingEm>0?'wide':'tight')+' tracking');
+        if(b.rotationDeg)bits.push(b.rotationDeg+'\\u00b0 rotated');
+        if(b.scrim!=='none')bits.push('on a '+b.scrim.replace(/-/g,' '));
+        return '<li style="margin:0 0 3px"><b style="color:var(--txt)">'+(ROLE_LBL[b.role]||b.role)+'</b> \\u2014 '+bits.join(', ')+'</li>';
+      }).join('');
+      const logoLine=bcLayoutSpec.logo?'<li style="margin:0 0 3px"><b style="color:var(--txt)">Logo</b> \\u2014 '+bcLayoutSpec.logo.anchor.replace(/-/g,' ')+', '+Math.round(bcLayoutSpec.logo.scalePct)+'% of height</li>':'';
+      const flat=bcSpecFlattened.length
+        ? '<p style="margin:8px 0 0;color:#e0a33a;font-size:11px">\\u26a0 '+bcSpecFlattened.map(r=>ROLE_LBL[r]||r).join(', ')+' sat behind the subject in your reference. That needs a cut-out of your frame, which is not wired up yet \\u2014 for now it renders in front of the photo.</p>'
+        : '';
+      box.style.display='';
+      box.innerHTML='<div style="color:var(--mut)"><b style="color:var(--gold)">Picked up:</b> '+(bcLayoutSpec.notes||'custom text layout').replace(/</g,'&lt;')+'</div>'
+        +'<ul style="margin:7px 0 0;padding-left:16px;color:var(--mut);line-height:1.5">'+rows+logoLine+'</ul>'+flat
+        +'<p style="margin:8px 0 0;color:var(--mut);font-size:10.5px">Only geometry and typography were read. Your photo, your words, Tranzzie\\u2019s colours and logo are what render.</p>';
+    };
+    {
+      const refInp=$('#bc_ref_file'),refLbl=$('#bc_ref_lbl'),refDz=$('#bc_ref_drop');
+      const runExtract=async()=>{
+        const f=(refInp.files||[])[0];if(!f)return;
+        refLbl.textContent='Reading the layout\\u2026';
+        try{
+          const fd=new FormData();fd.append('layoutRef',f);
+          const r=await fetch('/api/brandcard/layout-spec',{method:'POST',body:fd});
+          const d=await r.json().catch(()=>({}));
+          if(!r.ok||!d.spec){toast(d.error||'Could not read that reference',true);refLbl.textContent='Click or drop a reference image';return;}
+          bcLayoutSpec=d.spec;bcSpecFlattened=d.flattened||[];
+          refLbl.textContent=f.name+' \\u2014 layout extracted \\u2713';
+          bcRenderSpecSummary();renderBcLayoutThumbs();paintLay();bcSaveState();
+          toast('Layout extracted \\u2713');
+        }catch(e){toast('Network error reading the reference',true);refLbl.textContent='Click or drop a reference image';}
+        // The reference itself is never kept — clear the picker once read.
+        try{refInp.value='';}catch(_){}
+      };
+      if(refInp)refInp.onchange=runExtract;
+      if(refDz){
+        refDz.addEventListener('dragover',e=>{e.preventDefault();refDz.style.borderColor='var(--gold)';});
+        refDz.addEventListener('dragleave',()=>{refDz.style.borderColor='var(--line2)';});
+        refDz.addEventListener('drop',e=>{e.preventDefault();refDz.style.borderColor='var(--line2)';
+          const f=Array.from((e.dataTransfer&&e.dataTransfer.files)||[]).filter(x=>x.type.indexOf('image/')===0)[0];
+          if(!f)return;
+          try{const dt=new DataTransfer();dt.items.add(f);refInp.files=dt.files;}catch(_){}
+          runExtract();});
+      }
+    }
     // Treatment radios highlight
     const paintTreat=()=>{Array.prototype.forEach.call(document.querySelectorAll('#bc_treatment .bc-opt'),el=>{const r=el.querySelector('input');el.style.borderColor=r.checked?'var(--gold)':'var(--line2)';el.style.background=r.checked?'rgba(232,182,74,.06)':'transparent';});};
     Array.prototype.forEach.call(document.querySelectorAll('input[name="bc_treat"]'),r=>r.onchange=()=>{paintTreat();bcSaveState();});paintTreat();
@@ -3525,6 +3812,8 @@ async function viewGenerate(){
       aspect:($('#bc_aspect')||{}).value||'4:5',
       showLogo:!!(($('#bc_logo')||{}).checked),
       layout:bcLayout,
+      layoutSpec:bcLayoutSpec,
+      specFlattened:bcSpecFlattened,
       batchMode:!!(($('#bc_batch_toggle')||{}).checked),
       photos:Array.from(bcFile.files||[]).slice(0,6),
       rows:Array.prototype.map.call(document.querySelectorAll('#bcb_list .bcb_row'),row=>({
@@ -3552,7 +3841,8 @@ async function viewGenerate(){
         if($('#bc_product')&&s.product)$('#bc_product').value=s.product;
         if($('#bc_aspect')&&s.aspect)$('#bc_aspect').value=s.aspect;
         if($('#bc_logo')&&s.showLogo!=null)$('#bc_logo').checked=!!s.showLogo;
-        if(s.layout&&['minimal','banner','editorial','badge'].indexOf(s.layout)>=0)bcLayout=s.layout;
+        if(s.layout&&['minimal','banner','editorial','badge','custom'].indexOf(s.layout)>=0)bcLayout=s.layout;
+        if(s.layoutSpec){bcLayoutSpec=s.layoutSpec;bcSpecFlattened=s.specFlattened||[];bcRenderSpecSummary();}
         const txr=document.querySelector('input[name="bc_text"][value="'+(s.textMode==='ai'?'ai':'own')+'"]');
         if(txr)txr.checked=true;
         // Photos before bcPaint — its 2+-photo rule may lock the treatment.
@@ -3633,7 +3923,11 @@ async function viewGenerate(){
       textMode:(document.querySelector('input[name="bc_text"]:checked')||{}).value||'own',
       showLogo:!!($('#bc_logo')||{}).checked,
       layout:bcLayout,
-      aspect:($('#bc_aspect')||{}).value||'4:5'
+      aspect:($('#bc_aspect')||{}).value||'4:5',
+      // The extracted spec is small JSON, so a custom layout becomes a
+      // reusable named preset and the reference image stays disposable.
+      layoutSpec:bcLayout==='custom'?bcLayoutSpec:null,
+      specFlattened:bcLayout==='custom'?bcSpecFlattened:[]
     });
     const bcPsApply=p=>{
       if(!p)return;
@@ -3641,7 +3935,9 @@ async function viewGenerate(){
       if(!multiNow)Array.prototype.forEach.call(document.querySelectorAll('input[name="bc_treat"]'),r=>{r.checked=(r.value===p.treatment);});
       Array.prototype.forEach.call(document.querySelectorAll('input[name="bc_text"]'),r=>{r.checked=(r.value===p.textMode);});
       if($('#bc_logo'))$('#bc_logo').checked=!!p.showLogo;
-      bcLayout=['minimal','banner','editorial','badge'].indexOf(p.layout)>=0?p.layout:'minimal';
+      bcLayout=['minimal','banner','editorial','badge','custom'].indexOf(p.layout)>=0?p.layout:'minimal';
+      if(bcLayout==='custom'){bcLayoutSpec=p.layoutSpec||null;bcSpecFlattened=p.specFlattened||[];}
+      renderBcLayoutThumbs();bcRenderSpecSummary();
       paintLay();paintTreat();paintText();
       if($('#bc_aspect'))$('#bc_aspect').value=['1:1','4:5','9:16','all'].indexOf(p.aspect)>=0?p.aspect:'4:5';
       bcSaveState();
@@ -4104,7 +4400,7 @@ async function viewGenerate(){
       fd.append('characterId','');
     }else if(posterType==='brandphoto'){
       const textMode=(document.querySelector('input[name="bc_text"]:checked')||{}).value||'own';
-      const sharedSettings={showLogo:!!(($('#bc_logo')||{}).checked),layout:(window._bcLayout?window._bcLayout():'minimal'),aspect:($('#bc_aspect')||{}).value||'4:5'};
+      const sharedSettings={showLogo:!!(($('#bc_logo')||{}).checked),layout:(window._bcLayout?window._bcLayout():'minimal'),aspect:($('#bc_aspect')||{}).value||'4:5',layoutSpec:(window._bcLayoutSpec?window._bcLayoutSpec():null)};
       const sharedTreatRadio=(document.querySelector('input[name="bc_treat"]:checked')||{}).value||'original';
       // 2+ reference photos only benefit the AI re-shoot (it can cross-check
       // angles); original/cleanup only ever look at one photo, so force it —

@@ -20,8 +20,61 @@ import { AspectRatio, aspectRatioSchema, aspectToDimensions } from "./aspect";
 // image can be the actual photo, unlike the TikTok Shop cards.
 // ─────────────────────────────────────────────────────────────────────────
 
-export const BRAND_LAYOUTS = ["minimal", "banner", "editorial", "badge"] as const;
+export const BRAND_LAYOUTS = ["minimal", "banner", "editorial", "badge", "custom"] as const;
 export type BrandLayout = (typeof BRAND_LAYOUTS)[number];
+
+// ── Custom layout ─────────────────────────────────────────────────────────
+// "custom" is driven by a layoutSpec extracted from a reference image the user
+// uploaded. Only the reference's TEXT GEOMETRY AND TYPOGRAPHY is carried over
+// — never its photo, palette, brand or wording. Everything that actually
+// renders is still Tranzzie's own colors/logo/font and the user's own photo
+// and copy. The spec arrives pre-clamped from the server; the defaults here
+// are a second net so a missing field can never blank the card.
+export const BRAND_ANCHORS = [
+  "top-left", "top-center", "top-right",
+  "center-left", "center", "center-right",
+  "bottom-left", "bottom-center", "bottom-right",
+] as const;
+export type BrandAnchor = (typeof BRAND_ANCHORS)[number];
+
+export const layoutBlockSchema = z.object({
+  role: z.enum(["tagline", "productName", "brandName", "establishedTag"]).default("tagline"),
+  anchor: z.enum(BRAND_ANCHORS).default("bottom-left"),
+  xPct: z.number().default(6),
+  yPct: z.number().default(88),
+  maxWidthPct: z.number().default(80),
+  align: z.enum(["left", "center", "right"]).default("left"),
+  /** Cap height as a fraction of canvas height. */
+  fontScale: z.number().default(0.05),
+  weight: z.number().default(800),
+  case: z.enum(["upper", "title", "as-is"]).default("as-is"),
+  trackingEm: z.number().default(0),
+  lineHeight: z.number().default(1.15),
+  rotationDeg: z.number().default(0),
+  /** Phase 1 renders "behind-subject" as "above-photo" (no cutout yet). */
+  zOrder: z.enum(["above-photo", "behind-subject"]).default("above-photo"),
+  scrim: z.enum(["none", "gradient", "solid-bar", "blur"]).default("none"),
+  scrimOpacity: z.number().default(0),
+});
+export type LayoutBlock = z.infer<typeof layoutBlockSchema>;
+
+export const layoutSpecSchema = z
+  .object({
+    textBlocks: z.array(layoutBlockSchema).default([]),
+    logo: z
+      .object({
+        anchor: z.enum(BRAND_ANCHORS).default("top-left"),
+        xPct: z.number().default(6),
+        yPct: z.number().default(6),
+        scalePct: z.number().default(12),
+      })
+      .nullable()
+      .default(null),
+    notes: z.string().default(""),
+  })
+  .nullable()
+  .default(null);
+export type LayoutSpec = z.infer<typeof layoutSpecSchema>;
 
 export const brandCardSchema = z.object({
   photoSrc: z.string().default(""),
@@ -30,6 +83,7 @@ export const brandCardSchema = z.object({
   logoSrc: z.string().default(""),
   showLogo: z.boolean().default(true),
   layout: z.enum(BRAND_LAYOUTS).default("minimal"),
+  layoutSpec: layoutSpecSchema,
   brandGold: z.string().default("#F4B400"),
   brandName: z.string().default("Tranzzie Eyeglasses"),
   establishedTag: z.string().default("SINCE 2019"),
@@ -81,7 +135,7 @@ const BrandMark: React.FC<{ size: number; color: string }> = ({ size, color }) =
 };
 
 export const BrandCard: React.FC<BrandCardProps> = ({
-  photoSrc, tagline, productName, logoSrc, showLogo, layout, brandGold, brandName, establishedTag,
+  photoSrc, tagline, productName, logoSrc, showLogo, layout, layoutSpec, brandGold, brandName, establishedTag,
 }) => {
   useBrandFonts();
   const frame = useCurrentFrame();
@@ -123,8 +177,112 @@ export const BrandCard: React.FC<BrandCardProps> = ({
     <div style={{ fontFamily: ARCHIVO, fontWeight: 500, fontSize: Math.round(12 * scale), letterSpacing: "0.3em", color: gold, marginTop: Math.round(12 * scale), textTransform: "uppercase" }}>• {establishedTag} •</div>
   ) : null;
 
+  // ── CUSTOM — geometry lifted from the user's reference, content is ours ────
+  // Falls through to "minimal" if the spec is missing or has no usable block,
+  // so a failed extraction degrades to a real card instead of an empty one.
+  // These clamps mirror the server's and are the last line of defence: anchors
+  // are pinned on-canvas (0..100) so no value can push the copy out of frame,
+  // and fontScale/maxWidthPct have floors so it cannot shrink to nothing.
+  const usableBlocks = (layoutSpec?.textBlocks ?? []).filter((b) => {
+    const t = { tagline, productName, brandName, establishedTag }[b.role];
+    return Boolean(t && String(t).trim());
+  });
+  if (layout === "custom" && usableBlocks.length > 0) {
+    const clamp = (n: number, lo: number, hi: number) =>
+      Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo;
+    // An out-of-vocabulary anchor would silently behave as top-left and drag
+    // the block off-frame, so normalise before using it for anything.
+    const safeAnchor = (a: BrandAnchor): BrandAnchor =>
+      (BRAND_ANCHORS as readonly string[]).includes(a) ? a : "bottom-left";
+    const segs = (a: BrandAnchor) =>
+      a === "center" ? (["center", "center"] as const) : (a.split("-") as [string, string]);
+    // Anchor = which corner/edge of the block sits at (xPct, yPct).
+    const anchorShift = (a: BrandAnchor) => {
+      const [v, h] = segs(safeAnchor(a));
+      const tx = h === "center" ? "-50%" : h === "right" ? "-100%" : "0";
+      const ty = v === "center" ? "-50%" : v === "bottom" ? "-100%" : "0";
+      return `translate(${tx}, ${ty})`;
+    };
+    // Mirrors the server's anchor-aware bounds: bound each axis by the
+    // direction the box grows so the copy can never leave the frame.
+    const posX = (a: BrandAnchor, x: number) => {
+      const [, h] = segs(safeAnchor(a));
+      return clamp(x, h === "right" ? 10 : 0, h === "left" ? 92 : 100);
+    };
+    const posY = (a: BrandAnchor, y: number) => {
+      const [v] = segs(safeAnchor(a));
+      return clamp(y, v === "bottom" ? 8 : v === "center" ? 4 : 0, v === "top" ? 88 : v === "center" ? 96 : 100);
+    };
+    const roleText: Record<LayoutBlock["role"], string> = {
+      tagline, productName, brandName, establishedTag,
+    };
+    // Colors are always Tranzzie's — never sampled from the reference.
+    const roleColor: Record<LayoutBlock["role"], string> = {
+      tagline: "#fff",
+      productName: gold,
+      brandName: "rgba(255,255,255,0.88)",
+      establishedTag: gold,
+    };
+    const blockScrim = (b: LayoutBlock) => {
+      const o = clamp(b.scrimOpacity, 0, 1);
+      if (b.scrim === "none" || o === 0) return {};
+      if (b.scrim === "solid-bar") return { background: `rgba(20,18,16,${o})` };
+      if (b.scrim === "blur") return { background: `rgba(20,18,16,${o * 0.6})`, backdropFilter: `blur(${Math.round(10 * scale)}px)` };
+      return { background: `linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,${o}) 55%, rgba(0,0,0,${o}) 100%)` };
+    };
+    const lg = layoutSpec?.logo ?? null;
+    return (
+      <AbsoluteFill style={{ background: DARK, overflow: "hidden", opacity: fade, fontFamily: ARCHIVO }}>
+        {cover()}
+        {usableBlocks.map((b, i) => {
+          const txt = roleText[b.role];
+          // fontScale is a CAP height fraction; ~0.72 converts it to font-size.
+          const fontPx = Math.round((clamp(b.fontScale, 0.015, 0.25) / 0.72) * height);
+          return (
+            <div
+              key={`${b.role}-${i}`}
+              style={{
+                position: "absolute",
+                left: `${posX(b.anchor, b.xPct)}%`,
+                top: `${posY(b.anchor, b.yPct)}%`,
+                width: `${clamp(b.maxWidthPct, 12, 140)}%`,
+                transform: `${anchorShift(b.anchor)} rotate(${clamp(b.rotationDeg, -90, 90)}deg)`,
+                transformOrigin: "center",
+                textAlign: b.align,
+                fontFamily: ARCHIVO,
+                fontWeight: clamp(Math.round(b.weight / 100) * 100, 100, 900),
+                fontSize: fontPx,
+                lineHeight: clamp(b.lineHeight, 0.8, 2.2),
+                letterSpacing: `${clamp(b.trackingEm, -0.05, 0.6)}em`,
+                textTransform: b.case === "upper" ? "uppercase" : b.case === "title" ? "capitalize" : "none",
+                color: roleColor[b.role],
+                textShadow: b.scrim === "none" ? tShadow : undefined,
+                padding: b.scrim === "none" ? 0 : `${Math.round(fontPx * 0.34)}px ${Math.round(fontPx * 0.44)}px`,
+                ...blockScrim(b),
+              }}
+            >
+              {txt}
+            </div>
+          );
+        })}
+        {showLogo && lg && (
+          <div
+            style={{
+              position: "absolute",
+              left: `${posX(lg.anchor, lg.xPct)}%`,
+              top: `${posY(lg.anchor, lg.yPct)}%`,
+              transform: anchorShift(lg.anchor),
+            }}
+          >
+            {logoEl(Math.round((clamp(lg.scalePct, 3, 40) / 100) * height), "light")}
+          </div>
+        )}
+      </AbsoluteFill>
+    );
+  }
+
   // ── MINIMAL — full-bleed photo, logo top-left, tagline bottom-left ─────────
-  if (layout === "minimal") {
+  if (layout === "minimal" || layout === "custom") {
     return (
       <AbsoluteFill style={{ background: DARK, overflow: "hidden", opacity: fade, fontFamily: ARCHIVO }}>
         {cover()}{scrim}
