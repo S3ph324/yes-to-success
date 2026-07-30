@@ -20,6 +20,7 @@ import path from "node:path";
 import url from "node:url";
 import heicConvert from "heic-convert";
 import { GoogleGenAI, Type } from "@google/genai";
+import { generateCarouselCopy } from "./lib/carousel-copy.mjs";
 import { applyGcpEnv } from "./lib/client.mjs";
 import { registerTryonRoutes } from "./tryon-routes.mjs";
 import { registerEyeglassAngleRoutes } from "./eyeglasses-angles-routes.mjs";
@@ -1168,7 +1169,17 @@ app.post("/api/generate", extraRefUpload.fields([
   const isAdvice = client === "jurie" && (posterType === "advice" || posterType === "tweet");
   // Brand-a-Photo — Tranzzie-only; one uploaded photo + text/logo, no topic.
   const isBrand = client === "tranzzie" && posterType === "brandphoto";
-  if (!t && !isEyeglassesBatch && !isShop && !isAdvice && !isBrand) return res.status(400).json({ error: "Topic is required." });
+  // Jurie carousel — copy is approved up front via /api/carousel/copy, so this
+  // job only renders slides. LOCAL ONLY: the renderer drives the higgsfield CLI,
+  // which has no session on the deployed studio.
+  const isCarousel = client === "jurie" && posterType === "carousel";
+  let carouselPlan = null;
+  if (isCarousel) {
+    try { carouselPlan = JSON.parse(req.body?.carouselPlan || "null"); } catch { carouselPlan = null; }
+    if (!carouselPlan || !carouselPlan.coverHeadline || !Array.isArray(carouselPlan.slides) || !carouselPlan.slides.length)
+      return res.status(400).json({ error: "Approve the carousel copy before generating." });
+  }
+  if (!t && !isEyeglassesBatch && !isShop && !isAdvice && !isBrand && !isCarousel) return res.status(400).json({ error: "Topic is required." });
   // Studio Builder plan (Virtual Photography Studio). Validated BEFORE the
   // cost guard so a bad request never burns a rate-limit slot.
   let shopPlanReq = null;
@@ -1283,6 +1294,8 @@ app.post("/api/generate", extraRefUpload.fields([
     ? shopPlanEnv
       ? `▶ [${c.label}] Shop studio for "${String(shopProduct || "product").slice(0, 40)}" · ${shopVarietiesMeta.length} variet${shopVarietiesMeta.length === 1 ? "y" : "ies"} · ${shopPlanReq._totalAi} AI shot(s)${shopPlanReq._shots.specs ? " + specs card" : ""}…`
       : `▶ [${c.label}] TikTok Shop cards for "${String(shopProduct || "product").slice(0, 40)}" · ${shopPhotoPaths.length} photo(s)…`
+    : isCarousel
+    ? `▶ [${c.label}] Carousel · ${carouselPlan.slides.length + 2} slides · "${String(carouselPlan.coverHeadline).slice(0, 46)}"…`
     : isBrand
     ? `▶ [${c.label}] Brand-a-Photo card (${brandPlanReq?.treatment || "original"})…`
     : isAdvice
@@ -1360,6 +1373,7 @@ app.post("/api/generate", extraRefUpload.fields([
     env.DASHBOARD_SHOP_ASPECT = "1:1";
   }
   if (isBrand && brandPlanEnv) env.DASHBOARD_BRANDCARD_PLAN = brandPlanEnv;
+  if (isCarousel && carouselPlan) env.DASHBOARD_CAROUSEL_PLAN = JSON.stringify(carouselPlan);
   env.JURIE_NO_OPEN = "1";
   const spec = {
     client,
@@ -1367,6 +1381,8 @@ app.post("/api/generate", extraRefUpload.fields([
     header,
     args: isShop
       ? ["scripts/render-shop-tranzzie.mjs"]
+      : isCarousel
+        ? ["scripts/render-carousel-jurie.mjs"]
       : isBrand
         ? ["scripts/render-brandcard-tranzzie.mjs"]
         : isEyeglasses
@@ -1376,6 +1392,8 @@ app.post("/api/generate", extraRefUpload.fields([
   };
   const label = isShop
     ? `${c.label} · Shop · "${String(shopProduct || "product").slice(0, 30)}"`
+    : isCarousel
+    ? `${c.label} · Carousel (${carouselPlan.slides.length + 2} slides)`
     : isBrand
     ? `${c.label} · Brand card`
     : `${c.label} · ${n} poster(s)` + (t ? ` · "${t.slice(0, 40)}"` : "");
@@ -1643,6 +1661,37 @@ const LAYOUT_SPEC_PROMPT =
   "canvas height) if a logo or emblem is present.\n\n" +
   "notes: ONE short line naming the layout idea in the abstract, e.g. 'oversized type " +
   "bleeding off the left edge, small caps label above'. Do not mention the subject or brand.";
+
+// ── Carousel copy — the approval gate ─────────────────────────────────────
+// Writing is nearly free; the images are what cost credits. So the copy is
+// generated on its own here, shown to the user to edit and approve, and only
+// then handed to the renderer. Nothing is spent on a carousel nobody wanted.
+app.post("/api/carousel/copy", async (req, res) => {
+  const { engine, topic, slideCount } = req.body || {};
+  applyGcpEnv();
+  const gcpProject = process.env.GOOGLE_CLOUD_PROJECT;
+  if (!gcpProject) return res.status(400).json({ error: "No GCP project configured for copy generation." });
+  try {
+    // Feed the ledger in so she doesn't post the same angle twice.
+    let ledger = [];
+    try { ledger = JSON.parse(await fs.readFile(path.join(cfgDir, "jurie-topic-ledger.json"), "utf-8")); } catch { ledger = []; }
+    const recentTopics = (Array.isArray(ledger) ? ledger : []).slice(0, 40).map((e) => e?.topic || e?.headline).filter(Boolean);
+    const copy = await generateCarouselCopy({
+      engine: String(engine || "framework"),
+      topic: String(topic || "").slice(0, 200),
+      slideCount: Math.max(3, Math.min(10, parseInt(slideCount, 10) || 6)),
+      recentTopics,
+      projectRoot,
+      gcpProject,
+      gcpLocation: process.env.GOOGLE_CLOUD_LOCATION || "us-central1",
+    });
+    // Surface the cost before they commit to rendering it.
+    const est = (copy.slides.length + 2) * 1.5 + 0.12;
+    res.json({ copy, estimatedCredits: Number(est.toFixed(2)) });
+  } catch (e) {
+    res.status(502).json({ error: `Copy generation failed: ${(e?.message || e)?.toString().slice(0, 200)}` });
+  }
+});
 
 app.post("/api/brandcard/layout-spec", extraRefUpload.fields([{ name: "layoutRef", maxCount: 1 }]), async (req, res) => {
   const refFile = ((req.files || {}).layoutRef || [])[0];
@@ -3226,6 +3275,30 @@ async function viewGenerate(){
        +'<label class="ptype-card" data-pt="mono" style="flex:1;display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:12px 14px;border:1px solid var(--line);border-radius:10px;transition:border-color .15s,background .15s">'
        +'<input type="radio" name="g_ptype" value="mono" style="width:auto;margin:3px 0 0">'
        +'<span><b>\\ud83c\\udf11 Mono quote</b><br><span class="muted" style="font-size:11px">B&amp;W portrait + centred serif quote</span></span></label>'
+       +'<label class="ptype-card" data-pt="carousel" style="flex:1;display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:12px 14px;border:1px solid var(--line);border-radius:10px;transition:border-color .15s,background .15s">'
+       +'<input type="radio" name="g_ptype" value="carousel" style="width:auto;margin:3px 0 0">'
+       +'<span><b>\\ud83d\\uddc2\\ufe0f Carousel</b><br><span class="muted" style="font-size:11px">Newspaper cover \\u2192 Apple-UI teaching slides</span></span></label>'
+       +'</div>'
+       // ── Carousel panel ────────────────────────────────────────────────
+       +'<div id="carousel_box" style="display:none;margin-bottom:18px;padding:16px 18px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:12px">'
+       +'<div class="section-label" style="margin:0 0 6px">What feeds it</div>'
+       +'<div id="cr_engine" style="display:flex;flex-wrap:wrap;gap:8px">'
+       +[['framework','Framework','One thing she does, in numbered steps'],
+         ['question','Audience question','Answer a real question from her comments'],
+         ['take','Her take','What a change actually means for you']]
+          .map((e,i)=>'<label class="cr-opt" style="flex:1;min-width:170px;display:block;cursor:pointer;padding:10px 12px;border:1px solid var(--line2);border-radius:9px"><input type="radio" name="cr_engine" value="'+e[0]+'"'+(i===0?' checked':'')+' style="width:auto;margin:0 6px 0 0;accent-color:var(--gold)"><b style="font-size:13px">'+e[1]+'</b><br><span class="muted" style="font-size:11px">'+e[2]+'</span></label>').join('')
+       +'</div>'
+       +'<div class="row" style="gap:12px;margin-top:14px;align-items:flex-end">'
+       +'<div style="flex:1"><label style="font-size:11px;display:block;margin-bottom:5px">Topic / question</label>'
+       +'<input id="cr_topic" maxlength="200" placeholder="e.g. 3 AI tools na ginagamit ko araw-araw" style="width:100%;padding:12px 14px"></div>'
+       +'<div style="flex:0 0 120px"><label style="font-size:11px;display:block;margin-bottom:5px">Slides</label>'
+       +'<select id="cr_count" style="width:100%;padding:12px 14px">'
+       +[5,6,7,8].map(n=>'<option value="'+n+'"'+(n===6?' selected':'')+'>'+n+' slides</option>').join('')
+       +'</select></div>'
+       +'<button type="button" class="sec" id="cr_write" style="padding:12px 16px">\\u270d\\ufe0f Write the copy</button>'
+       +'</div>'
+       +'<p class="muted" style="margin:10px 0 0;font-size:11px">The copy is written first and costs nothing. Review and edit it below, then generate \\u2014 that is the only step that spends credits.</p>'
+       +'<div id="cr_copy" style="display:none;margin-top:14px;padding:14px;background:rgba(255,255,255,.02);border:1px solid var(--line2);border-radius:10px"></div>'
        +'</div>'
        +'<div id="advice_box" style="display:none;margin-bottom:18px">'
        +'<div class="row" style="gap:16px;align-items:flex-start">'
@@ -3560,14 +3633,15 @@ async function viewGenerate(){
     const isShop = pt === 'shop';
     const isBrand = pt === 'brandphoto';
     const isAdv = pt === 'advice' || pt === 'tweet';
+    const isCar = pt === 'carousel';
     // Advice series field (Jurie advice/tweet).
     const advBox=$('#advice_box');
     if(advBox) advBox.style.display = isAdv ? 'block' : 'none';
     // For advice the topic label reads as an optional angle.
     // Topic vs headline — both hidden in shop mode (product inputs instead).
     const secLbl=$('#g_section_label'), topicCell=$('#g_topic_cell'), hlCell=$('#ea_headline_cell');
-    if(secLbl){ secLbl.style.display = (isEye||isShop||isBrand) ? 'none' : ''; secLbl.textContent = isAdv ? 'Topic / angle (optional)' : 'What do you want to post about?'; }
-    if(topicCell) topicCell.style.display = (isEye||isShop||isBrand) ? 'none' : '';
+    if(secLbl){ secLbl.style.display = (isEye||isShop||isBrand||isCar) ? 'none' : ''; secLbl.textContent = isAdv ? 'Topic / angle (optional)' : 'What do you want to post about?'; }
+    if(topicCell) topicCell.style.display = (isEye||isShop||isBrand||isCar) ? 'none' : '';
     if(hlCell)  hlCell.style.display   = isEye ? '' : 'none';
     const promoCell=$('#ea_promo_cell');
     if(promoCell) promoCell.style.display = isEye ? '' : 'none';
@@ -3576,12 +3650,17 @@ async function viewGenerate(){
     if(shopBox) shopBox.style.display = isShop ? 'block' : 'none';
     const brandBox=$('#brandcard_box');
     if(brandBox) brandBox.style.display = isBrand ? 'block' : 'none';
+    const carBox=$('#carousel_box');
+    if(carBox) carBox.style.display = isCar ? 'block' : 'none';
+    // Carousel has its own slide-count control and writes its own copy.
+    const cntWrap=$('#g_count') && $('#g_count').closest('div');
+    if(cntWrap) cntWrap.style.display = isCar ? 'none' : '';
     // Brief + brand kit row — hidden for eyeglasses & shop & brand-a-photo
     const mainRow=$('#g_mainonly_row');
-    if(mainRow) mainRow.style.display = (isEye||isShop||isBrand) ? 'none' : '';
+    if(mainRow) mainRow.style.display = (isEye||isShop||isBrand||isCar) ? 'none' : '';
     // Advanced toggle — hidden for eyeglasses (auto-opens), shop, brand-a-photo
     const advBtn=$('#adv-btn'), advBody=$('#adv-body');
-    if(advBtn) advBtn.style.display = (isEye||isShop||isBrand) ? 'none' : '';
+    if(advBtn) advBtn.style.display = (isEye||isShop||isBrand||isCar) ? 'none' : '';
     if(advBody) { if(isEye) advBody.classList.add('open'); else advBody.classList.remove('open'); }
     // Eyeglasses style box
     const ebox=$('#g_estyle_box');
@@ -3692,6 +3771,73 @@ async function viewGenerate(){
     shvAddRow();
     $('#shv_add').onclick=()=>shvAddRow();
     const ident=$('#shv_identical');if(ident)ident.onchange=shmPaint;
+  }
+  // ── Carousel wiring ───────────────────────────────────────────────────────
+  // Copy first, credits second. crCopy holds the APPROVED copy; the Generate
+  // button refuses to run until it exists, so nothing is ever rendered from
+  // text the user has not seen.
+  let crCopy=null;
+  window._crCopy=()=>crCopy;
+  if($('#carousel_box')){
+    const paintEng=()=>{Array.prototype.forEach.call(document.querySelectorAll('#cr_engine .cr-opt'),el=>{
+      const r=el.querySelector('input');
+      el.style.borderColor=r.checked?'var(--gold)':'var(--line2)';
+      el.style.background=r.checked?'rgba(232,182,74,.06)':'transparent';});};
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="cr_engine"]'),r=>r.onchange=paintEng);paintEng();
+
+    const esc=t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+    // Every field stays editable — the whole point of the gate is that she can
+    // fix a line before paying to render it.
+    const paintCopy=est=>{
+      const box=$('#cr_copy');
+      if(!crCopy){box.style.display='none';box.innerHTML='';return;}
+      const rows=crCopy.slides.map((s,i)=>
+        '<div style="margin-bottom:10px;padding:10px;border:1px solid var(--line2);border-radius:8px">'
+        +'<div class="muted" style="font-size:10.5px;margin-bottom:5px">SLIDE '+(i+2)+'</div>'
+        +'<input class="cr_sh" data-i="'+i+'" maxlength="34" value="'+esc(s.headline)+'" style="width:100%;padding:9px 11px;margin-bottom:6px">'
+        +'<textarea class="cr_sb" data-i="'+i+'" maxlength="210" rows="3" style="width:100%;padding:9px 11px;resize:vertical">'+esc(s.body)+'</textarea>'
+        +'</div>').join('');
+      box.style.display='block';
+      box.innerHTML='<div class="section-label" style="margin:0 0 8px">Review the copy</div>'
+        +'<div class="muted" style="font-size:10.5px;margin-bottom:5px">COVER HEADLINE \\u2014 goes on the newspaper</div>'
+        +'<input id="cr_cover" maxlength="46" value="'+esc(crCopy.coverHeadline)+'" style="width:100%;padding:10px 12px;margin-bottom:12px;font-weight:700">'
+        +rows
+        +'<div style="margin-top:4px;padding:10px;border:1px solid var(--line2);border-radius:8px">'
+        +'<div class="muted" style="font-size:10.5px;margin-bottom:5px">CLOSING SLIDE</div>'
+        +'<input id="cr_ck" maxlength="30" value="'+esc(crCopy.cta.kicker)+'" placeholder="kicker" style="width:100%;padding:9px 11px;margin-bottom:6px">'
+        +'<input id="cr_chd" maxlength="34" value="'+esc(crCopy.cta.headline)+'" placeholder="headline" style="width:100%;padding:9px 11px;margin-bottom:6px">'
+        +'<textarea id="cr_cb" maxlength="110" rows="2" style="width:100%;padding:9px 11px;resize:vertical">'+esc(crCopy.cta.body)+'</textarea></div>'
+        +'<div class="muted" style="font-size:10.5px;margin:12px 0 5px">CAPTION</div>'
+        +'<textarea id="cr_caption" maxlength="900" rows="4" style="width:100%;padding:9px 11px;resize:vertical">'+esc(crCopy.caption)+'</textarea>'
+        +'<p style="margin:10px 0 0;color:var(--gold);font-size:11.5px">\\u26a1 Generating these '+(crCopy.slides.length+2)+' slides costs about '+(est||'~9')+' credits. Editing here is free.</p>';
+    };
+    // Pull edits back out before submitting, so what renders is what she sees.
+    window._crHarvest=()=>{
+      if(!crCopy)return null;
+      const cov=$('#cr_cover');if(cov)crCopy.coverHeadline=cov.value.trim();
+      Array.prototype.forEach.call(document.querySelectorAll('.cr_sh'),el=>{const i=+el.dataset.i;if(crCopy.slides[i])crCopy.slides[i].headline=el.value.trim();});
+      Array.prototype.forEach.call(document.querySelectorAll('.cr_sb'),el=>{const i=+el.dataset.i;if(crCopy.slides[i])crCopy.slides[i].body=el.value.trim();});
+      const ck=$('#cr_ck'),chd=$('#cr_chd'),cb=$('#cr_cb'),cap=$('#cr_caption');
+      if(ck)crCopy.cta.kicker=ck.value.trim();
+      if(chd)crCopy.cta.headline=chd.value.trim();
+      if(cb)crCopy.cta.body=cb.value.trim();
+      if(cap)crCopy.caption=cap.value.trim();
+      return crCopy;
+    };
+    $('#cr_write').onclick=async()=>{
+      const btn=$('#cr_write'),orig=btn.textContent;
+      btn.disabled=true;btn.textContent='Writing\\u2026';
+      try{
+        const r=await fetch('/api/carousel/copy',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({engine:(document.querySelector('input[name="cr_engine"]:checked')||{}).value||'framework',
+            topic:($('#cr_topic')||{}).value||'',slideCount:+($('#cr_count')||{}).value||6})});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok||!d.copy){toast(d.error||'Could not write the copy',true);return;}
+        crCopy=d.copy;paintCopy(d.estimatedCredits);
+        toast('Copy ready \\u2014 review it, then generate');
+      }catch(e){toast('Network error writing the copy',true);}
+      btn.disabled=false;btn.textContent=orig;
+    };
   }
   // ── Brand-a-Photo wiring ──────────────────────────────────────────────────
   if($('#brandcard_box')){
@@ -4473,6 +4619,7 @@ async function viewGenerate(){
     const isEyePoster = posterType === 'eyeglasses';
     const isShopPoster = posterType === 'shop';
     const isBrandPoster = posterType === 'brandphoto';
+    const isCarouselPoster = posterType === 'carousel';
     const isAdvicePoster = posterType === 'advice' || posterType === 'tweet';
     // Studio Builder: collect varieties (name + files) from the DOM rows.
     let shopPlanObj=null,shopVarFiles=[];
@@ -4493,8 +4640,8 @@ async function viewGenerate(){
     // Topic required only for quote posters; optional for eyeglasses/advice; n/a for shop.
     const topic = isEyePoster
       ? ($('#ea_headline')&&$('#ea_headline').value.trim() || '')
-      : ((isShopPoster||isBrandPoster) ? '' : $('#g_topic').value.trim());
-    if(!isEyePoster && !isShopPoster && !isBrandPoster && !isAdvicePoster && !topic) return toast('Enter a topic first',true);
+      : ((isShopPoster||isBrandPoster||isCarouselPoster) ? '' : $('#g_topic').value.trim());
+    if(!isEyePoster && !isShopPoster && !isBrandPoster && !isAdvicePoster && !isCarouselPoster && !topic) return toast('Enter a topic first',true);
     const fd=new FormData();
     fd.append('client',CLIENT);
     fd.append('topic',topic);
@@ -4516,6 +4663,13 @@ async function viewGenerate(){
       fd.append('shopProduct',($('#shop_product')||{}).value||'');
       fd.append('shopMaterial',($('#shop_material')||{}).value||'');
       fd.append('shopAspect',($('#shop_aspect')||{}).value||'1:1');
+      fd.append('characterId','');
+    }else if(posterType==='carousel'){
+      // The gate: refuse to spend credits on copy she has not seen.
+      const approved=window._crHarvest?window._crHarvest():null;
+      if(!approved||!approved.coverHeadline||!approved.slides||!approved.slides.length)
+        return toast('Write and review the copy first',true);
+      fd.append('carouselPlan',JSON.stringify(approved));
       fd.append('characterId','');
     }else if(posterType==='brandphoto'){
       const textMode=(document.querySelector('input[name="bc_text"]:checked')||{}).value||'own';

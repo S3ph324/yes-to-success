@@ -2,7 +2,7 @@
 # Multi-client Quote Poster Studio + B-Roll (scripts/jurie-dashboard.mjs).
 # Separate from the existing Dockerfile (which ships server.mjs) — do not
 # merge. Includes Chromium deps for Remotion rendering.
-# (Redeploy trigger — v0.39.0: Custom layout now copies the reference's typeface character + text effects, not just its geometry.)
+# (Redeploy trigger — v0.40.0: Jurie carousel poster type — copy-approval gate then Higgsfield slides. Rendering is LOCAL-ONLY; the CLI has no session here.)
 
 FROM node:20-bookworm-slim AS base
 

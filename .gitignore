@@ -50,3 +50,7 @@ public/_shop-input
 public/_advice-avatar
 .session-secret
 research-data/
+
+# Topic ledgers are live working state (what has already been posted),
+# not source. They are rebuilt from export manifests, never versioned.
+config/*topic-ledger*.json
