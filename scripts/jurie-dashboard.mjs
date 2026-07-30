@@ -21,6 +21,7 @@ import url from "node:url";
 import heicConvert from "heic-convert";
 import { GoogleGenAI, Type } from "@google/genai";
 import { generateCarouselCopy } from "./lib/carousel-copy.mjs";
+import { MODEL_IMAGE, MODEL_SOUL, hfCost } from "./lib/higgsfield.mjs";
 import { applyGcpEnv } from "./lib/client.mjs";
 import { registerTryonRoutes } from "./tryon-routes.mjs";
 import { registerEyeglassAngleRoutes } from "./eyeglasses-angles-routes.mjs";
@@ -1685,9 +1686,19 @@ app.post("/api/carousel/copy", async (req, res) => {
       gcpProject,
       gcpLocation: process.env.GOOGLE_CLOUD_LOCATION || "us-central1",
     });
-    // Surface the cost before they commit to rendering it.
-    const est = (copy.slides.length + 2) * 1.5 + 0.12;
-    res.json({ copy, estimatedCredits: Number(est.toFixed(2)) });
+    // Surface the real cost before they commit. Ask the API rather than
+    // hardcoding: Nano Banana 2 is priced BY RESOLUTION (1k 1.5 / 2k 2 / 4k 3)
+    // and the renderer works at 2k, so the default-params estimate under-reports.
+    const nImages = copy.slides.length + 2;
+    let est = null;
+    try {
+      const [img, soul] = await Promise.all([
+        hfCost(MODEL_IMAGE, { prompt: "slide", resolution: "2k" }),
+        hfCost(MODEL_SOUL, { prompt: "scene" }),
+      ]);
+      if (img != null) est = nImages * img + (soul || 0);
+    } catch { /* estimate is a nicety, never block on it */ }
+    res.json({ copy, estimatedCredits: est == null ? null : Number(est.toFixed(2)) });
   } catch (e) {
     res.status(502).json({ error: `Copy generation failed: ${(e?.message || e)?.toString().slice(0, 200)}` });
   }

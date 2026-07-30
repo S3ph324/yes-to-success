@@ -9,9 +9,13 @@
 // Two models, because neither does both jobs:
 //   text2image_soul_v2  0.12 cr  identity-locked scenes of Jurie, but it
 //                                cannot render legible text.
-//   nano_banana_flash   1.5  cr  "Nano Banana 2" — renders type crisply and
+//   nano_banana_flash        "Nano Banana 2" — renders type crisply and
 //                                supports 4:5, but has no Soul identity lock.
-// So a cover is Soul → compose: ~1.62 credits instead of guessing at either.
+//                                PRICED BY RESOLUTION: 1k 1.5 / 2k 2 / 4k 3.
+//                                `generate cost` with default params reports
+//                                1.5, which under-reports what we actually
+//                                render (2k). Always pass the real resolution.
+// So a cover is Soul → compose: ~2.12 credits at 2k.
 //
 // NOTE the model-id trap: `nano_banana_2` is an ALIAS for Nano Banana *Pro*
 // (2 cr). The model actually labelled "Nano Banana 2" is `nano_banana_flash`.
