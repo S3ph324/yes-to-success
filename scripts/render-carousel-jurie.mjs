@@ -25,6 +25,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { applyGcpEnv, projectRoot, resolveClient } from "./lib/client.mjs";
 import { compose, hfBalance, hfDownload, soulScene } from "./lib/higgsfield.mjs";
+import { genVerified } from "./lib/gemini-image.mjs";
 
 process.on("unhandledRejection", (r) => { console.error("[carousel] unhandledRejection:", r?.stack || r?.message || String(r)); process.exit(1); });
 
@@ -41,6 +42,8 @@ const GOLD = "#F4B400";
 const total = plan.slides.length + 2; // cover + teaching + cta
 
 applyGcpEnv();
+const gcpProject = process.env.GOOGLE_CLOUD_PROJECT;
+const gcpLocation = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
 const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
 const EXPORT_DIR = process.env.JURIE_EXPORT_DIR || client.exportDir;
 const outDir = path.join(EXPORT_DIR, `carousel-${stamp}`);
@@ -100,6 +103,48 @@ const ctaPrompt = (cta) =>
   `that a thin hairline divider, then light grey body text reading '${cta.body}'. A small ` +
   `'${total}/${total}' in the bottom right corner of the slide.`;
 
+// ── Provider chain ────────────────────────────────────────────────────────
+// Text slides go to Gemini first (billed to the client's own GCP rather than
+// Higgsfield credits), and every render is READ BACK and checked against the
+// copy it was supposed to contain.
+//
+// The check is not decoration. gemini-2.5-flash-image mis-renders Tagalog in a
+// SYSTEMATIC way — it produced "blankong" for *blangkong* and three different
+// manglings of *nagsisimula* across six test renders, and retrying the same
+// prompt reproduced the same error every time. So a failed check does not just
+// retry: it falls through to Higgsfield's Nano Banana 2, which rendered the
+// same copy correctly every time. Most slides cost nothing extra; only the
+// ones Gemini cannot spell fall back to paid credits.
+const GEMINI_ATTEMPTS = Number(process.env.CAROUSEL_GEMINI_ATTEMPTS || 2);
+const usage = { gemini: 0, higgsfield: 0 };
+
+async function renderSlideImage({ prompt, expect = [], refs = [], destPath }) {
+  // OPT-IN, not default: measured 0/4 slides passing verification, so leaving
+  // it on costs GCP calls and doubles the wall time for no saving. Set
+  // CAROUSEL_IMAGE_PROVIDER=gemini to re-test when the model improves.
+  if (gcpProject && process.env.CAROUSEL_IMAGE_PROVIDER === "gemini") {
+    try {
+      const r = await genVerified({
+        prompt, expect, refs, project: gcpProject, location: gcpLocation,
+        maxAttempts: GEMINI_ATTEMPTS, log: (m) => console.log(m),
+      });
+      if (r.verified) {
+        await fs.mkdir(path.dirname(destPath), { recursive: true });
+        await fs.writeFile(destPath, r.buf);
+        usage.gemini++;
+        return "gemini";
+      }
+      console.log(`      Gemini could not spell it correctly — falling back to Higgsfield.`);
+    } catch (e) {
+      console.log(`      Gemini failed (${String(e.message || e).slice(0, 90)}) — falling back to Higgsfield.`);
+    }
+  }
+  const hf = await compose({ prompt, refs });
+  await hfDownload(hf.url, destPath);
+  usage.higgsfield++;
+  return "higgsfield";
+}
+
 // ── Render ────────────────────────────────────────────────────────────────
 const made = [];
 const failed = [];
@@ -130,10 +175,13 @@ for (let i = 0; i < plan.slides.length; i++) {
   const name = `slide-${String(idx).padStart(2, "0")}-${String(s.headline || "slide").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 24) || "slide"}.png`;
   try {
     console.log(`  [${idx}] ${s.headline}…`);
-    const r = await compose({ prompt: slidePrompt(s, idx) });
-    await hfDownload(r.url, path.join(outDir, name));
+    const via = await renderSlideImage({
+      prompt: slidePrompt(s, idx),
+      expect: [s.headline, s.body],
+      destPath: path.join(outDir, name),
+    });
     made.push({ n: idx, file: name, label: s.headline });
-    console.log(`      ✓ ${name}`);
+    console.log(`      ✓ ${name} (${via})`);
   } catch (e) {
     failed.push({ n: idx, why: e.message });
     console.warn(`      ✗ slide ${idx} failed: ${e.message}`);
@@ -143,11 +191,15 @@ for (let i = 0; i < plan.slides.length; i++) {
 // CTA
 try {
   console.log(`  [${total}] CTA…`);
-  const r = await compose({ prompt: ctaPrompt(plan.cta || {}) });
   const name = `slide-${String(total).padStart(2, "0")}-cta.png`;
-  await hfDownload(r.url, path.join(outDir, name));
+  const cta = plan.cta || {};
+  const via = await renderSlideImage({
+    prompt: ctaPrompt(cta),
+    expect: [cta.headline, cta.body],
+    destPath: path.join(outDir, name),
+  });
   made.push({ n: total, file: name, label: "CTA" });
-  console.log(`      ✓ ${name}`);
+  console.log(`      ✓ ${name} (${via})`);
 } catch (e) {
   failed.push({ n: total, why: e.message });
   console.warn(`      ✗ CTA failed: ${e.message}`);
@@ -181,7 +233,8 @@ try {
 } catch (e) { console.warn(`  could not update topic ledger: ${e?.message || e}`); }
 
 const after = await hfBalance();
-if (before != null && after != null) console.log(`  credits used: ${(before - after).toFixed(2)}`);
+if (before != null && after != null) console.log(`  Higgsfield credits used: ${(before - after).toFixed(2)}`);
+console.log(`  slides by provider: gemini ${usage.gemini}, higgsfield ${usage.higgsfield}`);
 console.log(`\n${made.length}/${total} slides\n  Export : ${outDir}\n  Review : ${path.join(outDir, "gallery.html")}`);
 if (failed.length) console.log(`  failed : ${failed.map((f) => `#${f.n}`).join(", ")}`);
 process.exit(made.length ? 0 : 1);
