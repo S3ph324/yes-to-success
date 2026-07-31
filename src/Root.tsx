@@ -43,6 +43,11 @@ import {
   calcMetaBrandCard,
 } from "./QuoteCard/BrandCard";
 import {
+  CarouselSlide,
+  carouselSlideSchema,
+  calcMetaCarouselSlide,
+} from "./QuoteCard/CarouselSlide";
+import {
   AdviceCard,
   adviceCardSchema,
   calcMetaAdviceCard,
@@ -252,6 +257,29 @@ export const RemotionRoot: React.FC = () => {
           focusX: 0.46,
           focusY: 0.4,
           aspectRatio: "1:1" as const,
+        }}
+      />
+
+      <Composition
+        id="CarouselSlide"
+        component={CarouselSlide}
+        durationInFrames={1}
+        fps={30}
+        width={1080}
+        height={1350}
+        schema={carouselSlideSchema}
+        calculateMetadata={calcMetaCarouselSlide}
+        defaultProps={{
+          kind: "teaching" as const,
+          numeral: "01",
+          kicker: "",
+          headline: "PARA SA MABILIS NA DRAFT",
+          body: "Hindi ako nagsisimula sa blangkong papel. Sinasabi ko lang ang gusto ko, tapos inaayos ko.",
+          slideIndex: 2,
+          slideTotal: 6,
+          bgSrc: "",
+          brandGold: "#F4B400",
+          aspectRatio: "4:5" as const,
         }}
       />
 

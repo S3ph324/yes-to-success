@@ -26,6 +26,8 @@ import path from "node:path";
 import { applyGcpEnv, projectRoot, resolveClient } from "./lib/client.mjs";
 import { compose, hfBalance, hfDownload, soulScene } from "./lib/higgsfield.mjs";
 import { genVerified } from "./lib/gemini-image.mjs";
+import { bundle } from "@remotion/bundler";
+import { renderStill, selectComposition } from "@remotion/renderer";
 
 process.on("unhandledRejection", (r) => { console.error("[carousel] unhandledRejection:", r?.stack || r?.message || String(r)); process.exit(1); });
 
@@ -116,7 +118,7 @@ const ctaPrompt = (cta) =>
 // same copy correctly every time. Most slides cost nothing extra; only the
 // ones Gemini cannot spell fall back to paid credits.
 const GEMINI_ATTEMPTS = Number(process.env.CAROUSEL_GEMINI_ATTEMPTS || 2);
-const usage = { gemini: 0, higgsfield: 0 };
+const usage = { gemini: 0, higgsfield: 0, remotion: 0 };
 
 async function renderSlideImage({ prompt, expect = [], refs = [], destPath }) {
   // OPT-IN, not default: measured 0/4 slides passing verification, so leaving
@@ -143,6 +145,34 @@ async function renderSlideImage({ prompt, expect = [], refs = [], destPath }) {
   await hfDownload(hf.url, destPath);
   usage.higgsfield++;
   return "higgsfield";
+}
+
+// ── Remotion slide template ───────────────────────────────────────────────
+// Teaching and CTA slides are rendered from a component, not generated. This
+// is what fixed the two things generation could not: the Tagalog is now real
+// text so it is exactly what was approved, and the background is one template
+// so a set cannot drift slide to slide. It is also free and ~0.6s per slide
+// instead of ~2 credits and ~40s.
+const SLIDE_PROVIDER = process.env.CAROUSEL_SLIDE_PROVIDER || "remotion";
+let serveUrl = null;
+async function ensureBundle() {
+  if (serveUrl) return serveUrl;
+  const t0 = Date.now();
+  serveUrl = await bundle({ entryPoint: path.join(projectRoot, "src", "index.ts"), webpackOverride: (c) => c });
+  console.log(`  bundled template in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  return serveUrl;
+}
+async function renderSlideRemotion({ destPath, props }) {
+  const url = await ensureBundle();
+  const inputProps = {
+    kind: "teaching", numeral: "", kicker: "", headline: "", body: "",
+    slideIndex: 2, slideTotal: total, bgSrc: plan.slideBg || "",
+    brandGold: GOLD, aspectRatio: "4:5", ...props,
+  };
+  const composition = await selectComposition({ serveUrl: url, id: "CarouselSlide", inputProps });
+  await renderStill({ composition, serveUrl: url, output: destPath, inputProps, imageFormat: "png", frame: 0 });
+  usage.remotion++;
+  return "remotion";
 }
 
 // ── Render ────────────────────────────────────────────────────────────────
@@ -175,11 +205,16 @@ for (let i = 0; i < plan.slides.length; i++) {
   const name = `slide-${String(idx).padStart(2, "0")}-${String(s.headline || "slide").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 24) || "slide"}.png`;
   try {
     console.log(`  [${idx}] ${s.headline}…`);
-    const via = await renderSlideImage({
-      prompt: slidePrompt(s, idx),
-      expect: [s.headline, s.body],
-      destPath: path.join(outDir, name),
-    });
+    const via = SLIDE_PROVIDER === "remotion"
+      ? await renderSlideRemotion({
+          destPath: path.join(outDir, name),
+          props: { kind: "teaching", numeral: String(s.n).padStart(2, "0"),
+                   headline: s.headline, body: s.body, slideIndex: idx },
+        })
+      : await renderSlideImage({
+          prompt: slidePrompt(s, idx), expect: [s.headline, s.body],
+          destPath: path.join(outDir, name),
+        });
     made.push({ n: idx, file: name, label: s.headline });
     console.log(`      ✓ ${name} (${via})`);
   } catch (e) {
@@ -193,11 +228,16 @@ try {
   console.log(`  [${total}] CTA…`);
   const name = `slide-${String(total).padStart(2, "0")}-cta.png`;
   const cta = plan.cta || {};
-  const via = await renderSlideImage({
-    prompt: ctaPrompt(cta),
-    expect: [cta.headline, cta.body],
-    destPath: path.join(outDir, name),
-  });
+  const via = SLIDE_PROVIDER === "remotion"
+    ? await renderSlideRemotion({
+        destPath: path.join(outDir, name),
+        props: { kind: "cta", kicker: cta.kicker || "", headline: cta.headline || "",
+                 body: cta.body || "", slideIndex: total },
+      })
+    : await renderSlideImage({
+        prompt: ctaPrompt(cta), expect: [cta.headline, cta.body],
+        destPath: path.join(outDir, name),
+      });
   made.push({ n: total, file: name, label: "CTA" });
   console.log(`      ✓ ${name} (${via})`);
 } catch (e) {
@@ -234,7 +274,7 @@ try {
 
 const after = await hfBalance();
 if (before != null && after != null) console.log(`  Higgsfield credits used: ${(before - after).toFixed(2)}`);
-console.log(`  slides by provider: gemini ${usage.gemini}, higgsfield ${usage.higgsfield}`);
+console.log(`  slides by provider: remotion ${usage.remotion}, gemini ${usage.gemini}, higgsfield ${usage.higgsfield}`);
 console.log(`\n${made.length}/${total} slides\n  Export : ${outDir}\n  Review : ${path.join(outDir, "gallery.html")}`);
 if (failed.length) console.log(`  failed : ${failed.map((f) => `#${f.n}`).join(", ")}`);
 process.exit(made.length ? 0 : 1);
